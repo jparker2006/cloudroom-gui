@@ -15,6 +15,16 @@ export const usageWindowSchema = z.object({
 });
 export type UsageWindow = z.infer<typeof usageWindowSchema>;
 
+export function resetPassedText(
+  window: Pick<UsageWindow, "resetsAt">,
+  observedAt: number | null,
+  now: number,
+): string | null {
+  if (window.resetsAt === null || window.resetsAt > now) return null;
+  if (observedAt === null) return "Reset passed, current usage unknown";
+  return window.resetsAt > observedAt ? "Reset since last update" : null;
+}
+
 export const accountViewSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),

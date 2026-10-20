@@ -15,9 +15,17 @@ Each quota window shows remaining allowance derived only from the reported used
 percentage; over-limit windows show zero remaining and stay marked over limit.
 Each account shows its last successful measurement time (`observedAt`), which
 cached reads and failed refreshes never advance. When a window's reset passed
-after that measurement, remaining allowance is unavailable until a successful
-refresh. The read-only detail content (`UsageDetails`) is shared by the settings
-page and can be reused by other surfaces.
+after that measurement, or the measurement time is unknown, remaining allowance
+is unavailable until a successful refresh. Five-hour and weekly windows also show
+pace compared with even usage through the window, as of that measurement; other
+windows say why pace is unavailable. The read-only detail content
+(`UsageDetails`) is shared by the settings page and can be reused by other
+surfaces. "View usage details" in the sidebar card opens that page on the same
+source.
+
+Known limits: the provider bridge contract caps local Claude Code, Codex and
+cloud Claude usage at 100%, so their over-limit amounts are not visible; Codex
+accounts kept by the website report no measurement time or window length.
 
 Settings → Agents → Usage contains the usage page, using its
 full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Both surfaces share the plugin’s aggregation and cache. Neither display is required for source

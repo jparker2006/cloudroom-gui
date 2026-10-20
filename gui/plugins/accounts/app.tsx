@@ -18,6 +18,7 @@ import {
   ACCOUNTS_CHANGED,
   LOCAL,
   MAX_ACCOUNTS,
+  resetPassedText,
   type AccountView,
   type Provider,
   type accountsRpcContract,
@@ -189,23 +190,36 @@ function AccountTile({
       ) : null}
       <div className="mt-auto space-y-1.5 pt-4">
         {account.windows.slice(0, 2).map((window) => {
-          const usedPercent =
-            window.resetsAt !== null && window.resetsAt <= Date.now()
-              ? 0
-              : window.usedPercent;
+          const resetPassed = resetPassedText(
+            window,
+            account.observedAt,
+            Date.now(),
+          );
           return (
             <div
               key={window.label}
+              title={resetPassed ?? undefined}
               className="flex items-center gap-2 text-xs tabular-nums text-subtle-foreground"
             >
               <span className="w-5">{windowLabel(window.label)}</span>
               <span className="h-[3px] flex-1 bg-border">
-                <span
-                  className="block h-full bg-muted-foreground"
-                  style={{ width: `${Math.min(100, usedPercent)}%` }}
-                />
+                {resetPassed === null ? (
+                  <span
+                    className="block h-full bg-muted-foreground"
+                    style={{ width: `${Math.min(100, window.usedPercent)}%` }}
+                  />
+                ) : null}
               </span>
-              <span className="w-8 text-right">{Math.round(usedPercent)}%</span>
+              <span className="w-8 text-right">
+                {resetPassed === null ? (
+                  `${Math.round(window.usedPercent)}%`
+                ) : (
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">{resetPassed}</span>
+                  </>
+                )}
+              </span>
             </div>
           );
         })}

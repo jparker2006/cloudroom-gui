@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import {
+  allowanceText,
   freshnessText,
   paceText,
   usageAllowance,
@@ -44,10 +45,16 @@ it("makes remaining unavailable when the reset passed after the last measurement
       measuredBeforeReset,
       now,
     ),
-  ).toEqual({ kind: "reset-since-update" });
+  ).toEqual({ kind: "reset-passed", afterMeasurement: true });
   expect(
     usageAllowance({ usedPercent: 90, resetsAt: past }, null, now),
-  ).toEqual({ kind: "reset-since-update" });
+  ).toEqual({ kind: "reset-passed", afterMeasurement: false });
+  expect(allowanceText({ kind: "reset-passed", afterMeasurement: false })).toBe(
+    "Reset passed, current usage unknown",
+  );
+  expect(allowanceText({ kind: "reset-passed", afterMeasurement: true })).toBe(
+    "Reset since last update",
+  );
   expect(
     usageAllowance(
       { usedPercent: 90, resetsAt: past },
@@ -171,7 +178,8 @@ it("applies the reset rule at its exact boundaries", () => {
   const window = { usedPercent: 40, resetsAt: new Date(now).toISOString() };
   expect(usageAllowance(window, now, now)).toMatchObject({ kind: "reported" });
   expect(usageAllowance(window, now - 1, now)).toEqual({
-    kind: "reset-since-update",
+    kind: "reset-passed",
+    afterMeasurement: true,
   });
   expect(
     usageAllowance({ usedPercent: 40, resetsAt: "not a date" }, now - 1, now),
@@ -204,3 +212,41 @@ it.each([-1, 1.5, 9e15, Number.NaN])(
     expect(freshnessText({ observedAt }, now)).toBe("Last update unavailable");
   },
 );
+
+it("keeps raw over-limit usage through allowance and pacing instead of a capped 100", () => {
+  expect(
+    usageAllowance({ usedPercent: 100, resetsAt: null }, now, now),
+  ).toEqual({
+    kind: "reported",
+    usedPercent: 100,
+    remainingPercent: 0,
+    overLimit: false,
+  });
+  expect(
+    usageAllowance({ usedPercent: 130, resetsAt: null }, now, now),
+  ).toEqual({
+    kind: "reported",
+    usedPercent: 130,
+    remainingPercent: 0,
+    overLimit: true,
+  });
+  expect(paceOf(0.5, 100)).toMatchObject({ status: "deficit", points: 50 });
+  expect(paceOf(0.5, 130)).toMatchObject({ status: "deficit", points: 80 });
+});
+
+it("treats real zero usage as reported and missing usage as unavailable", () => {
+  expect(usageAllowance({ usedPercent: 0, resetsAt: null }, now, now)).toEqual({
+    kind: "reported",
+    usedPercent: 0,
+    remainingPercent: 100,
+    overLimit: false,
+  });
+  expect(
+    usageAllowance({ usedPercent: null, resetsAt: null }, now, now),
+  ).toEqual({ kind: "not-reported" });
+  expect(paceOf(0.5, 0)).toMatchObject({ status: "reserve", points: 50 });
+  expect(paceOf(0.5, null)).toEqual({
+    kind: "unavailable",
+    reason: usagePaceMessages.noUsage,
+  });
+});

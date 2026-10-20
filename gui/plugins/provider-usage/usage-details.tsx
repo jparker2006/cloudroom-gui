@@ -28,11 +28,12 @@ export type UsageAllowance =
       overLimit: boolean;
     }
   | { kind: "not-reported" }
-  | { kind: "reset-since-update" };
+  | { kind: "reset-passed"; afterMeasurement: boolean };
 
 export const usageAllowanceMessages = {
   notReported: "Usage not reported",
   resetSinceUpdate: "Reset since last update",
+  resetPassedUnknown: "Reset passed, current usage unknown",
   resetUnknown: "Reset time not reported.",
   updateUnavailable: "Last update unavailable",
   refreshFailed: "Couldn’t refresh",
@@ -63,7 +64,7 @@ export function usageAllowance(
     resetAt <= now &&
     (observedAt === null || resetAt > observedAt)
   )
-    return { kind: "reset-since-update" };
+    return { kind: "reset-passed", afterMeasurement: observedAt !== null };
   const used = window.usedPercent;
   if (used === null || !Number.isFinite(used) || used < 0)
     return { kind: "not-reported" };
@@ -170,8 +171,10 @@ export function allowanceText(allowance: UsageAllowance): string {
       return `${allowance.overLimit ? "Over limit · " : ""}${formatPercent(allowance.remainingPercent)} left, ${formatPercent(allowance.usedPercent)} used`;
     case "not-reported":
       return usageAllowanceMessages.notReported;
-    case "reset-since-update":
-      return usageAllowanceMessages.resetSinceUpdate;
+    case "reset-passed":
+      return allowance.afterMeasurement
+        ? usageAllowanceMessages.resetSinceUpdate
+        : usageAllowanceMessages.resetPassedUnknown;
   }
 }
 
@@ -330,7 +333,7 @@ function UsageWindowRow({
           />
         </div>
       ) : null}
-      {allowance.kind === "reset-since-update" ? null : (
+      {allowance.kind === "reset-passed" ? null : (
         <p className="text-xs text-muted-foreground">
           {reset ?? usageAllowanceMessages.resetUnknown}
         </p>

@@ -716,3 +716,36 @@ it("keeps the last account list and flags it when accounts.list fails", async ()
   });
   expect(failed.error).toBe("Some usage could not be refreshed.");
 });
+
+it("aggregates raw over-limit and zero source usage without capping or dropping", async () => {
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: ["over", "zero"].map((id) => ({
+          id,
+          providerId: "claude-code",
+          label: id,
+          scope: { kind: "shared" },
+        })),
+      };
+    return measurement(
+      input.resourceId!,
+      1_000,
+      input.resourceId === "over" ? 130 : 0,
+    );
+  });
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["source:pool"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  const providers = snapshot.machines.find(
+    (machine) => machine.id === "source:pool",
+  )!.providers;
+  expect(providers[0]!.usage).toMatchObject({
+    windows: [{ usedPercent: 130 }],
+  });
+  expect(providers[1]!.usage).toMatchObject({ windows: [{ usedPercent: 0 }] });
+});

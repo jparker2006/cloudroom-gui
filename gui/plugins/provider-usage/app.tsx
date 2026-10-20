@@ -230,7 +230,7 @@ function UsageWindow({
   const reset = formatUsageReset(window.resetsAt);
   const resetText = reset ?? usageAllowanceMessages.resetUnknown;
   const countdown =
-    allowance.kind === "reset-since-update"
+    allowance.kind === "reset-passed"
       ? null
       : formatResetCountdown(window.resetsAt);
   const cost =
@@ -245,7 +245,7 @@ function UsageWindow({
     .replace(/^Daily limit$/u, "1d")
     .replace(/^Plan usage$/u, "plan")
     .replace(/^On-demand spend$/u, "spend");
-  const description = `${window.label}: ${allowanceText(allowance)}${cost === null ? "" : `, ${cost}`}.${allowance.kind === "reset-since-update" ? "" : ` ${reset ?? "Reset time not reported"}.`}${allowance.kind === "reported" ? ` ${paceSummary}` : ""} ${freshnessText(account, now)}.`;
+  const description = `${window.label}: ${allowanceText(allowance)}${cost === null ? "" : `, ${cost}`}.${allowance.kind === "reset-passed" ? "" : ` ${reset ?? "Reset time not reported"}.`}${allowance.kind === "reported" ? ` ${paceSummary}` : ""} ${freshnessText(account, now)}.`;
   return (
     <button
       type="button"
@@ -278,14 +278,14 @@ function UsageWindow({
           <span className="min-w-0 truncate text-muted-foreground">
             {allowance.kind === "not-reported"
               ? "usage not reported"
-              : "reset since last update"}
+              : allowanceText(allowance).toLowerCase()}
           </span>
         )}
         <span
           aria-hidden="true"
           className="ml-auto min-w-0 truncate tabular-nums text-subtle-foreground"
         >
-          {countdown ?? (allowance.kind === "reset-since-update" ? "" : "—")}
+          {countdown ?? (allowance.kind === "reset-passed" ? "" : "—")}
         </span>
       </span>
       {allowance.kind === "reported" &&
@@ -313,8 +313,8 @@ function UsageWindow({
       {showReset ? (
         <span className="block whitespace-normal pl-3.5 text-subtle-foreground">
           <span>
-            {allowance.kind === "reset-since-update"
-              ? `${usageAllowanceMessages.resetSinceUpdate}.`
+            {allowance.kind === "reset-passed"
+              ? `${allowanceText(allowance)}.`
               : resetText}
           </span>
           {allowance.kind === "reported"

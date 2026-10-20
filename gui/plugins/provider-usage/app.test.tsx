@@ -569,6 +569,13 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
                   [{ label: "Weekly limit", usedPercent: 125, resetsAt: null }],
                   { refreshFailed: true },
                 ),
+                account("zero", Date.now() - 60_000, [
+                  {
+                    label: "Daily limit",
+                    usedPercent: 0,
+                    resetsAt: inHours(3),
+                  },
+                ]),
                 account("unknown", null, [
                   {
                     id: null,
@@ -611,9 +618,10 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   expect(slot.getByText("Over limit · 125% used")).toBeTruthy();
   expect(slot.getByText("Last update unavailable")).toBeTruthy();
   expect(slot.getByText("usage not reported")).toBeTruthy();
+  expect(slot.getByText("100% left")).toBeTruthy();
   expect(slot.getByText("reset since last update")).toBeTruthy();
   expect(slot.queryByText("10% left")).toBeNull();
-  expect(slot.queryByText("100% left")).toBeNull();
+  expect(slot.getAllByText("100% left")).toHaveLength(1);
   expect(
     slot.getByRole("button", {
       name: "Weekly limit: Over limit · 0% left, 125% used. Reset time not reported. Pace unavailable: window length not reported. Updated 2 hr ago · Couldn’t refresh.",

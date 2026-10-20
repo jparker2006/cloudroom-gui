@@ -211,3 +211,52 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
     await harness.lifecycle.dispose();
   }
 });
+
+it("passes reported over-limit and zero usage through unchanged", async () => {
+  const { bb, harness } = createFakePluginHost({
+    sdk: {
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host", status: "connected" }),
+        ],
+      },
+      providers: {
+        list: async () => [
+          { id: "codex", displayName: "Codex", pluginId: "provider-codex" },
+        ],
+      },
+      system: {
+        usageLimits: async () => ({
+          codex: {
+            status: "ok",
+            accountEmail: null,
+            planLabel: null,
+            windows: [
+              {
+                label: "5h",
+                kind: "five-hour",
+                usedPercent: 130,
+                resetsAt: null,
+              },
+              { label: "7d", kind: "weekly", usedPercent: 0, resetsAt: null },
+            ],
+          },
+        }),
+      },
+    },
+  });
+  try {
+    plugin(bb);
+    const value = usageMeasurementSchema.parse(
+      await harness.behavior.callRpc(usageFetchMethod, {
+        resourceId: JSON.stringify(["host", "codex"]),
+        refresh: true,
+      }),
+    );
+    expect(value.usage).toMatchObject({
+      windows: [{ usedPercent: 130 }, { usedPercent: 0 }],
+    });
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
