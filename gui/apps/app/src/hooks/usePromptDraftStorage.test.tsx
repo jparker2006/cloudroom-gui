@@ -876,10 +876,10 @@ describe("discarding a draft the composer doesn't show", () => {
     );
   }
 
-  it("marks a readable draft as discarded instead of removing it", () => {
+  it("marks a readable draft as discarded instead of removing it", async () => {
     window.localStorage.setItem(LEGACY_KEY, storedDraft("legacy text"));
 
-    expect(discardNewThreadDraft(LEGACY_KEY)).toBe("discarded");
+    expect(await discardNewThreadDraft(LEGACY_KEY)).toBe("discarded");
     expect(JSON.parse(window.localStorage.getItem(LEGACY_KEY) ?? "null")).toMatchObject({
       discarded: true,
     });
@@ -898,7 +898,7 @@ describe("discarding a draft the composer doesn't show", () => {
     expect(backups().every((key) => /-[0-9a-f]{16}-3$/.test(key))).toBe(true);
   });
 
-  it("leaves an unreadable value in place when its backup can't be saved", () => {
+  it("leaves an unreadable value in place when its backup can't be saved", async () => {
     window.localStorage.setItem(LEGACY_KEY, "{bad");
     const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("quota", "QuotaExceededError");
@@ -906,7 +906,7 @@ describe("discarding a draft the composer doesn't show", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     let result;
     try {
-      result = discardNewThreadDraft(LEGACY_KEY);
+      result = await discardNewThreadDraft(LEGACY_KEY);
     } finally {
       setItem.mockRestore();
       warn.mockRestore();
@@ -1087,6 +1087,47 @@ describe("new-thread saves with Web Locks", () => {
     expect(storedRecord(alphaKey()).text).toBe("legacy");
   });
 
+  async function releaseAll() {
+    await act(async () => {
+      while (releases.length > 0) {
+        releases.shift()?.();
+        await Promise.resolve();
+      }
+    });
+  }
+
+  it("checks the stored draft for a send clear only once it holds the lock", async () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    await releaseAll();
+    const sent = result.current.getCurrent();
+
+    const cleared = result.current.clearAfterSend(sent);
+    const otherWindowRecord = JSON.stringify({ text: "newer elsewhere", attachments: [], rev: "5656565656565656" });
+    window.localStorage.setItem(alphaKey(), otherWindowRecord);
+    await releaseAll();
+
+    expect(await cleared).toBe(false);
+    expect(window.localStorage.getItem(alphaKey())).toBe(otherWindowRecord);
+  });
+
+  it("checks a draft for discard only once it holds the lock", async () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("A"));
+
+    const discarded = discardNewThreadDraft("bb.promptbox.contents-draft-3", {
+      text: "A",
+      mentions: [],
+      attachments: [],
+    });
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("AB"));
+    await releaseAll();
+
+    expect(await discarded).toBe("changed");
+    expect(window.localStorage.getItem("bb.promptbox.contents-draft-3")).toBe(storedDraft("AB"));
+  });
+
   it("saves only once it holds the draft's lock, and keeps the draft readable meanwhile", async () => {
     const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
 
@@ -1191,12 +1232,12 @@ describe("review fixes: terminal writes", () => {
 describe("review fixes: discard", () => {
   const LEGACY_KEY = "bb.promptbox.contents-draft-3";
 
-  it("stops when the draft changed after the user saw it", () => {
+  it("stops when the draft changed after the user saw it", async () => {
     window.localStorage.setItem(LEGACY_KEY, storedDraft("A"));
     const seen = { text: "A", mentions: [], attachments: [] };
     window.localStorage.setItem(LEGACY_KEY, storedDraft("AB"));
 
-    expect(discardNewThreadDraft(LEGACY_KEY, seen)).toBe("changed");
+    expect(await discardNewThreadDraft(LEGACY_KEY, seen)).toBe("changed");
     expect(window.localStorage.getItem(LEGACY_KEY)).toBe(storedDraft("AB"));
   });
 

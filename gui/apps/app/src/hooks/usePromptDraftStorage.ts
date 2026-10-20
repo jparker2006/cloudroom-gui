@@ -750,7 +750,33 @@ function backUpDiscardedDraft(
   return readStoredPromptDraftValue(backupKey) === rawValue;
 }
 
+function withDraftWriteLock<T>(storageKey: string, run: () => T): Promise<T> {
+  const locks = webLocks();
+  if (!locks) return Promise.resolve(run());
+  let started = false;
+  return locks
+    .request(
+      `bb.promptbox.write.${storageKey}`,
+      { signal: AbortSignal.timeout(PROMPT_DRAFT_LOCK_TIMEOUT_MS) },
+      () => {
+        started = true;
+        return run();
+      },
+    )
+    .catch((error: unknown) => {
+      if (started) throw error;
+      return run();
+    });
+}
+
 export function discardNewThreadDraft(
+  storageKey: string,
+  confirmedDraft?: PromptDraftState,
+): Promise<"discarded" | "changed" | "failed" | "nothing-to-discard"> {
+  return withDraftWriteLock(storageKey, () => discardNewThreadDraftNow(storageKey, confirmedDraft));
+}
+
+function discardNewThreadDraftNow(
   storageKey: string,
   confirmedDraft?: PromptDraftState,
 ): "discarded" | "changed" | "failed" | "nothing-to-discard" {
@@ -1039,6 +1065,14 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [setDraftAndPersist, storageKey],
   );
 
+  const clearAfterSend = useCallback(
+    (expectedDraft: PromptDraftState): Promise<boolean> =>
+      isNewThreadProjectDraftKey(storageKey)
+        ? withDraftWriteLock(storageKey, () => clearIfCurrentMatches(expectedDraft))
+        : Promise.resolve(clearIfCurrentMatches(expectedDraft)),
+    [clearIfCurrentMatches, storageKey],
+  );
+
   const setAttachments = useCallback(
     (attachments: PromptDraftAttachment[]) => {
       writePromptDraft(storageKey, {
@@ -1090,6 +1124,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       addQuote,
       clear,
       clearIfCurrentMatches,
+      clearAfterSend,
       restoreIfEmpty,
       keepMyCopy,
       dismissNotice,
@@ -1098,6 +1133,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       addAttachment,
       addQuote,
       clear,
+      clearAfterSend,
       clearIfCurrentMatches,
       dismissNotice,
       draft.attachments,
