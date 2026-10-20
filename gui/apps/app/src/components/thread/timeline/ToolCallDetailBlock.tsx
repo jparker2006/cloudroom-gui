@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import type { TimelineToolArgs } from "@cloudroom/server-contract";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import {
@@ -12,6 +12,7 @@ interface ToolCallDetailBlockProps {
   args: TimelineToolArgs;
   output: string;
   streaming?: boolean;
+  viewerContent?: ReactNode;
 }
 
 function formatArgValue(value: unknown): string {
@@ -84,28 +85,45 @@ export function ToolCallDetailBlock({
   args,
   output,
   streaming = false,
+  viewerContent,
 }: ToolCallDetailBlockProps) {
   const argEntries = args ? Object.entries(args) : [];
   const hasOutput = output.trim().length > 0;
 
+  const body = (
+    <>
+      <CollapsibleHeader toolName={toolName} argEntries={argEntries} />
+      {viewerContent !== undefined ? (
+        viewerContent
+      ) : hasOutput ? (
+        <div className="mt-2 border-t border-border pt-2">
+          <pre className="m-0 min-w-0 overflow-x-auto whitespace-pre">
+            {output}
+          </pre>
+        </div>
+      ) : null}
+    </>
+  );
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <TimelineDetailScroll
-        size="base"
-        overflowX="hidden"
-        streaming={streaming}
-        contentKey={output}
-        scrollClassName="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70"
-      >
-        <CollapsibleHeader toolName={toolName} argEntries={argEntries} />
-        {hasOutput ? (
-          <div className="mt-2 border-t border-border pt-2">
-            <pre className="m-0 min-w-0 overflow-x-auto whitespace-pre">
-              {output}
-            </pre>
-          </div>
-        ) : null}
-      </TimelineDetailScroll>
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-card",
+        viewerContent !== undefined ? "w-max min-w-full" : "overflow-hidden",
+      )}
+    >
+      {viewerContent !== undefined ? (
+        <div className="px-4 py-3 font-mono text-xs leading-tight">{body}</div>
+      ) : (
+        <TimelineDetailScroll
+          size="base"
+          overflowX="hidden"
+          streaming={streaming}
+          contentKey={output}
+          scrollClassName="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70"
+        >
+          {body}
+        </TimelineDetailScroll>
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import type { TimelineCommandWorkRow } from "@cloudroom/server-contract";
 import {
   commandRow,
   delegationRow,
+  toolRow,
   turnRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -145,6 +146,161 @@ describe("previewed command output", () => {
       expect(result.current.state).toBe("loaded");
     });
     expect(result.current.output).toBe(FULL_OUTPUT);
+  });
+
+  it("keeps hydration demand gated until enabled, including after completion", async () => {
+    const row = previewedCommandRow({ status: "pending" });
+    timelineTurnSummaryDetails.mockResolvedValue({
+      rows: [
+        commandRow({
+          callId: row.callId,
+          command: row.command,
+          id: row.id,
+          output: FULL_OUTPUT,
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
+          threadId: row.threadId,
+          turnId: row.turnId ?? undefined,
+        }),
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { rerender, result } = renderHook(
+      ({ enabled, currentRow }) =>
+        useTimelineWorkRowFullOutput(currentRow, { enabled }),
+      { initialProps: { currentRow: row, enabled: false }, wrapper },
+    );
+
+    expect(result.current.output).toBe(PREVIEW_OUTPUT);
+    expect(result.current.state).toBe("streaming-preview");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+
+    rerender({
+      currentRow: { ...row, status: "completed", exitCode: 0 },
+      enabled: false,
+    });
+    expect(result.current.state).toBe("idle-preview");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+
+    rerender({
+      currentRow: { ...row, status: "completed", exitCode: 0 },
+      enabled: true,
+    });
+    await waitFor(() => expect(result.current.output).toBe(FULL_OUTPUT));
+    expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hydrate from nested rows with a different thread, work kind, or call id", async () => {
+    const preview = previewedCommandRow();
+    timelineTurnSummaryDetails.mockResolvedValue({
+      rows: [
+        delegationRow({
+          childRows: [
+            turnRow({
+              children: [
+                commandRow({
+                  callId: preview.callId,
+                  command: preview.command,
+                  id: preview.id,
+                  output: "WRONG THREAD",
+                  sourceSeqEnd: preview.sourceSeqEnd,
+                  sourceSeqStart: preview.sourceSeqStart,
+                  threadId: "thr_other",
+                  turnId: preview.turnId ?? undefined,
+                }),
+                toolRow({
+                  callId: preview.callId,
+                  id: preview.id,
+                  output: "WRONG WORK KIND",
+                  sourceSeqEnd: preview.sourceSeqEnd,
+                  sourceSeqStart: preview.sourceSeqStart,
+                  threadId: preview.threadId,
+                  turnId: preview.turnId ?? undefined,
+                }),
+                commandRow({
+                  callId: "call_other",
+                  command: preview.command,
+                  id: preview.id,
+                  output: "WRONG CALL",
+                  sourceSeqEnd: preview.sourceSeqEnd,
+                  sourceSeqStart: preview.sourceSeqStart,
+                  threadId: preview.threadId,
+                  turnId: preview.turnId ?? undefined,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useTimelineWorkRowFullOutput(preview), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("error"));
+    expect(result.current.output).toBe(PREVIEW_OUTPUT);
+  });
+
+  it("matches a repeated call id using turn and source boundaries", async () => {
+    const preview = previewedCommandRow();
+    timelineTurnSummaryDetails.mockResolvedValue({
+      rows: [
+        delegationRow({
+          childRows: [
+            turnRow({
+              children: [
+                commandRow({
+                  callId: preview.callId,
+                  command: preview.command,
+                  id: preview.id,
+                  output: "OUTPUT FROM ANOTHER TURN",
+                  sourceSeqEnd: 2,
+                  sourceSeqStart: 1,
+                  threadId: preview.threadId,
+                  turnId: "turn_other",
+                }),
+                commandRow({
+                  callId: preview.callId,
+                  command: preview.command,
+                  id: preview.id,
+                  output: FULL_OUTPUT,
+                  sourceSeqEnd: preview.sourceSeqEnd,
+                  sourceSeqStart: preview.sourceSeqStart,
+                  threadId: preview.threadId,
+                  turnId: preview.turnId ?? undefined,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useTimelineWorkRowFullOutput(preview), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("loaded"));
+    expect(result.current.output).toBe(FULL_OUTPUT);
+  });
+
+  it("reports a completed preview without a turn id as unavailable", async () => {
+    const preview = { ...previewedCommandRow(), turnId: null };
+    const { wrapper } = createQueryClientTestHarness();
+    const { rerender, result } = renderHook(
+      ({ enabled }) => useTimelineWorkRowFullOutput(preview, { enabled }),
+      { initialProps: { enabled: false }, wrapper },
+    );
+
+    expect(result.current.state).toBe("idle-preview");
+    rerender({ enabled: true });
+    expect(result.current.state).toBe("unavailable-preview");
+    expect(result.current.output).toBe(PREVIEW_OUTPUT);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
   });
 
   it("keeps the live preview for a running row and does not fetch details", async () => {

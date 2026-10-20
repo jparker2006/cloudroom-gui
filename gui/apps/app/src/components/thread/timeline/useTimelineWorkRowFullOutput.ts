@@ -13,9 +13,11 @@ export type TimelinePreviewableWorkRow =
 
 export type TimelineWorkRowFullOutputState =
   | "complete"
+  | "idle-preview"
   | "streaming-preview"
   | "limited-preview"
   | "expired-preview"
+  | "unavailable-preview"
   | "loading"
   | "error"
   | "loaded";
@@ -24,6 +26,10 @@ export interface TimelineWorkRowFullOutput {
   output: string;
   state: TimelineWorkRowFullOutputState;
   retry: () => void;
+}
+
+export interface TimelineWorkRowFullOutputOptions {
+  enabled?: boolean;
 }
 
 function loadedOutputState(
@@ -72,10 +78,12 @@ function findPreviewableWorkRow(
 
 export function useTimelineWorkRowFullOutput(
   row: TimelinePreviewableWorkRow,
+  options: TimelineWorkRowFullOutputOptions = {},
 ): TimelineWorkRowFullOutput {
   const outputPreview = row.outputPreview;
   const isPreview = outputPreview !== undefined;
   const shouldLoad =
+    (options.enabled ?? true) &&
     isPreview &&
     outputPreview.experimental_fullOutputAvailability !== "retention-expired" &&
     row.turnId !== null &&
@@ -99,17 +107,16 @@ export function useTimelineWorkRowFullOutput(
     if (!shouldLoad || data === undefined) {
       return null;
     }
-    const match =
-      findPreviewableWorkRow(
-        data.rows,
-        (candidate) => candidate.id === row.id,
-      ) ??
-      findPreviewableWorkRow(
-        data.rows,
-        (candidate) =>
-          candidate.workKind === row.workKind &&
-          candidate.callId === row.callId,
-      );
+    const match = findPreviewableWorkRow(
+      data.rows,
+      (candidate) =>
+        candidate.threadId === row.threadId &&
+        candidate.workKind === row.workKind &&
+        candidate.callId === row.callId &&
+        candidate.turnId === row.turnId &&
+        candidate.sourceSeqStart === row.sourceSeqStart &&
+        candidate.sourceSeqEnd === row.sourceSeqEnd,
+    );
     if (match === null) {
       return null;
     }
@@ -117,7 +124,16 @@ export function useTimelineWorkRowFullOutput(
       output: match.output,
       outputPreview: match.outputPreview,
     };
-  }, [data, row.callId, row.id, row.workKind, shouldLoad]);
+  }, [
+    data,
+    row.callId,
+    row.threadId,
+    row.workKind,
+    row.turnId,
+    row.sourceSeqStart,
+    row.sourceSeqEnd,
+    shouldLoad,
+  ]);
 
   if (!isPreview) {
     return { output: row.output, state: "complete", retry };
@@ -126,6 +142,16 @@ export function useTimelineWorkRowFullOutput(
     outputPreview.experimental_fullOutputAvailability === "retention-expired"
   ) {
     return { output: row.output, state: "expired-preview", retry };
+  }
+  if (
+    row.status !== "pending" &&
+    row.turnId === null &&
+    options.enabled !== false
+  ) {
+    return { output: row.output, state: "unavailable-preview", retry };
+  }
+  if (options.enabled === false && row.status !== "pending") {
+    return { output: row.output, state: "idle-preview", retry };
   }
   if (loadedOutput !== null) {
     return {

@@ -10,6 +10,10 @@ import { EventCodeBlock } from "../../ui/event-code-block.js";
 import { ImageLightbox } from "../../ui/image-lightbox.js";
 import { EmptyStatePanel } from "@cloudroom/shared-ui/empty-state";
 import { TerminalOutputBlock } from "./TerminalOutputBlock.js";
+import {
+  PreviewableOutputBody,
+  type OutputViewerDirection,
+} from "./OutputViewer.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { LazyTimelineFileDiffBlock } from "./LazyTimelineFileDiffBlock.js";
 import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
@@ -29,6 +33,7 @@ import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
 
 interface WorkRowBodyProps {
+  outputViewerDirection?: OutputViewerDirection;
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   row: TimelineViewWorkRow;
   workspaceRootPath: string | undefined;
@@ -137,6 +142,10 @@ function outputPreviewNoteText({
 }: OutputPreviewNoteArgs): string | null {
   const total = `${totalChars.toLocaleString()} characters`;
   switch (state) {
+    case "unavailable-preview":
+      return `Preview of ${total}. Output details are unavailable because no detail reference is available.`;
+    case "idle-preview":
+      return `Preview of ${total}. Open output to request available details.`;
     case "streaming-preview":
       return `Preview of ${total}. The full output loads when this finishes.`;
     case "limited-preview":
@@ -221,14 +230,34 @@ function ToolWorkRowBody({ row }: ToolWorkRowBodyProps) {
 }
 
 export function WorkRowBody({
+  outputViewerDirection,
   resolveImageViewSrc,
   row,
   workspaceRootPath,
 }: WorkRowBodyProps) {
   switch (row.workKind) {
     case "command":
+      if (outputViewerDirection)
+        return (
+          <PreviewableOutputBody
+            key={`${row.threadId}:${row.id}`}
+            row={row}
+            direction={outputViewerDirection}
+          />
+        );
       return <CommandWorkRowBody row={row} />;
     case "tool":
+      if (outputViewerDirection)
+        return (
+          <>
+            <PresentationDetail presentation={row.presentation} />
+            <PreviewableOutputBody
+              key={`${row.threadId}:${row.id}`}
+              row={row}
+              direction={outputViewerDirection}
+            />
+          </>
+        );
       return <ToolWorkRowBody row={row} />;
     case "file-change":
       return (

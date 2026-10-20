@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import Convert from "ansi-to-html";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { getDetailScrollMaxHeightClass } from "../../ui/detail-scroll-size.js";
@@ -10,6 +10,7 @@ interface TerminalOutputBlockProps {
   exitCode: number | null;
   metadataLines: readonly string[];
   streaming: boolean;
+  viewerContent?: ReactNode;
 }
 
 interface TerminalScrollContentKeyArgs {
@@ -65,6 +66,10 @@ const ANSI_TO_HTML = new Convert({
   colors: ANSI_THEME_COLORS,
 });
 
+export function terminalOutputHtml(output: string): string {
+  return addBackgroundContrastColors(ANSI_TO_HTML.toHtml(output));
+}
+
 function stringLengthSum(values: readonly string[]): number {
   let length = 0;
   for (const value of values) {
@@ -93,12 +98,10 @@ export function TerminalOutputBlock({
   metadataLines,
   output,
   streaming,
+  viewerContent,
 }: TerminalOutputBlockProps) {
   const renderedOutputHtml = useMemo(
-    () =>
-      output.length > 0
-        ? addBackgroundContrastColors(ANSI_TO_HTML.toHtml(output))
-        : null,
+    () => (output.length > 0 ? terminalOutputHtml(output) : null),
     [output],
   );
 
@@ -111,7 +114,12 @@ export function TerminalOutputBlock({
   });
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-card",
+        viewerContent !== undefined ? "w-max min-w-full" : "overflow-hidden",
+      )}
+    >
       <div className="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70">
         {commandLine ? (
           <div
@@ -128,7 +136,9 @@ export function TerminalOutputBlock({
             {line}
           </div>
         ))}
-        {renderedOutputHtml ? (
+        {viewerContent !== undefined ? (
+          viewerContent
+        ) : renderedOutputHtml ? (
           <TimelineDetailScroll
             size="base"
             streaming={streaming}
