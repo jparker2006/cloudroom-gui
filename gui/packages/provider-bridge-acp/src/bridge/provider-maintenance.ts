@@ -320,7 +320,7 @@ const cursorUsageResponseSchema = z
   .object({
     billingCycleEnd: cursorNonNegativeIntegerSchema.nullish(),
     planUsage: z
-      .object({ totalPercentUsed: z.number().nonnegative().default(0) })
+      .object({ totalPercentUsed: z.number().nonnegative().nullish() })
       .nullish(),
     spendLimitUsage: z
       .object({
@@ -340,6 +340,12 @@ const cursorPlanResponseSchema = z
     planInfo: z.object({ planName: z.string().min(1) }).nullish(),
   })
   .passthrough();
+
+function reportedUsage(value: unknown): { reportedUsedPercent?: number } {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? { reportedUsedPercent: value }
+    : {};
+}
 
 function normalizeUsage(
   rawUsage: unknown,
@@ -365,22 +371,24 @@ function normalizeUsage(
     windows.push({
       label: "Plan usage",
       usedPercent: clampPercent(usage.data.planUsage.totalPercentUsed),
+      ...reportedUsage(usage.data.planUsage.totalPercentUsed),
       resetsAt,
     });
   }
   const spend = usage.data.spendLimitUsage;
   const pair =
     spend?.overallLimit != null
-      ? { limit: spend.overallLimit, used: spend.overallUsed ?? 0 }
+      ? { limit: spend.overallLimit, used: spend.overallUsed }
       : spend?.individualLimit != null
-        ? { limit: spend.individualLimit, used: spend.individualUsed ?? 0 }
+        ? { limit: spend.individualLimit, used: spend.individualUsed }
         : spend?.pooledLimit != null
-          ? { limit: spend.pooledLimit, used: spend.pooledUsed ?? 0 }
+          ? { limit: spend.pooledLimit, used: spend.pooledUsed }
           : null;
-  if (pair && pair.limit > 0) {
+  if (pair && pair.limit > 0 && pair.used != null) {
     windows.push({
       label: "On-demand spend",
       usedPercent: clampPercent((pair.used / pair.limit) * 100),
+      ...reportedUsage((pair.used / pair.limit) * 100),
       resetsAt,
       cost: { usedUsdCents: pair.used, limitUsdCents: pair.limit },
     });

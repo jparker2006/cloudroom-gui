@@ -61,14 +61,43 @@ describe("Codex provider maintenance", () => {
           label: "Current session",
           kind: "five-hour",
           usedPercent: 42,
+          reportedUsedPercent: 42.4,
           resetsAt: "2025-06-15T15:06:40.000Z",
         },
         {
           label: "Weekly limit",
           kind: "weekly",
           usedPercent: 100,
+          reportedUsedPercent: 120,
           resetsAt: null,
         },
+      ],
+    });
+  });
+
+  it("reports raw zero and exactly 100 alongside the capped value", () => {
+    const windows = (primary: unknown, secondary: unknown) =>
+      __testing.normalizeUsage(
+        {
+          rate_limit: {
+            primary_window: {
+              used_percent: primary,
+              reset_at: null,
+              limit_window_seconds: 18_000,
+            },
+            secondary_window: {
+              used_percent: secondary,
+              reset_at: null,
+              limit_window_seconds: 604_800,
+            },
+          },
+        } as never,
+        null,
+      );
+    expect(windows(0, 100)).toMatchObject({
+      windows: [
+        { usedPercent: 0, reportedUsedPercent: 0 },
+        { usedPercent: 100, reportedUsedPercent: 100 },
       ],
     });
   });
@@ -314,6 +343,7 @@ describe("Codex credential health and usage", () => {
             label: "Current session",
             kind: "five-hour",
             usedPercent: 10,
+            reportedUsedPercent: 10,
             resetsAt: "2025-06-15T15:06:40.000Z",
           },
         ],
