@@ -24,6 +24,7 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     hosts: { list: vi.fn(), pickFolder: vi.fn() },
     projects: {
+      list: vi.fn(),
       create: vi.fn(),
       delete: vi.fn(),
       reorder: vi.fn(),
@@ -388,10 +389,36 @@ describe("ProjectsSettingsSection", () => {
 
   it("explains an empty project list", async () => {
     stubSidebarBootstrapFetch([]);
+    vi.mocked(sdk.projects.list).mockResolvedValue([]);
 
     renderSection();
 
     expect(await screen.findByText(/^No projects yet/u)).toBeDefined();
+    expect(
+      document.querySelector('[data-empty-state-scene="projects"]'),
+    ).not.toBeNull();
+  });
+
+  it("does not treat hidden projects as first use", async () => {
+    stubSidebarBootstrapFetch([]);
+    vi.mocked(sdk.projects.list).mockResolvedValue([
+      { id: "proj_hidden", name: "secret" },
+    ] as Awaited<ReturnType<typeof sdk.projects.list>>);
+
+    renderSection();
+
+    expect(await screen.findByText("All projects are hidden.")).toBeDefined();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
+  it("keeps plain copy when hidden projects cannot be checked", async () => {
+    stubSidebarBootstrapFetch([]);
+    vi.mocked(sdk.projects.list).mockRejectedValue(new Error("offline"));
+
+    renderSection();
+
+    expect(await screen.findByText(/^No projects yet\. Add/u)).toBeDefined();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
   });
 
   it("surfaces a failed project load instead of staying on the loader", async () => {

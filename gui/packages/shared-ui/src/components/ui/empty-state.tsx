@@ -14,7 +14,6 @@ export type { CloudIllustrationVariant, CloudScene };
 export interface EmptyStateProps {
   message: string;
   icon?: IconName;
-  cloud?: CloudIllustrationVariant;
   className?: string;
   iconClassName?: string;
   messageClassName?: string;
@@ -23,21 +22,13 @@ export interface EmptyStateProps {
 export function EmptyState({
   message,
   icon,
-  cloud,
   className,
   iconClassName,
   messageClassName,
 }: EmptyStateProps) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      {cloud ? (
-        <CloudIllustration
-          scene="panel"
-          size="inline"
-          variant={cloud}
-          className={iconClassName}
-        />
-      ) : icon ? (
+      {icon ? (
         <Icon
           name={icon}
           aria-hidden="true"
@@ -106,7 +97,7 @@ export function EmptyStateScene({
       role={role}
       data-empty-state-scene={scene}
       className={cn(
-        "flex min-w-0 animate-cloud-reveal flex-col items-center text-center",
+        "flex min-w-0 flex-col motion-safe:animate-cloud-reveal items-center text-center",
         hero ? "gap-4 px-6 py-10" : "gap-3 px-4 py-6",
         className,
       )}

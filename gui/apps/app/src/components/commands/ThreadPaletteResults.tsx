@@ -307,13 +307,19 @@ export function ThreadPaletteResults({
         <ThreadSearchMessage iconName="AlertCircle" text="Search failed." />
       ) : null}
       {showNoSearchResults ? (
-        <EmptyStateScene
-          scene="search"
-          role="status"
-          title="No matching results"
-          description={`Nothing matches “${trimmedQuery}”. Try fewer or different words.`}
-          className="py-4"
-        />
+        navigationQuery.isSuccess && !navigationQuery.isPlaceholderData ? (
+          <EmptyStateScene
+            scene="search"
+            title="No matching results"
+            description={`Nothing matches “${trimmedQuery}”. Try fewer or different words.`}
+            className="py-4"
+          />
+        ) : (
+          <ThreadSearchMessage
+            iconName="MessageQuestion"
+            text="No matching results"
+          />
+        )
       ) : null}
       {showTypeToSearch ? (
         <ThreadSearchMessage

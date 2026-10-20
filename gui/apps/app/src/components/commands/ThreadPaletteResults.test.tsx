@@ -32,6 +32,8 @@ import {
 const navigation = vi.hoisted(() => ({
   data: undefined as SidebarBootstrapResponse | undefined,
   isLoading: false,
+  isPlaceholderData: false,
+  isSuccess: false,
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -110,12 +112,52 @@ function renderResults({
 afterEach(() => {
   cleanup();
   navigation.data = undefined;
+  navigation.isPlaceholderData = false;
+  navigation.isSuccess = false;
   window.localStorage.clear();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
 describe("ThreadPaletteResults", () => {
+  const noHits = {
+    data: {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    },
+    debouncedQuery: "kubernetes",
+    hasSearchableQuery: true,
+    isDebouncing: false,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+  };
+
+  it("illustrates no matches once projects are loaded", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    mockThreadSearch(noHits);
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(
+      document.querySelector('[data-empty-state-scene="search"]'),
+    ).not.toBeNull();
+  });
+
+  it("keeps plain no-match copy while projects are unsettled", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    navigation.isPlaceholderData = true;
+    mockThreadSearch(noHits);
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
   it("clears stale rows while the visible query is debouncing", () => {
     mockThreadSearch({
       data: createSearchResponse(

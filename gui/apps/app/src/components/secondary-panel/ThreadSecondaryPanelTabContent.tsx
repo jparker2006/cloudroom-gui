@@ -283,6 +283,14 @@ export function GitDiffTabContent({
     );
   }
 
+  if (diffFilesResponse.files.length === 0 && isDiffFilesPlaceholder) {
+    return (
+      <GitDiffMessageSlot>
+        <ThreadDiffSkeleton />
+      </GitDiffMessageSlot>
+    );
+  }
+
   if (diffFilesResponse.files.length === 0) {
     return (
       <GitDiffMessageSlot>

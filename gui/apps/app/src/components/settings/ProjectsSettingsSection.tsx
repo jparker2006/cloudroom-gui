@@ -258,6 +258,7 @@ function HiddenProjectsSection() {
 
 export function ProjectsSettingsSection() {
   const sidebarNavigationQuery = useSidebarNavigation();
+  const hiddenProjectsQuery = useHiddenProjects();
   const hostsQuery = useHosts();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
@@ -338,6 +339,20 @@ export function ProjectsSettingsSection() {
           </p>
         ) : projects === undefined ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : projects.length === 0 &&
+          (hiddenProjectsQuery.data?.length ?? 0) > 0 ? (
+          <p className="text-sm text-subtle-foreground">
+            All projects are hidden.
+          </p>
+        ) : projects.length === 0 &&
+          (sidebarNavigationQuery.isPlaceholderData ||
+            hiddenProjectsQuery.isPending) ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : projects.length === 0 && hiddenProjectsQuery.isError ? (
+          <p className="text-sm text-subtle-foreground">
+            No projects yet. Add a project to start running threads in a
+            repository.
+          </p>
         ) : projects.length === 0 ? (
           <EmptyStateScene
             scene="projects"

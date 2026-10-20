@@ -8,7 +8,7 @@ import {
 import { cn } from "../../lib/utils";
 
 export type CloudScene = "projects" | "threads" | "search" | "panel";
-export type CloudIllustrationSize = "hero" | "panel" | "inline";
+export type CloudIllustrationSize = "hero" | "panel";
 export type CloudIllustrationVariant = "cumulus" | "contour";
 
 const CLOUD_MAIN =
@@ -29,15 +29,13 @@ const WIND = "motion-safe:animate-cloud-wind";
 const SIZE_CLASS: Record<CloudIllustrationSize, string> = {
   hero: "w-48 sm:w-60",
   panel: "w-28 sm:w-32",
-  inline: "w-9",
 };
 
-const VIEWBOX: Record<CloudScene | "inline", string> = {
+const VIEWBOX: Record<CloudScene, string> = {
   projects: "0 0 160 96",
   threads: "0 0 160 96",
   search: "0 0 160 96",
   panel: "0 0 96 56",
-  inline: "0 0 64 24",
 };
 
 const MOTION_STYLE = { transformBox: "fill-box" } as CSSProperties;
@@ -334,32 +332,19 @@ export function CloudIllustration({
   const contextVariant = useContext(CloudIllustrationVariantContext);
   const variant = variantProp ?? contextVariant;
   const uid = useId().replace(/:/g, "");
-  const inline = size === "inline";
   return (
     <svg
-      viewBox={VIEWBOX[inline ? "inline" : scene]}
+      viewBox={VIEWBOX[scene]}
       aria-hidden="true"
       focusable="false"
       data-cloud-illustration={variant}
       className={cn(
-        "pointer-events-none h-auto shrink-0 select-none overflow-visible",
-        !inline && "motion-safe:animate-cloud-enter",
+        "pointer-events-none h-auto shrink-0 select-none overflow-visible motion-safe:animate-cloud-enter",
         SIZE_CLASS[size],
         className,
       )}
     >
-      {inline ? (
-        <g className={DRIFT} style={MOTION_STYLE}>
-          <Cloud
-            d={CLOUD_BANK}
-            transform="translate(4 2)"
-            variant={variant}
-            depth={variant === "contour" ? "front" : "back"}
-          />
-        </g>
-      ) : (
-        <SceneArt scene={scene} variant={variant} uid={uid} />
-      )}
+      <SceneArt scene={scene} variant={variant} uid={uid} />
     </svg>
   );
 }

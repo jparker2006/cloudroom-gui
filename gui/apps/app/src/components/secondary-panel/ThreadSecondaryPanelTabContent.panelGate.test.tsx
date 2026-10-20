@@ -218,6 +218,32 @@ describe("GitDiffTabContent empty states", () => {
     ).not.toBeNull();
   });
 
+  it("does not show the previous comparison's empty state while a new one loads", async () => {
+    vi.mocked(sdk.environments.diffFiles)
+      .mockResolvedValueOnce(emptyDiff)
+      .mockReturnValue(new Promise(() => {}));
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const renderTab = (target: WorkspaceDiffTarget) => (
+      <Wrapper>
+        <GitDiffTabContent
+          environmentId={ENVIRONMENT_ID}
+          target={target}
+          isPanelOpen
+          gitDiffPresentation={presentation}
+        />
+      </Wrapper>
+    );
+    const view = render(renderTab(TARGET));
+    expect(await screen.findByText("No changes")).not.toBeNull();
+
+    view.rerender(renderTab({ type: "all", mergeBaseBranch: "develop" }));
+
+    await waitFor(() => {
+      expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText("No changes")).toBeNull();
+  });
+
   it("keeps plain copy when there is no comparison target", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     render(

@@ -121,6 +121,7 @@ describe("ThreadTimelineSurface empty content", () => {
     ],
     ["a pending thread", { threadRuntimeDisplayStatus: "pending" as const }],
     ["an active thread", { threadRuntimeDisplayStatus: "active" as const }],
+    ["a stopping thread", { threadRuntimeDisplayStatus: "stopping" as const }],
     [
       "a reconnecting host",
       { threadRuntimeDisplayStatus: "host-reconnecting" as const },
