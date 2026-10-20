@@ -797,21 +797,29 @@ function moveNewThreadDraftNow(
   const sourceRaw = readStoredPromptDraftValue(sourceKey);
   const source = readNewThreadRecord(sourceRaw);
   if (source.kind === "unreadable") return { status: "unreadable" };
-  if (source.kind !== "draft" || isPromptDraftEmpty(source.draft)) {
+  const sourceDraft =
+    source.kind === "draft" ? source.draft : source.kind === "moved" ? source.leftover : undefined;
+  if (!sourceDraft || isPromptDraftEmpty(sourceDraft)) {
     return { status: "nothing-to-move" };
   }
+  const originRev =
+    source.kind === "moved"
+      ? readStoredBase(sourceRaw)
+      : source.kind === "draft"
+        ? source.rev
+        : undefined;
 
-  const carried = source.draft.attachments.filter(
+  const carried = sourceDraft.attachments.filter(
     (attachment) => (attachment as { projectId?: string }).projectId === targetProjectId,
   );
-  const leftovers = source.draft.attachments.filter((attachment) => !carried.includes(attachment));
+  const leftovers = sourceDraft.attachments.filter((attachment) => !carried.includes(attachment));
   const previousTarget = readPromptDraft(targetKey);
   const targetWasUnsaved = unsavedPromptDraftKeys.has(targetKey);
   const targetRecoveryKey = newThreadRecoveryKey(targetKey);
   const previousTargetRecovery = readStoredPromptDraftValue(targetRecoveryKey);
   promptDraftCache.set(targetKey, {
     rawValue: null,
-    draft: appendPromptDraft(previousTarget, { ...source.draft, attachments: carried }),
+    draft: appendPromptDraft(previousTarget, { ...sourceDraft, attachments: carried }),
   });
   unsavedPromptDraftKeys.delete(targetKey);
   persistPromptDraftCacheNow(targetKey);
@@ -834,13 +842,19 @@ function moveNewThreadDraftNow(
   const rev = createDraftRev();
   const sourceValue =
     leftovers.length > 0
-      ? JSON.stringify({ text: "", attachments: leftovers, rev, ...(source.rev ? { base: source.rev } : {}) })
-      : JSON.stringify({ rev, ...(source.rev ? { base: source.rev } : {}), moved: true });
-  if (!writeTerminalRecord(sourceKey, sourceValue, source.rev)) {
+      ? JSON.stringify({
+          text: "",
+          attachments: leftovers,
+          rev,
+          ...(originRev ? { base: originRev } : {}),
+          moved: true,
+        })
+      : JSON.stringify({ rev, ...(originRev ? { base: originRev } : {}), moved: true });
+  if (!writeTerminalRecord(sourceKey, sourceValue, originRev)) {
     emitPromptDraftChange(targetKey);
     return { status: "source-not-updated" };
   }
-  if (sourceKey === LEGACY_NEW_THREAD_DRAFT_KEY) rememberMovedLegacyText(source.draft.text);
+  if (sourceKey === LEGACY_NEW_THREAD_DRAFT_KEY) rememberMovedLegacyText(sourceDraft.text);
   promptDraftCache.delete(sourceKey);
   emitPromptDraftChange(targetKey);
   emitPromptDraftChange(sourceKey);
@@ -918,7 +932,8 @@ function discardNewThreadDraftNow(
   ) {
     return "failed";
   }
-  const discardedRev = "rev" in record ? record.rev : undefined;
+  const discardedRev =
+    record.kind === "draft" ? record.rev : "rev" in record ? readStoredBase(rawValue) : undefined;
   const tombstone = JSON.stringify({
     rev: createDraftRev(),
     ...(discardedRev ? { base: discardedRev } : {}),
@@ -1012,6 +1027,8 @@ function collectNewThreadDraftsNotShown(
   const legacy = readNewThreadRecord(readStoredPromptDraftValue(LEGACY_NEW_THREAD_DRAFT_KEY));
   if (legacy.kind === "unreadable") {
     rows.push({ kind: "unreadable", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null });
+  } else if (legacy.kind === "moved" && legacy.leftover && !isPromptDraftEmpty(legacy.leftover)) {
+    rows.push({ kind: "legacy", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null, draft: legacy.leftover });
   } else if (legacy.kind === "draft" && !isPromptDraftEmpty(legacy.draft)) {
     rows.push({
       kind: "legacy",
@@ -1028,8 +1045,11 @@ function collectNewThreadDraftsNotShown(
     const record = readNewThreadRecord(readStoredPromptDraftValue(key));
     if (isNewThreadProjectDraftKey(key)) {
       const projectId = decodeURIComponent(newThreadProjectSegment(key));
+      const leftover = record.kind === "moved" ? record.leftover : undefined;
       if (record.kind === "unreadable") {
         rows.push({ kind: "unreadable", key, projectId });
+      } else if (leftover && !isPromptDraftEmpty(leftover) && !known.has(projectId)) {
+        rows.push({ kind: "unlisted-project", key, projectId, draft: leftover });
       } else if (
         record.kind === "draft" &&
         !isPromptDraftEmpty(record.draft) &&

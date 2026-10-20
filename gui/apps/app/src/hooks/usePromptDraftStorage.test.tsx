@@ -2031,3 +2031,68 @@ describe("copies built on a finished draft", () => {
     expect(unreadable?.draft).toBeUndefined();
   });
 });
+
+describe("Sol: partial moves and marker chains", () => {
+  it("holds another window's pending typing after a move that left attachments behind", async () => {
+    vi.useFakeTimers();
+    const sourceId = `${alphaId()}src`;
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: sourceId }));
+    act(() =>
+      result.current.setDraft({
+        text: "moved text",
+        mentions: [],
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+      }),
+    );
+    const sourceKey = result.current.storageKey;
+    act(() => result.current.setTextAndMentions("moved text, typed", []));
+    vi.resetModules();
+    const otherWindow = await import("./usePromptDraftStorage");
+    await otherWindow.moveNewThreadDraft(sourceKey, alphaId());
+
+    act(() => vi.advanceTimersByTime(250));
+
+    expect(String(storedRecord(sourceKey).text ?? "")).not.toContain("moved text");
+    expect(result.current.notice).toBe("moved-elsewhere");
+  });
+
+  it("keeps a copy built on moved text classified as moved after the marker is discarded", async () => {
+    const sourceId = `${alphaId()}src`;
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: sourceId });
+    source.setDraft({ text: "moved text", mentions: [], attachments: [] });
+    const savedRev = String(storedRecord(source.storageKey).rev);
+    window.localStorage.setItem(
+      `bb.promptbox.recovery-new-thread-${sourceId}-d1d1d1d1d1d1d1d1-3`,
+      JSON.stringify({ text: "moved text, typed", attachments: [], rev: "e2e2e2e2e2e2e2e2", base: savedRev }),
+    );
+    await moveNewThreadDraft(source.storageKey, alphaId());
+    await discardNewThreadDraft(source.storageKey);
+
+    expect(listedNotShown([alphaId(), sourceId]).map(({ kind }) => kind)).toEqual(["moved-elsewhere"]);
+  });
+});
+
+describe("attachments left behind by a move", () => {
+  it("still lists the leftovers of the old draft and of an unlisted project", async () => {
+    const attachment = { type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 };
+    window.localStorage.setItem(
+      "bb.promptbox.contents-draft-3",
+      JSON.stringify({ text: "legacy", attachments: [attachment] }),
+    );
+    const goneId = `${alphaId()}gone`;
+    const gone = getPromptDraftAccessor({ kind: "new-thread", projectId: goneId });
+    gone.setDraft({ text: "gone", mentions: [], attachments: [attachment as never] });
+
+    await moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId());
+    await moveNewThreadDraft(gone.storageKey, alphaId());
+
+    expect(
+      listedNotShown([alphaId()])
+        .map(({ kind, draft }) => [kind, draft?.attachments.map((item) => item.name)])
+        .sort(),
+    ).toEqual([
+      ["legacy", ["old.png"]],
+      ["unlisted-project", ["old.png"]],
+    ]);
+  });
+});

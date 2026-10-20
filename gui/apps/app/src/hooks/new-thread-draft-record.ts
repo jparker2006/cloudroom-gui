@@ -5,7 +5,7 @@ export type NewThreadDraftRecord =
   | { kind: "missing" }
   | { kind: "draft"; rev?: string; draft: PromptDraftState }
   | { kind: "sent"; rev: string }
-  | { kind: "moved"; rev: string }
+  | { kind: "moved"; rev: string; leftover?: PromptDraftState }
   | { kind: "discarded"; rev: string }
   | { kind: "unreadable" };
 
@@ -37,25 +37,34 @@ export function readNewThreadRecord(rawValue: string | null): NewThreadDraftReco
 
   for (const kind of MARKER_KINDS) {
     if (record[kind] === true) {
+      if (typeof rev !== "string") return { kind: "unreadable" };
       const keys = Object.keys(record).filter((key) => key !== "base");
-      return typeof rev === "string" && keys.length === 2
-        ? { kind, rev }
-        : { kind: "unreadable" };
+      if (keys.length === 2) return { kind, rev };
+      if (kind !== "moved") return { kind: "unreadable" };
+      const { moved: _moved, ...rest } = record;
+      const leftover = readDraftFields(rest, JSON.stringify(rest));
+      return leftover ? { kind, rev, leftover } : { kind: "unreadable" };
     }
   }
 
+  const draft = readDraftFields(record, rawValue);
+  if (!draft) return { kind: "unreadable" };
+  return { kind: "draft", ...(typeof rev === "string" ? { rev } : {}), draft };
+}
+
+function readDraftFields(record: Record<string, unknown>, rawValue: string): PromptDraftState | null {
   if (Object.keys(record).some((key) => !DRAFT_FIELDS.has(key))) {
-    return { kind: "unreadable" };
+    return null;
   }
   if (record.text !== undefined && typeof record.text !== "string") {
-    return { kind: "unreadable" };
+    return null;
   }
   if (
     ["mentions", "attachments", "contexts"].some(
       (field) => record[field] !== undefined && !Array.isArray(record[field]),
     )
   ) {
-    return { kind: "unreadable" };
+    return null;
   }
   const draft = parsePromptDraftStorage(rawValue);
   if (
@@ -63,7 +72,7 @@ export function readNewThreadRecord(rawValue: string | null): NewThreadDraftReco
     draft.attachments.length !== arrayLength(record.attachments) ||
     (draft.contexts?.length ?? 0) !== arrayLength(record.contexts)
   ) {
-    return { kind: "unreadable" };
+    return null;
   }
-  return { kind: "draft", ...(typeof rev === "string" ? { rev } : {}), draft };
+  return draft;
 }
