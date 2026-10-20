@@ -108,6 +108,7 @@ function supplement(
     source: "fixture",
     generatedAt: NOW,
     hiddenThreads: [],
+    extraProjects: [],
     archivedThreads: [],
     threadFields: {},
     pendingFields: [],
@@ -341,7 +342,10 @@ describe("createRedactor", () => {
 
 describe("buildFleetModel truth edges", () => {
   it("breaks parent cycles instead of dropping the threads", () => {
-    const model = build([thread("x", { parentThreadId: "y" }), thread("y", { parentThreadId: "x" })]);
+    const model = build([
+      thread("x", { parentThreadId: "y" }),
+      thread("y", { parentThreadId: "x" }),
+    ]);
     expect(model.shown).toBe(2);
     const rendered = model.projects.flatMap((group) => {
       const ids: string[] = [];
@@ -356,26 +360,44 @@ describe("buildFleetModel truth edges", () => {
   });
 
   it("labels an active child of an archived parent instead of leaking the parent", () => {
-    const model = build([thread("c", { parentThreadId: "old" })], { archivedThreads: [thread("old", { archivedAt: NOW })] });
+    const model = build([thread("c", { parentThreadId: "old" })], {
+      archivedThreads: [thread("old", { archivedAt: NOW })],
+    });
     expect(model.byId.get("c")?.parentStatus).toBe("archived");
-    expect(model.projects[0]?.families.map((family) => family.thread.id)).toEqual(["c"]);
+    expect(
+      model.projects[0]?.families.map((family) => family.thread.id),
+    ).toEqual(["c"]);
   });
 
   it("follows the host unread rule: child threads never count as new replies", () => {
-    const model = build([thread("p"), thread("c", { parentThreadId: "p", lastReadAt: NOW - 5000 })]);
+    const model = build([
+      thread("p"),
+      thread("c", { parentThreadId: "p", lastReadAt: NOW - 5000 }),
+    ]);
     expect(model.byId.get("c")?.attention).toBeNull();
   });
 
   it("labels forks and unknown plugin threads honestly", () => {
-    const model = build([thread("p"), thread("f", { originKind: "fork", sourceThreadId: "p" })], {
-      hiddenThreads: [thread("z", { visibility: "hidden", originPluginId: "some-plugin" })],
-    });
+    const model = build(
+      [thread("p"), thread("f", { originKind: "fork", sourceThreadId: "p" })],
+      {
+        hiddenThreads: [
+          thread("z", { visibility: "hidden", originPluginId: "some-plugin" }),
+        ],
+      },
+    );
     expect(model.byId.get("f")?.kind).toBe("fork");
     expect(model.byId.get("z")?.kind).toBe("plugin");
   });
 
   it("does not match hidden names when search runs with privacy on", () => {
-    const model = buildFleetModel({ bootstrap: bootstrap([thread("x")]), supplement: supplement({}), hosts: [], filters: { ...EMPTY_FLEET_FILTERS, query: "Thread x" }, searchNames: false });
+    const model = buildFleetModel({
+      bootstrap: bootstrap([thread("x")]),
+      supplement: supplement({}),
+      hosts: [],
+      filters: { ...EMPTY_FLEET_FILTERS, query: "Thread x" },
+      searchNames: false,
+    });
     expect(model.shown).toBe(0);
   });
 
@@ -383,5 +405,32 @@ describe("buildFleetModel truth edges", () => {
     const on = createRedactor(true, [], ["host_1"]);
     expect(on.host(null, "secret")).toBe("Machine (name hidden)");
     expect(on.host("other", "secret")).toBe("Machine (name hidden)");
+  });
+});
+
+describe("buildFleetModel sources", () => {
+  it("names threads in hidden projects from the supplement", () => {
+    const model = build([], {
+      hiddenThreads: [thread("h", { projectId: "proj_hidden" })],
+      extraProjects: [{ id: "proj_hidden", name: "Hidden one", hidden: true }],
+    });
+    expect(model.byId.get("h")?.projectName).toBe("Hidden one");
+    expect(model.projectOptions).toContainEqual({
+      id: "proj_hidden",
+      name: "Hidden one",
+      hidden: true,
+    });
+  });
+
+  it("reports loading, not unsupported, while the supplement is in flight", () => {
+    const model = buildFleetModel({
+      bootstrap: bootstrap([thread("x")]),
+      supplement: undefined,
+      hosts: [],
+      filters: EMPTY_FLEET_FILTERS,
+      supplementLoading: true,
+    });
+    expect(model.source).toBe("loading");
+    expect(model.pendingFields.size).toBe(0);
   });
 });

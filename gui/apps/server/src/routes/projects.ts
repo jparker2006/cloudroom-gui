@@ -282,9 +282,8 @@ export function buildFleetSupplementResponse(
     ...listPublicProjects(deps.db).map((project) => project.id),
     ...(personalProject ? [personalProject.id] : []),
   ];
-  const hiddenProjectIds = listPublicProjects(deps.db, "hidden").map(
-    (project) => project.id,
-  );
+  const hiddenProjects = listPublicProjects(deps.db, "hidden");
+  const hiddenProjectIds = hiddenProjects.map((project) => project.id);
   const hiddenRows = [
     ...listThreadsWithPendingInteractionStateForProjects(deps.db, {
       archived: false,
@@ -312,6 +311,11 @@ export function buildFleetSupplementResponse(
     archivedThreads: toThreadListEntryResponses(deps, {
       threads: archivedRows,
     }),
+    extraProjects: hiddenProjects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      hidden: true,
+    })),
     threadFields: {},
     pendingFields: FLEET_SERVER_PENDING_FIELDS,
     unavailableSources: FLEET_SERVER_UNAVAILABLE_SOURCES,

@@ -118,6 +118,7 @@ function seed(threads: ThreadListEntry[], hidden: ThreadListEntry[] = []) {
     generatedAt: NOW,
     hiddenThreads: hidden,
     archivedThreads: [],
+    extraProjects: [],
     threadFields: {},
     pendingFields: [],
     unavailableSources: [],
@@ -250,5 +251,42 @@ describe("FleetView", () => {
       { target: { value: "Title a" } },
     );
     expect(document.querySelectorAll("[data-fleet-card]").length).toBe(0);
+  });
+
+  it("clears a typed title from search when privacy is turned on", () => {
+    seed([entry("a")]);
+    renderView();
+    const search = screen.getByRole("searchbox", {
+      name: "Search fleet threads",
+    }) as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "Title a" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Hide titles in Fleet: Off/ }),
+    );
+    expect(search.value).toBe("");
+    expect(screen.getByTestId("fleet-view").textContent).not.toContain(
+      "Title a",
+    );
+  });
+
+  it("gives a nested parent its own family toggle that hides only its children", () => {
+    seed([
+      entry("root"),
+      entry("mid", { parentThreadId: "root" }),
+      entry("leaf", { parentThreadId: "mid" }),
+    ]);
+    renderView();
+    const toggle = screen.getByRole("button", {
+      name: /Collapse family of Title mid: 1 child/,
+    });
+    expect(document.querySelector('[data-fleet-card="leaf"]')).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(document.querySelector('[data-fleet-card="leaf"]')).toBeNull();
+    expect(document.querySelector('[data-fleet-card="mid"]')).not.toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: /Collapse family of Title root: 2 children/,
+      }),
+    ).toBeTruthy();
   });
 });

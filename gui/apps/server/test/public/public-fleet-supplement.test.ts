@@ -99,6 +99,11 @@ describe("GET /api/v1/fleet-supplement", () => {
       expect(body.hiddenThreads.map((thread) => thread.id)).toContain(
         visibleInHidden.id,
       );
+      expect(body.extraProjects).toContainEqual({
+        id: project.id,
+        name: "Test Project",
+        hidden: true,
+      });
 
       const bootstrap = sidebarBootstrapResponseSchema.parse(
         await readJson(await harness.app.request("/api/v1/sidebar-bootstrap")),

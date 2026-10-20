@@ -64,7 +64,10 @@ export function FleetStateLabel({
 export function configuredLine(
   thread: FleetThread,
   pending: boolean,
+  loading = false,
 ): { model: string; effort: string } {
+  if (loading && thread.fields === null)
+    return { model: "model loading…", effort: "effort loading…" };
   if (pending)
     return { model: "model not reported", effort: "effort not reported" };
   return {
@@ -129,7 +132,11 @@ export function cardAccessibleName(
   pending: ReadonlySet<string>,
 ): string {
   const kind = KIND_LABELS[thread.kind];
-  const configured = configuredLine(thread, pending.has("configuredExecution"));
+  const configured = configuredLine(
+    thread,
+    pending.has("configuredExecution"),
+    pending.has("loading"),
+  );
   return [
     redact.title(thread),
     stateWord(thread).word,
@@ -177,7 +184,11 @@ export function FleetCard({
   onOpen,
 }: FleetCardProps) {
   const kind = KIND_LABELS[thread.kind];
-  const configured = configuredLine(thread, pending.has("configuredExecution"));
+  const configured = configuredLine(
+    thread,
+    pending.has("configuredExecution"),
+    pending.has("loading"),
+  );
   const reason = reasonText(thread, redact, pending.has("inputRequest"));
   const counts = family ? familyCounts(family) : null;
   const age = Math.max(0, now - thread.entry.updatedAt);
@@ -374,7 +385,7 @@ function Tag({
   return (
     <span
       className={cn(
-        "relative z-[2] rounded-sm border border-border px-1 font-mono text-xs leading-5 whitespace-nowrap",
+        "pointer-events-none relative z-[2] rounded-sm border border-border px-1 font-mono text-xs leading-5 whitespace-nowrap",
         tone === "error" ? "text-destructive-text" : "text-foreground",
       )}
     >

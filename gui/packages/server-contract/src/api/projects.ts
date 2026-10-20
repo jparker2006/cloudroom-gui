@@ -494,6 +494,7 @@ export const fleetSupplementResponseSchema = z.object({
   generatedAt: z.number(),
   hiddenThreads: z.array(threadListEntrySchema),
   archivedThreads: z.array(threadListEntrySchema),
+  extraProjects: z.array(z.object({ id: z.string(), name: z.string(), hidden: z.boolean() })),
   threadFields: z.record(z.string(), fleetThreadFieldsSchema),
   pendingFields: z.array(fleetPendingFieldSchema),
   unavailableSources: z.array(z.string()),

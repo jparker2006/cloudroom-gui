@@ -688,6 +688,7 @@ export function fleetSupplement(now: number): FleetSupplementResponse {
     hiddenThreads: all
       .filter((s) => !s.archived && s.origin !== undefined)
       .map((s) => entry(s, now)),
+    extraProjects: [],
     archivedThreads: all.filter((s) => s.archived).map((s) => entry(s, now)),
     threadFields: Object.fromEntries(all.map((s) => [s.id, fields(s, now)])),
     pendingFields: [],

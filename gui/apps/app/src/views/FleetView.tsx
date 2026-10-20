@@ -89,11 +89,14 @@ function AsciiRule({
 
 function flatten(
   family: FleetFamily,
+  collapsed: ReadonlySet<string> = new Set(),
   depth = 0,
-): { thread: FleetThread; depth: number }[] {
+): { thread: FleetThread; depth: number; family: FleetFamily }[] {
   return family.children.flatMap((child) => [
-    { thread: child.thread, depth: depth + 1 },
-    ...flatten(child, depth + 1),
+    { thread: child.thread, depth: depth + 1, family: child },
+    ...(collapsed.has(child.thread.id)
+      ? []
+      : flatten(child, collapsed, depth + 1)),
   ]);
 }
 
@@ -135,14 +138,25 @@ export function FleetView() {
       hosts: hosts.data,
       filters,
       searchNames: !hideTitles,
+      supplementLoading: supplement.isPending,
     });
-  }, [navigation.data, supplement.data, hosts.data, filters, hideTitles]);
+  }, [
+    navigation.data,
+    supplement.data,
+    supplement.isPending,
+    hosts.data,
+    filters,
+    hideTitles,
+  ]);
 
   const redact = useMemo<FleetRedactor>(() => {
     const projects = navigation.data
       ? [
           ...navigation.data.projects.map((project) => project.id),
           navigation.data.personalProject.id,
+          ...(supplement.data?.extraProjects ?? []).map(
+            (project) => project.id,
+          ),
         ]
       : [];
     return createRedactor(
@@ -150,7 +164,7 @@ export function FleetView() {
       projects,
       (hosts.data ?? []).map((host) => host.id),
     );
-  }, [hideTitles, navigation.data, hosts.data]);
+  }, [hideTitles, navigation.data, hosts.data, supplement.data]);
 
   const connection = useServerConnectionState();
   const familyById = useMemo(() => {
@@ -330,7 +344,10 @@ export function FleetView() {
     compact && !showAllAttention ? 4 : model.attention.length;
   const parentOf = (thread: FleetThread) =>
     thread.parentId ? model.byId.get(thread.parentId) : undefined;
-  const pending = model.pendingFields as ReadonlySet<string>;
+  const pending: ReadonlySet<string> =
+    model.source === "loading"
+      ? new Set(["loading"])
+      : (model.pendingFields as ReadonlySet<string>);
   const hostList = hosts.data ?? [];
   const inspector = selected && inspectorOpen ? selected : null;
   const supplementAge = supplement.dataUpdatedAt
@@ -435,7 +452,11 @@ export function FleetView() {
           ) : null}
           <button
             type="button"
-            onClick={() => setHideTitles((value) => !value)}
+            onClick={() => {
+              if (!hideTitles)
+                setFilters((current) => ({ ...current, query: "" }));
+              setHideTitles((value) => !value);
+            }}
             className={cn(
               "min-h-11 rounded-full border border-border px-3 text-sm focus-visible:outline-2 focus-visible:outline-foreground md:min-h-9",
               hideTitles && "bg-surface-selected font-semibold",
@@ -453,6 +474,15 @@ export function FleetView() {
           >
             Hide titles applies to Fleet only in this preview. The app sidebar,
             palette and notifications still show titles.
+          </div>
+        ) : null}
+        {model.source === "loading" ? (
+          <div
+            role="status"
+            className="mx-3 mb-2 rounded-md border border-dashed border-border px-3 py-1.5 text-sm md:mx-5"
+          >
+            Loading fleet details (side chats, workflow workers, archived,
+            configured models)…
           </div>
         ) : null}
         {model.source === "fixture" ? (
@@ -639,12 +669,9 @@ export function FleetView() {
               label="Project"
               value={[...filters.projectIds][0] ?? ""}
               onChange={(value) => setSingle("projectIds", value)}
-              options={[
-                ...navigation.data!.projects,
-                navigation.data!.personalProject,
-              ].map((project) => [
+              options={model.projectOptions.map((project) => [
                 project.id,
-                `${redact.project(project.id, project.name)} (${model.counts.byProject[project.id] ?? 0})`,
+                `${redact.project(project.id, project.name)}${project.hidden ? " · hidden project" : ""} (${model.counts.byProject[project.id] ?? 0})`,
               ])}
             />
             <FilterSelect
@@ -705,14 +732,12 @@ export function FleetView() {
                 </span>
               </AsciiRule>
               <div className={GRID}>
-                {model.attention
-                  .slice(0, attentionLimit)
-                  .map((thread) =>
-                    card(thread, {
-                      lifted: thread.parentId !== null,
-                      family: familyById.get(thread.id),
-                    }),
-                  )}
+                {model.attention.slice(0, attentionLimit).map((thread) =>
+                  card(thread, {
+                    lifted: thread.parentId !== null,
+                    family: familyById.get(thread.id),
+                  }),
+                )}
               </div>
               {attentionLimit < model.attention.length ? (
                 <button
@@ -784,13 +809,14 @@ export function FleetView() {
                     {families.map((family) => {
                       const counts = familyCounts(family);
                       const open = !collapsedFamilies.has(family.thread.id);
-                      const members = flatten(family);
+                      const members = flatten(family, collapsedFamilies);
+                      const everyone = flatten(family);
                       const kinds: Record<string, number> = {};
-                      for (const { thread } of members)
+                      for (const { thread } of everyone)
                         kinds[thread.kind] = (kinds[thread.kind] ?? 0) + 1;
                       const lifted = [
                         family.thread,
-                        ...members.map(({ thread }) => thread),
+                        ...everyone.map(({ thread }) => thread),
                       ].filter((thread) => group.liftedIds.has(thread.id));
                       return (
                         <div
@@ -821,7 +847,15 @@ export function FleetView() {
                                     ({ thread }) =>
                                       !group.liftedIds.has(thread.id),
                                   )
-                                  .map(({ thread }) => card(thread))
+                                  .map(({ thread, depth, family: node }) =>
+                                    card(thread, {
+                                      lifted: depth > 1,
+                                      family:
+                                        node.children.length > 0
+                                          ? node
+                                          : undefined,
+                                    }),
+                                  )
                               : null}
                             {ghost(lifted, `ghost-${family.thread.id}`)}
                           </div>

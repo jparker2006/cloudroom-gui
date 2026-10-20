@@ -124,7 +124,8 @@ export interface FleetModel {
     byLocation: Record<string, number>;
     byProject: Record<string, number>;
   };
-  source: FleetSupplementResponse["source"] | "unavailable";
+  source: FleetSupplementResponse["source"] | "unavailable" | "loading";
+  projectOptions: { id: string; name: string; hidden: boolean }[];
   pendingFields: ReadonlySet<FleetPendingField>;
   unavailableSources: readonly string[];
 }
@@ -293,11 +294,25 @@ export function buildFleetModel(args: {
   hosts: readonly Host[] | undefined;
   filters: FleetFilters;
   searchNames?: boolean;
+  supplementLoading?: boolean;
 }): FleetModel {
   const { bootstrap, supplement, filters } = args;
   const hosts = new Map((args.hosts ?? []).map((host) => [host.id, host]));
   const projectNames = new Map<string, string>();
-  for (const project of [...bootstrap.projects, bootstrap.personalProject])
+  const projectOptions = [
+    ...bootstrap.projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      hidden: false,
+    })),
+    {
+      id: bootstrap.personalProject.id,
+      name: bootstrap.personalProject.name,
+      hidden: false,
+    },
+    ...(supplement?.extraProjects ?? []),
+  ];
+  for (const project of projectOptions)
     projectNames.set(project.id, project.name);
   const entries: ThreadListEntry[] = [
     ...bootstrap.projects.flatMap((project) => project.threads),
@@ -487,12 +502,21 @@ export function buildFleetModel(args: {
     shown: matched.size,
     total: filters.state === "archived" ? counts.archived : open.length,
     counts,
-    source: supplement?.source ?? "unavailable",
+    source:
+      supplement?.source ??
+      (args.supplementLoading ? "loading" : "unavailable"),
+    projectOptions,
     pendingFields: new Set(
-      supplement ? supplement.pendingFields : ALL_PENDING_FIELDS,
+      supplement
+        ? supplement.pendingFields
+        : args.supplementLoading
+          ? []
+          : ALL_PENDING_FIELDS,
     ),
     unavailableSources: supplement?.unavailableSources ?? [
-      "Fleet supplement unavailable: side chats, workflow workers and archived threads not listed",
+      args.supplementLoading
+        ? "Fleet details still loading: side chats, workflow workers and archived threads not listed yet"
+        : "Fleet details unavailable: side chats, workflow workers and archived threads not listed",
     ],
   };
 }
