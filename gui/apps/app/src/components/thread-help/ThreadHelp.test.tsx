@@ -48,6 +48,7 @@ it("shows an explicit no-results state that can be cleared", () => {
   );
   fireEvent.click(screen.getByRole("button", { name: "Show all topics" }));
   expect((search() as HTMLInputElement).value).toBe("");
+  expect(document.activeElement).toBe(search());
   expect(
     screen.getByRole("button", { name: /Host disconnected/ }),
   ).toBeTruthy();
@@ -66,17 +67,25 @@ it("opens a topic, follows related links, and returns with search and focus kept
   expect(screen.getByText("Next step:")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Context compacted" }));
-  expect(
-    screen.getByRole("heading", { level: 3, name: "Context compacted" }),
-  ).toBeTruthy();
+  const related = screen.getByRole("heading", {
+    level: 3,
+    name: "Context compacted",
+  });
+  await waitFor(() => expect(document.activeElement).toBe(related));
 
   fireEvent.click(screen.getByRole("button", { name: "All help topics" }));
   expect((search() as HTMLInputElement).value).toBe("context");
   await waitFor(() =>
     expect((document.activeElement as HTMLElement).dataset.helpTopic).toBe(
-      "compactions",
+      "context-usage",
     ),
   );
+});
+
+it("returns focus to search when a topic was opened directly", async () => {
+  render(<ThreadHelpPanel initialTopicId="limits" />);
+  fireEvent.click(screen.getByRole("button", { name: "All help topics" }));
+  await waitFor(() => expect(document.activeElement).toBe(search()));
 });
 
 it("opens docs through the external browser route", () => {

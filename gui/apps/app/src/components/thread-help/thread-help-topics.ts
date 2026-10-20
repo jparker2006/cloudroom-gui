@@ -120,12 +120,12 @@ export const THREAD_HELP_TOPICS: readonly ThreadHelpTopic[] = [
       "percent",
     ],
     summary:
-      "The ring next to the message box shows how much of the model's context window this conversation fills, as last reported by the harness.",
+      "The ring next to the message box shows how much of the model's context window this conversation fills, from the last usage report.",
     points: [
       "Context is this thread's working memory with the model. It is not your provider quota or your Cloudroom plan.",
       "Hover, click, or tap the ring for tokens used and the window size.",
-      '"Estimated context" means the harness reported an estimate, not an exact count.',
-      "No ring means the harness has not reported usage for this thread yet. It does not mean zero.",
+      '"Estimated context" means the number is an estimate, not an exact count. For harnesses that don\'t report usage, Cloudroom estimates it.',
+      "No ring means there is no usable report for this thread yet, or the message box is collapsed. It does not mean zero.",
       "The number is the last report, so it can lag behind a running turn.",
     ],
     nextStep:
@@ -136,6 +136,7 @@ export const THREAD_HELP_TOPICS: readonly ThreadHelpTopic[] = [
       "apps/app/src/components/thread/timeline/ThreadContextWindowIndicator.tsx",
       "apps/app/src/components/thread/timeline/thread-context-window-usage.ts",
       "packages/thread-view/src/thread-context-window-usage.ts",
+      "packages/provider-bridge-acp/src/bridge/bridge.ts",
     ],
   },
   {

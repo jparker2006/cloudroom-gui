@@ -159,24 +159,29 @@ export function ThreadHelpPanel({
   const [query, setQuery] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const listScroll = useRef(0);
-  const returnFocusTo = useRef<ThreadHelpTopicId | null>(null);
+  const returnFocusTo = useRef<ThreadHelpTopicId | "search" | null>(null);
+  const originTopic = useRef<ThreadHelpTopicId | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const statusId = useId();
   const topic = topicId ? threadHelpTopic(topicId) : null;
 
   useLayoutEffect(() => {
     if (topic || !listRef.current) return;
-    listRef.current.scrollTop = listScroll.current;
     const id = returnFocusTo.current;
+    if (id === null) return;
     returnFocusTo.current = null;
-    if (id)
-      listRef.current
-        .querySelector<HTMLElement>(`[data-help-topic="${id}"]`)
-        ?.focus({ preventScroll: true });
-  }, [topic]);
+    listRef.current.scrollTop = listScroll.current;
+    const row = listRef.current.querySelector<HTMLElement>(
+      `[data-help-topic="${id}"]`,
+    );
+    (row ?? searchRef.current)?.focus({ preventScroll: true });
+  }, [topic, query]);
 
   const openTopic = (id: ThreadHelpTopicId) => {
-    if (!topic && listRef.current)
-      listScroll.current = listRef.current.scrollTop;
+    if (!topic) {
+      originTopic.current = id;
+      if (listRef.current) listScroll.current = listRef.current.scrollTop;
+    }
     setTopicId(id);
   };
 
@@ -186,7 +191,7 @@ export function ThreadHelpPanel({
         topic={topic}
         onOpen={openTopic}
         onBack={() => {
-          returnFocusTo.current = topic.id;
+          returnFocusTo.current = originTopic.current ?? "search";
           setTopicId(null);
         }}
       />
@@ -213,6 +218,7 @@ export function ThreadHelpPanel({
           className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
         />
         <Input
+          ref={searchRef}
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -240,7 +246,10 @@ export function ThreadHelpPanel({
             <button
               type="button"
               className={LINK_CLASS}
-              onClick={() => setQuery("")}
+              onClick={() => {
+                returnFocusTo.current = "search";
+                setQuery("");
+              }}
             >
               Show all topics
             </button>
