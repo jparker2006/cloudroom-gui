@@ -1,0 +1,58 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app
+   • Running build, typecheck in 1 packages
+   • Remote caching disabled
+
+@cloudroom/templates:generate:plugin-scaffold: cache hit, replaying logs f77adec89dc6f064
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:plugin-scaffold: > @cloudroom/templates@0.0.1 generate:plugin-scaffold /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:templates: cache hit, replaying logs 4a77f9797cc454ca
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/plugin-build:generate: cache hit, replaying logs 3411571fcef2539d
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: > @cloudroom/plugin-build@0.0.1 generate /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build
+@cloudroom/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: wrote packages/plugin-build/src/generated/plugin-theme.generated.ts
+@cloudroom/plugin-build:generate: wrote /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+@cloudroom/app:build: cache miss, executing f59da3a4280b4574
+@cloudroom/app:typecheck: cache miss, executing 6bdc641ac0d81d0f
+@cloudroom/app:build: 
+@cloudroom/app:build: > @cloudroom/app@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:typecheck: 
+@cloudroom/app:build: > node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist
+@cloudroom/app:build: 
+@cloudroom/app:typecheck: > @cloudroom/app@0.0.1 typecheck /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:typecheck: > tsc --noEmit && tsc --noEmit -p tsconfig.node.json
+@cloudroom/app:typecheck: 
+@cloudroom/app:build: 
+@cloudroom/app:build:  WARN  advancedChunks option is deprecated, please use codeSplitting instead.
+@cloudroom/app:build: 
+@cloudroom/app:build: React Compiler cache: 1157 hits, 2 misses
+@cloudroom/app:typecheck: src/components/tools/Automations.stories.tsx(630,9): error TS2741: Property 'onNewUrl' is missing in type '{ onOpen: () => void; onRun: () => void; onDelete: () => void; onEnabledChange: () => void; }' but required in type 'CloudAutomationActions'.
+@cloudroom/app:typecheck: ../../node_modules/.pnpm/@ladle+react@5.1.1_@types+node@22.19.10_@types+react@19.2.13_@typescript+typescript6@6.0.2_ji_nfw4eurwa2uclkfgrwfxwn6gae/node_modules/@ladle/react/typings-for-build/app/src/ui.tsx(65,7): error TS2322: Type '{ isOpen: boolean; onDismiss: () => void; "data-testid": string; children: Element; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<unknown>'.
+@cloudroom/app:typecheck:   Property 'isOpen' does not exist on type 'IntrinsicAttributes & RefAttributes<unknown>'.
+@cloudroom/app:typecheck: ../../node_modules/.pnpm/@ladle+react@5.1.1_@types+node@22.19.10_@types+react@19.2.13_@typescript+typescript6@6.0.2_ji_nfw4eurwa2uclkfgrwfxwn6gae/node_modules/@ladle/react/typings-for-build/app/src/ui.tsx(73,9): error TS2322: Type '{ "aria-label": string; "data-testid": string; style: { maxWidth: string; }; children: Element[]; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<unknown>'.
+@cloudroom/app:typecheck:   Property 'style' does not exist on type 'IntrinsicAttributes & RefAttributes<unknown>'.
+@cloudroom/app:typecheck:  ELIFECYCLE  Command failed with exit code 1.
+@cloudroom/app#typecheck:  WARNING  command finished with error, but continuing...
+@cloudroom/app:build: [plugin builtin:vite-reporter] 
+@cloudroom/app:build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@cloudroom/app:build: - Using dynamic import() to code-split the application
+@cloudroom/app:build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+@cloudroom/app:build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@cloudroom/app:build: precompressed 442 files (442 br, 442 gzip) in /code/CloudRoom-UI---design-evolution/gui/apps/app/dist
+@cloudroom/app#typecheck:  ERROR  command (/code/CloudRoom-UI---design-evolution/gui/apps/app) /home/cloudroom-agent/.local/share/pnpm/.tools/pnpm/9.15.0/bin/pnpm run typecheck exited (1)
+
+ Tasks:    4 successful, 5 total
+Cached:    3 cached, 5 total
+  Time:    10.116s 
+Failed:    @cloudroom/app#typecheck
+
+ ERROR  run failed: command  exited (1)

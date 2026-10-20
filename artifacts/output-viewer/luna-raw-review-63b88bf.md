@@ -1,0 +1,29 @@
+# Raw review: `63b88bf084754262482ebb83c60931c7a781a4cc`
+
+## Finding
+
+- **P2 — Indexed match rail can become blank after hydration reduces the match count.** [OutputViewer.tsx](/code/CloudRoom-UI---design-evolution/gui/apps/app/src/components/thread/timeline/OutputViewer.tsx:67) keeps `railPage` as independent state. It is updated by navigation at lines 146–151 and reset when the query changes at lines 223–228, but not when `rendered.matches` changes. The indexed rail renders `rendered.matches.slice(railPage * 50, railPage * 50 + 50)` at lines 296–297. Reproduction: search a preview with more than 100 matches, navigate to page 3, then let hydration replace it with full output containing only a few matches. `selected` is clamped to the new count at lines 84–85, but `railPage` remains 2, so the rail shows no match buttons despite a nonzero count. The same stale page can occur if streamed output is replaced by shorter hydrated text. Reset or clamp the page when the match set changes.
+
+## Scope checks
+
+- **Nested output identity and source bounds:** no confirmed defect. `useTimelineWorkRowFullOutput.ts` lines 110–118 requires exact thread, work kind, call id, turn id, and source start/end; the detail query key includes thread, turn, and both source bounds in `gui/apps/app/src/hooks/queries/query-keys.ts` lines 951–965. The details builder can rebuild the enclosing turn range from exact event bounds in `gui/apps/server/src/services/threads/timeline.ts` lines 692–710 and 1846–1854, then rebuilds work rows from those event projections. Work-row bases take their source bounds from each projection message in `gui/packages/thread-view/src/build-thread-timeline.ts` lines 308–318. That is distinct from the enclosing turn's selection range. Focused tests cover nested wrong-thread/work-kind/call-id rows and repeated call ids with distinct bounds in `TimelineRowDetails.output-preview.test.tsx` lines 195–288. I found no evidence that the exact work-row bounds are widened by turn-range rebuilding.
+- **Expansion/completion races:** no confirmed defect. Hydration is gated by drawer open state and completed row status (`useTimelineWorkRowFullOutput.ts` lines 85–99); the completion transition enables the query while open. Tests cover demand gating through completion and no fetch while pending in `TimelineRowDetails.output-preview.test.tsx` lines 151–193 and 306–316, plus delayed/retry UI fixtures in `OutputViewer.stories.tsx`. No test explicitly resolves a request after close/reopen, but the query key remains row-scoped and the response is re-matched against the current full identity.
+- **Search scope:** no confirmed defect. The viewer searches `fullOutput.output` only, using terminal-rendered output for commands and escaped raw output for tools (`OutputViewer.tsx` lines 72–78). It reports loading, error, limited, expired, streaming, and complete scope explicitly in `outputCoverage` lines 18–42. Tests cover exclusion of command/tool args and preview omission markers, all availability states, and safe literal matching in `OutputViewer.test.tsx` lines 94–214.
+
+## Verdict
+
+**FAIL** for the exact SHA due to the P2 indexed-rail defect above. The specified identity and loaded-search-scope behavior otherwise appears correct from the inspected implementation and focused tests.
+
+## Runtime evidence and metadata limits
+
+- User-provided runtime evidence: 22 targeted Turbo tests passed. The original review request also stated 46 focused tests and the full build passed. I did not rerun tests or builds to avoid duplicating the large verification run.
+- User-provided actual runtime: Sol 6.1 / medium. This differs from the requested gpt-6-luna / high / default. No `turn_context` metadata or runtime-status tool was available in this environment to independently verify model, reasoning effort, or service tier; the service tier is unverified.
+- Browser screenshots are owned by the project owner. No actual iOS Safari review was performed here.
+
+## Correction appended after runtime transcript verification
+
+The earlier runtime paragraph above incorrectly copied the parent thread's Sol 6.1 / medium evidence as this reviewer's runtime. I located this reviewer's own session transcript by its initial scoped prompt, `rollout-2026-10-20T06-44-28-01a1580d-e538-7e60-965e-e330406c3e54.jsonl`. Its initial `turn_context` record (line 8), followed by the matching scoped user prompt (line 10), reports `model: gpt-6-luna` and `effort: high`; a later turn_context record reports the same. This verifies the requested model and effort for this reviewer. The transcript's turn_context fields do not include service tier, so `default` remains unverified. The session environment's `CODEX_SESSION_ID` pointed to the parent session and was not used as evidence.
+
+The previous finding's `>100` preview reproduction is unnecessarily large. A realistic preview with one synthetic omission marker is enough: make the visible head contain 49 `e` characters, let the omitted 4,000-character middle contain only `x`, and let the visible tail contain only `x`. The normal marker `…[4,000 characters omitted from preview]` contains 4 `e` characters, so searching `e` finds 53 matches in preview. Navigate to page 2 of the indexed rail (match indices 50–52), then hydrate the full output. With the omission marker removed and the omitted middle still all `x`, the full output has 49 matches. `railPage` remains 1, so `slice(50, 100)` is empty while the match count is nonzero. This directly reproduces the P2 using the ordinary omission marker. No candidate code was changed and no tests were run for this correction.
+
+Transcript evidence path: `/home/cloudroom-agent/.codex/sessions/2026/10/20/rollout-2026-10-20T06-44-28-01a1580d-e538-7e60-965e-e330406c3e54.jsonl` (initial turn_context at line 8; matching initial scoped prompt at line 10).

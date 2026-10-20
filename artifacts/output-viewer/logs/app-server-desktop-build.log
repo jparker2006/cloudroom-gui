@@ -1,0 +1,312 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app, @cloudroom/desktop, @cloudroom/server
+   • Running build in 3 packages
+   • Remote caching disabled
+
+@cloudroom/templates:generate:plugin-scaffold: cache hit, replaying logs f77adec89dc6f064
+@cloudroom/plugin-build:generate: cache hit, replaying logs 3411571fcef2539d
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:plugin-scaffold: > @cloudroom/templates@0.0.1 generate:plugin-scaffold /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: > @cloudroom/plugin-build@0.0.1 generate /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: wrote packages/plugin-build/src/generated/plugin-theme.generated.ts
+@cloudroom/plugin-build:generate: wrote /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+@cloudroom/templates:generate:templates: cache hit, replaying logs 4a77f9797cc454ca
+@cloudroom/server:generate:bb-official-marketplace: cache hit, replaying logs a34a32c0e7d3ac68
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/server:generate:bb-official-marketplace: 
+@cloudroom/server:generate:bb-official-marketplace: > @cloudroom/server@0.0.1 generate:bb-official-marketplace /code/CloudRoom-UI---design-evolution/gui/apps/server
+@cloudroom/server:generate:bb-official-marketplace: > node --conditions=source --import tsx scripts/generate-bb-official-marketplace.ts
+@cloudroom/server:generate:bb-official-marketplace: 
+@cloudroom/sdk:build: cache hit, replaying logs 0c3ec0aa2998a5ff
+@cloudroom/sdk:build: 
+@cloudroom/sdk:build: > @cloudroom/sdk@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/packages/sdk
+@cloudroom/sdk:build: > node ../../scripts/build-package.mjs
+@cloudroom/sdk:build: 
+@cloudroom/sdk:build: @cloudroom/sdk: built 4 entries
+@get-bb/plugin-sdk:build:types: cache hit, replaying logs 1bd2e9f5a9dd5faa
+@get-bb/plugin-sdk:build:types: 
+@get-bb/plugin-sdk:build:types: > @get-bb/plugin-sdk@0.5.29 build:types /code/CloudRoom-UI---design-evolution/gui/packages/plugin-sdk
+@get-bb/plugin-sdk:build:types: > node scripts/build-bundled-dts.mjs
+@get-bb/plugin-sdk:build:types: 
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-ai-services.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-provider-bridge.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-environment-provider.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-machine-provider.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-app.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-host.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-composer-customization-validation.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-composer-view.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-file-navigation-validation.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-command-guard.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-host-policy.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-plugin-app-collector.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-testing.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-testing-app.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-testing-host.d.ts
+@cloudroom/plugin-build:build: cache hit, replaying logs 83ea9aae698632c4
+@cloudroom/plugin-build:build: 
+@cloudroom/plugin-build:build: > @cloudroom/plugin-build@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build
+@cloudroom/plugin-build:build: > node ../../scripts/build-node-entry.mjs src/cli.ts dist/cli.js --clean-dist
+@cloudroom/plugin-build:build: 
+@get-bb/plugin-sdk:build: cache miss, executing 68ba9ffb625b4045
+@cloudroom/cli:build: cache hit, replaying logs f73ef2f21fdf7801
+@cloudroom/cli:build: 
+@cloudroom/cli:build: > @cloudroom/cli@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/apps/cli
+@cloudroom/cli:build: > node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --split
+@cloudroom/cli:build: 
+@cloudroom/app:build: cache miss, executing 19e59ceb1d4b934b
+@get-bb/plugin-sdk:build: 
+@get-bb/plugin-sdk:build: > @get-bb/plugin-sdk@0.5.29 build /code/CloudRoom-UI---design-evolution/gui/packages/plugin-sdk
+@get-bb/plugin-sdk:build: > node scripts/build-runtime.mjs
+@get-bb/plugin-sdk:build: 
+@cloudroom/app:build: 
+@cloudroom/app:build: > @cloudroom/app@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:build: > node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist
+@cloudroom/app:build: 
+@get-bb/plugin-sdk:build: Built 20 @get-bb/plugin-sdk runtime entries.
+@cloudroom/server:build: cache bypass, force executing dc9f9f036b6acfd8
+@cloudroom/server:build: 
+@cloudroom/server:build: > @cloudroom/server@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/apps/server
+@cloudroom/server:build: > node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --external ./start-server.js --copy-dir ../../packages/db/drizzle dist/drizzle --copy-dir src/assets dist/assets && node --import tsx scripts/copy-builtin-skills.ts && node ../../scripts/build-node-entry.mjs src/start-server.ts dist/start-server.js && node ../../scripts/build-node-entry.mjs ../../packages/plugin-sdk/src/index.ts dist/plugin-sdk-runtime.js
+@cloudroom/server:build: 
+@cloudroom/app:build: 
+@cloudroom/app:build:  WARN  advancedChunks option is deprecated, please use codeSplitting instead.
+@cloudroom/app:build: 
+@cloudroom/host-daemon:build: cache miss, executing ed997fb0e38e610b
+@cloudroom/host-daemon:build: 
+@cloudroom/host-daemon:build: > @cloudroom/host-daemon@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/apps/host-daemon
+@cloudroom/host-daemon:build: > node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --external ./start-host-daemon.js && node ../../scripts/build-node-entry.mjs src/start-host-daemon.ts dist/start-host-daemon.js && node ../../scripts/build-node-entry.mjs src/plugin-host-worker.ts dist/plugin-host-worker.js && node ./scripts/build-bundles.mjs
+@cloudroom/host-daemon:build: 
+@cloudroom/host-daemon:build: daemon: 1335117 bytes
+@cloudroom/host-daemon:build: provider bridge worker: 12820 bytes
+@cloudroom/host-daemon:build: plugin host worker: 318200 bytes
+@cloudroom/host-daemon:build: room-cli: 44772 bytes
+@cloudroom/host-daemon:build: parcel watcher child: 2057 bytes
+bb-plugin-plugin-api-tester:prepare:bundled: cache miss, executing 239e3b8b3751643e
+bb-plugin-plugin-api-tester:prepare:bundled: 
+bb-plugin-plugin-api-tester:prepare:bundled: > bb-plugin-plugin-api-tester@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/plugin-api-tester
+bb-plugin-plugin-api-tester:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-plugin-api-tester:prepare:bundled: 
+bb-plugin-provider-pi:prepare:bundled: cache miss, executing a3664a5623919b99
+bb-plugin-provider-pi:prepare:bundled: 
+bb-plugin-provider-pi:prepare:bundled: > bb-plugin-provider-pi@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/provider-pi
+bb-plugin-provider-pi:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-pi:prepare:bundled: 
+bb-plugin-computer-use:prepare:bundled: cache miss, executing 07ec4d8c91b16b20
+bb-plugin-computer-use:prepare:bundled: 
+bb-plugin-computer-use:prepare:bundled: > bb-plugin-computer-use@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/computer-use
+bb-plugin-computer-use:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-computer-use:prepare:bundled: 
+bb-plugin-workflows:prepare:bundled: cache miss, executing 3d7964ba2e9d06f6
+bb-plugin-workflows:prepare:bundled: 
+bb-plugin-workflows:prepare:bundled: > bb-plugin-workflows@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/workflows
+bb-plugin-workflows:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-workflows:prepare:bundled: 
+bb-plugin-push-notifications:prepare:bundled: cache miss, executing b5061eb129d0db96
+bb-plugin-push-notifications:prepare:bundled: 
+bb-plugin-push-notifications:prepare:bundled: > bb-plugin-push-notifications@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/push-notifications
+bb-plugin-push-notifications:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-push-notifications:prepare:bundled: 
+bb-plugin-drafts:prepare:bundled: cache miss, executing 10878b3c37703413
+bb-plugin-drafts:prepare:bundled: 
+bb-plugin-drafts:prepare:bundled: > bb-plugin-drafts@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/drafts
+bb-plugin-drafts:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-drafts:prepare:bundled: 
+bb-plugin-bb-guide:prepare:bundled: cache miss, executing 5473258f89c69a84
+bb-plugin-bb-guide:prepare:bundled: 
+bb-plugin-bb-guide:prepare:bundled: > bb-plugin-bb-guide@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/bb-guide
+bb-plugin-bb-guide:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-bb-guide:prepare:bundled: 
+bb-plugin-plugin-api-docs:prepare:bundled: cache miss, executing 8ea002620f95a86d
+bb-plugin-plugin-api-docs:prepare:bundled: 
+bb-plugin-plugin-api-docs:prepare:bundled: > bb-plugin-plugin-api-docs@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/plugin-api-docs
+bb-plugin-plugin-api-docs:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-plugin-api-docs:prepare:bundled: 
+bb-plugin-automations:prepare:bundled: cache miss, executing 6f9a9133976b39df
+bb-plugin-automations:prepare:bundled: 
+bb-plugin-automations:prepare:bundled: > bb-plugin-automations@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/automations
+bb-plugin-automations:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-automations:prepare:bundled: 
+bb-plugin-side-chat:prepare:bundled: cache miss, executing 9c02cf08151a3be7
+bb-plugin-side-chat:prepare:bundled: 
+bb-plugin-side-chat:prepare:bundled: > bb-plugin-side-chat@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/side-chat
+bb-plugin-side-chat:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-side-chat:prepare:bundled: 
+bb-plugin-connect:prepare:bundled: cache miss, executing 910976a882713163
+bb-plugin-connect:prepare:bundled: 
+bb-plugin-connect:prepare:bundled: > bb-plugin-connect@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/connect
+bb-plugin-connect:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-connect:prepare:bundled: 
+bb-plugin-provider-usage:prepare:bundled: cache miss, executing cfea00d8f5c026f1
+bb-plugin-provider-usage:prepare:bundled: 
+bb-plugin-provider-usage:prepare:bundled: > bb-plugin-provider-usage@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/provider-usage
+bb-plugin-provider-usage:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-usage:prepare:bundled: 
+bb-plugin-tasks:prepare:bundled: cache miss, executing 6503e740774e1d16
+bb-plugin-tasks:prepare:bundled: 
+bb-plugin-tasks:prepare:bundled: > bb-plugin-tasks@0.1.2 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/tasks
+bb-plugin-tasks:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-tasks:prepare:bundled: 
+bb-plugin-environment-personal-workspace:prepare:bundled: cache miss, executing 076dc1400ee15a94
+bb-plugin-environment-personal-workspace:prepare:bundled: 
+bb-plugin-environment-personal-workspace:prepare:bundled: > bb-plugin-environment-personal-workspace@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/environment-personal-workspace
+bb-plugin-environment-personal-workspace:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-personal-workspace:prepare:bundled: 
+bb-plugin-secrets:prepare:bundled: cache miss, executing 2cf1b90d4bcab08a
+bb-plugin-secrets:prepare:bundled: 
+bb-plugin-secrets:prepare:bundled: > bb-plugin-secrets@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/secrets
+bb-plugin-secrets:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-secrets:prepare:bundled: 
+bb-plugin-theme-preview:prepare:bundled: cache miss, executing 1a7751752fb9532c
+bb-plugin-theme-preview:prepare:bundled: 
+bb-plugin-theme-preview:prepare:bundled: > bb-plugin-theme-preview@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/theme-preview
+bb-plugin-theme-preview:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-theme-preview:prepare:bundled: 
+bb-plugin-provider-retry:prepare:bundled: cache miss, executing 17a08e64892daff8
+bb-plugin-provider-retry:prepare:bundled: 
+bb-plugin-provider-retry:prepare:bundled: > bb-plugin-provider-retry@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/provider-retry
+bb-plugin-provider-retry:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-retry:prepare:bundled: 
+bb-plugin-monaco-editor:prepare:bundled: cache miss, executing c6855e7d051cd1b6
+bb-plugin-monaco-editor:prepare:bundled: 
+bb-plugin-monaco-editor:prepare:bundled: > bb-plugin-monaco-editor@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/monaco-editor
+bb-plugin-monaco-editor:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-monaco-editor:prepare:bundled: 
+bb-plugin-monaco-editor:prepare:bundled: monaco: built /code/CloudRoom-UI---design-evolution/gui/plugins/.bundled-stage-qkVnaV/dist/monaco (4.56 MB editor + worker)
+bb-plugin-simple-notes:prepare:bundled: cache miss, executing 781828f2670f766d
+bb-plugin-simple-notes:prepare:bundled: 
+bb-plugin-simple-notes:prepare:bundled: > bb-plugin-simple-notes@0.2.2 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/docs
+bb-plugin-simple-notes:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-simple-notes:prepare:bundled: 
+bb-plugin-memory:prepare:bundled: cache miss, executing b492849a7ce0ddc4
+bb-plugin-memory:prepare:bundled: 
+bb-plugin-memory:prepare:bundled: > bb-plugin-memory@0.2.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/memory
+bb-plugin-memory:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-memory:prepare:bundled: 
+bb-plugin-time-in-cloudroom:prepare:bundled: cache miss, executing ed0456ef5a4d9ee8
+bb-plugin-time-in-cloudroom:prepare:bundled: 
+bb-plugin-time-in-cloudroom:prepare:bundled: > bb-plugin-time-in-cloudroom@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/time-in-cloudroom
+bb-plugin-time-in-cloudroom:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-time-in-cloudroom:prepare:bundled: 
+bb-plugin-provider-claude-code:prepare:bundled: cache miss, executing d2e55286e5258346
+bb-plugin-provider-claude-code:prepare:bundled: 
+bb-plugin-provider-claude-code:prepare:bundled: > bb-plugin-provider-claude-code@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/provider-claude-code
+bb-plugin-provider-claude-code:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-claude-code:prepare:bundled: 
+bb-plugin-pdf-preview:prepare:bundled: cache miss, executing 4b6afa79f47ce84b
+bb-plugin-pdf-preview:prepare:bundled: 
+bb-plugin-pdf-preview:prepare:bundled: > bb-plugin-pdf-preview@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/pdf-preview
+bb-plugin-pdf-preview:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-pdf-preview:prepare:bundled: 
+bb-plugin-provider-acp:prepare:bundled: cache miss, executing 38dcc42ae8cda244
+bb-plugin-provider-acp:prepare:bundled: 
+bb-plugin-provider-acp:prepare:bundled: > bb-plugin-provider-acp@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/provider-acp
+bb-plugin-provider-acp:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-acp:prepare:bundled: 
+bb-plugin-scheduled-send:prepare:bundled: cache miss, executing 77545e1e37f921c4
+bb-plugin-scheduled-send:prepare:bundled: 
+bb-plugin-scheduled-send:prepare:bundled: > bb-plugin-scheduled-send@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/scheduled-send
+bb-plugin-scheduled-send:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-scheduled-send:prepare:bundled: 
+bb-plugin-keep-awake:prepare:bundled: cache miss, executing 467e0ae4aacf2e23
+bb-plugin-keep-awake:prepare:bundled: 
+bb-plugin-keep-awake:prepare:bundled: > bb-plugin-keep-awake@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/keep-awake
+bb-plugin-keep-awake:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-keep-awake:prepare:bundled: 
+bb-plugin-environment-project-checkout:prepare:bundled: cache miss, executing dc6b7aa603727e9d
+bb-plugin-environment-project-checkout:prepare:bundled: 
+bb-plugin-environment-project-checkout:prepare:bundled: > bb-plugin-environment-project-checkout@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/environment-project-checkout
+bb-plugin-environment-project-checkout:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-project-checkout:prepare:bundled: 
+bb-plugin-machine-ssh:prepare:bundled: cache miss, executing 2c31a43824287508
+bb-plugin-machine-ssh:prepare:bundled: 
+bb-plugin-machine-ssh:prepare:bundled: > bb-plugin-machine-ssh@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/machine-ssh
+bb-plugin-machine-ssh:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-machine-ssh:prepare:bundled: 
+bb-plugin-custom-instructions:prepare:bundled: cache miss, executing 54e3820a9a0b2cb3
+bb-plugin-custom-instructions:prepare:bundled: 
+bb-plugin-custom-instructions:prepare:bundled: > bb-plugin-custom-instructions@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/custom-instructions
+bb-plugin-custom-instructions:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-custom-instructions:prepare:bundled: 
+bb-plugin-ask-user-question:prepare:bundled: cache miss, executing 13054f658d93706a
+bb-plugin-ask-user-question:prepare:bundled: 
+bb-plugin-ask-user-question:prepare:bundled: > bb-plugin-ask-user-question@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/ask-user-question
+bb-plugin-ask-user-question:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-ask-user-question:prepare:bundled: 
+bb-plugin-accounts:prepare:bundled: cache miss, executing 901f51b3fbe05799
+bb-plugin-accounts:prepare:bundled: 
+bb-plugin-accounts:prepare:bundled: > bb-plugin-accounts@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/accounts
+bb-plugin-accounts:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-accounts:prepare:bundled: 
+@cloudroom/app:build: React Compiler cache: 387 hits, 772 misses
+bb-plugin-github:prepare:bundled: cache miss, executing 14cbb2cb9d4e9e84
+bb-plugin-github:prepare:bundled: 
+bb-plugin-github:prepare:bundled: > bb-plugin-github@0.2.1 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/github
+bb-plugin-github:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-github:prepare:bundled: 
+bb-plugin-inline-vis:prepare:bundled: cache miss, executing 3c959e438d11eb4f
+@cloudroom/app:build: [plugin builtin:vite-reporter] 
+@cloudroom/app:build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@cloudroom/app:build: - Using dynamic import() to code-split the application
+@cloudroom/app:build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+@cloudroom/app:build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@cloudroom/app:build: [33m[PLUGIN_TIMINGS] Warning:[0m Your build spent significant time in plugins. Here is a breakdown:
+@cloudroom/app:build:   - bb:shared-ui-env-seam (79%)
+@cloudroom/app:build:   - @rolldown/plugin-babel (20%)
+@cloudroom/app:build: See https://rolldown.rs/options/checks#plugintimings for more details.
+@cloudroom/app:build: 
+bb-plugin-inline-vis:prepare:bundled: 
+bb-plugin-inline-vis:prepare:bundled: > bb-plugin-inline-vis@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/inline-vis
+bb-plugin-inline-vis:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-inline-vis:prepare:bundled: 
+bb-plugin-provider-codex:prepare:bundled: cache miss, executing 4d3a8562c0680b47
+bb-plugin-provider-codex:prepare:bundled: 
+bb-plugin-provider-codex:prepare:bundled: > bb-plugin-provider-codex@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/provider-codex
+bb-plugin-provider-codex:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-codex:prepare:bundled: 
+bb-plugin-environment-modal-sandbox:prepare:bundled: cache miss, executing f84aae09ea3da6b2
+bb-plugin-environment-modal-sandbox:prepare:bundled: 
+bb-plugin-environment-modal-sandbox:prepare:bundled: > bb-plugin-environment-modal-sandbox@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/environment-modal-sandbox
+bb-plugin-environment-modal-sandbox:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-modal-sandbox:prepare:bundled: 
+bb-plugin-environment-git-worktree:prepare:bundled: cache miss, executing 2aeccc7a33587e68
+@cloudroom/app:build: precompressed 442 files (442 br, 442 gzip) in /code/CloudRoom-UI---design-evolution/gui/apps/app/dist
+bb-plugin-environment-git-worktree:prepare:bundled: 
+bb-plugin-environment-git-worktree:prepare:bundled: > bb-plugin-environment-git-worktree@0.1.0 prepare:bundled /code/CloudRoom-UI---design-evolution/gui/plugins/environment-git-worktree
+bb-plugin-environment-git-worktree:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-git-worktree:prepare:bundled: 
+@cloudroom/bundled-plugins:build: cache miss, executing b7270bf350bc4dc9
+@cloudroom/bundled-plugins:build: 
+@cloudroom/bundled-plugins:build: > @cloudroom/bundled-plugins@0.0.1 build /code/CloudRoom-UI---design-evolution/gui/packages/bundled-plugins
+@cloudroom/bundled-plugins:build: > cd ../.. && node --conditions=source --import tsx packages/bundled-plugins/build.ts
+@cloudroom/bundled-plugins:build: 
+bb-app:build: cache bypass, force executing 3f0876118a787b88
+bb-app:build:  WARN  Unsupported engine: wanted: {"node":"^22.19.0 || ^24.0.0 || ^26.0.0"} (current: {"node":"v25.9.0","pnpm":"9.15.0"})
+bb-app:build: 
+bb-app:build: > bb-app@0.43.1 build /code/CloudRoom-UI---design-evolution/gui/packages/bb-app
+bb-app:build: > node scripts/build.mjs
+bb-app:build: 
+bb-app:build: bb-app: built package assets
+@cloudroom/desktop:build: cache bypass, force executing 298f57eba354da47
+@cloudroom/desktop:build: 
+@cloudroom/desktop:build: > @cloudroom/desktop@0.43.1 build /code/CloudRoom-UI---design-evolution/gui/apps/desktop
+@cloudroom/desktop:build: > node scripts/build.mjs
+@cloudroom/desktop:build: 
+@cloudroom/desktop:build: @cloudroom/desktop: built Electron entries
+
+ Tasks:    51 successful, 51 total
+Cached:    8 cached, 51 total
+  Time:    49.694s 
+

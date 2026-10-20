@@ -1,0 +1,52 @@
+{
+  "observed_utc": "2026-10-20T06:52:50.271671+00:00",
+  "candidate": "a28e5664b75113445351e9f6654e8bd707ceb95f",
+  "roles": [
+    {
+      "role": "owner",
+      "evidence": "active process rollout turn_context",
+      "effective": {
+        "model": "gpt-6.1-sol",
+        "effort": "high"
+      },
+      "effective_service_tier": "not exposed; unverified"
+    },
+    {
+      "role": "hydration-helper",
+      "evidence": "active process rollout turn_context",
+      "effective": {
+        "model": "gpt-6-luna",
+        "effort": "high"
+      },
+      "effective_service_tier": "not exposed; unverified"
+    },
+    {
+      "role": "drawer-spacing-helper",
+      "evidence": "active process rollout turn_context",
+      "effective": {
+        "model": "gpt-6-luna",
+        "effort": "high"
+      },
+      "effective_service_tier": "not exposed; unverified"
+    },
+    {
+      "role": "independent-reviewer",
+      "evidence": "active process rollout turn_context",
+      "effective": {
+        "model": "gpt-6.1-sol",
+        "effort": "medium"
+      },
+      "effective_service_tier": "not exposed; unverified"
+    },
+    {
+      "role": "independent-review-helper",
+      "evidence": "active process rollout turn_context",
+      "effective": {
+        "model": "gpt-6-luna",
+        "effort": "high"
+      },
+      "effective_service_tier": "not exposed; unverified"
+    }
+  ],
+  "unavailable_configuration_verification": "Owner Fast tier cannot be inspected or updated with this cloud room-cli; model and reasoning were verified from runtime, tier was not."
+}

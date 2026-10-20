@@ -1,0 +1,43 @@
+{
+  "source_candidate": "a28e5664b75113445351e9f6654e8bd707ceb95f",
+  "branch": "design/output-viewer-directions",
+  "prepared_utc": "2026-10-20T07:05:36.772659+00:00",
+  "comparison_screenshots": {
+    "a-desktop.png": {
+      "sha256": "c40521a37f58ecde84fec073a55494e29513f016e4f10b286eb8825ba4179e87",
+      "width": 1440,
+      "height": 1000,
+      "candidate": "a28e5664b75113445351e9f6654e8bd707ceb95f"
+    },
+    "a-mobile.png": {
+      "sha256": "551b7c39c462f1b23675767ef17f63fc7dbd72f9ea4327a173f36acd7130189d",
+      "width": 390,
+      "height": 844,
+      "candidate": "a28e5664b75113445351e9f6654e8bd707ceb95f"
+    },
+    "b-desktop.png": {
+      "sha256": "cf9e7f09342e5764088f2dfa5c4658edc4f5d661543fcf2621099198f4904f72",
+      "width": 1440,
+      "height": 1000,
+      "candidate": "a28e5664b75113445351e9f6654e8bd707ceb95f"
+    },
+    "b-mobile.png": {
+      "sha256": "3c3265c1eaed74b8a2de49e596c92c21530f881a08708fc5522ed7f70a275843",
+      "width": 390,
+      "height": 844,
+      "candidate": "a28e5664b75113445351e9f6654e8bd707ceb95f"
+    }
+  },
+  "candidate_source_sha256": {
+    "gui/apps/app/src/components/thread/timeline/OutputViewer.stories.tsx": "dad5b243ca0470cc0dc19512c07f27af7b17170d480f32673485b6aa96abc106",
+    "gui/apps/app/src/components/thread/timeline/OutputViewer.test.tsx": "73692f53f5d72267c6896b3d5eadd8f8f10432c23cff898c95f0a320a83146a3",
+    "gui/apps/app/src/components/thread/timeline/OutputViewer.tsx": "b44bcf610c8eceb1dd54573581589e7b6741af97debe0f77977943ed70cf1742",
+    "gui/apps/app/src/components/thread/timeline/TerminalOutputBlock.tsx": "e99be791854ff453dd8f3be88e18d763b8a2eaabe75eb48b7ab9f9913e31469e",
+    "gui/apps/app/src/components/thread/timeline/TimelineRowDetails.output-preview.test.tsx": "1c380cb95c350bfd3ebdbd6366520ea9ade7e782974707ef6334857c3f31e970",
+    "gui/apps/app/src/components/thread/timeline/TimelineRowDetails.tsx": "180721ff9d4e740e6ee3b597cd6d27a159abcd40e302d0523e154d193832d543",
+    "gui/apps/app/src/components/thread/timeline/ToolCallDetailBlock.tsx": "866f5ed33c8224d36e0fd0d317e737987bdf29ef2aa42b0b6113fa4ac4ae6ab3",
+    "gui/apps/app/src/components/thread/timeline/output-search.ts": "191c6848b4979f7102108f514894abe4e971fca454e0bee3eb8ff536798d1784",
+    "gui/apps/app/src/components/thread/timeline/useTimelineWorkRowFullOutput.ts": "3696300dd2144455ab6f8eae4bff0fa9cb6e828866b263f44ba93315b5e49c5c"
+  },
+  "supplemental_captures": "Earlier scenario images and observations keep their original provenance; not final-SHA retests. Comparison screenshots above are final-SHA captures."
+}
