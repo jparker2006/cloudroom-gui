@@ -235,6 +235,77 @@ describe("review round 2 (adb5eaa)", () => {
   });
 });
 
+describe("review round 3 (6ae30cf): primary sidebar source freshness", () => {
+  function renderBoth() {
+    return renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      FAMILY,
+    );
+  }
+
+  it("marks retained sidebar children as last known after the sidebar refresh fails while connected", async () => {
+    const { queryClient } = renderBoth();
+    expect(connection.state).toBe("connected");
+    expect(document.body.textContent).not.toMatch(/last known/);
+    await queryClient
+      .fetchQuery({
+        queryKey: sidebarNavigationQueryKey(),
+        queryFn: () => Promise.reject(new Error("sidebar refresh failed")),
+        staleTime: 0,
+      })
+      .catch(() => {});
+    expect(queryClient.getQueryState(sidebarNavigationQueryKey())?.status).toBe("error");
+    await waitFor(() =>
+      expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/),
+    );
+    expect(screen.getByText("Builder")).toBeTruthy();
+    expect(screen.getByText("Reviewer")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Subagents:/ }).getAttribute("aria-label"),
+    ).toMatch(/2 direct, 1 nested.*couldn’t refresh, showing last known/);
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+  });
+
+  it("clears the warning and shows fresh children once the sidebar refresh succeeds", async () => {
+    const { queryClient } = renderBoth();
+    await queryClient
+      .fetchQuery({
+        queryKey: sidebarNavigationQueryKey(),
+        queryFn: () => Promise.reject(new Error("sidebar refresh failed")),
+        staleTime: 0,
+      })
+      .catch(() => {});
+    await waitFor(() => expect(document.body.textContent).toMatch(/showing last known/));
+    const recovered = [...FAMILY, thread("thr_new", ROOT, { title: "Newcomer", createdAt: 3 })];
+    await queryClient.fetchQuery({
+      queryKey: sidebarNavigationQueryKey(),
+      staleTime: 0,
+      queryFn: () =>
+        Promise.resolve(
+          makeSidebarBootstrapResponse({
+            projects: [
+              makeProjectWithThreadsResponse({
+                id: "proj_1",
+                name: "Project",
+                createdAt: 1,
+                updatedAt: 1,
+                threads: recovered,
+              }),
+            ],
+          }),
+        ),
+    });
+    await waitFor(() => expect(screen.getByText("Newcomer")).toBeTruthy());
+    expect(document.body.textContent).not.toMatch(/last known/);
+    expect(
+      screen.getByRole("button", { name: /Subagents:/ }).getAttribute("aria-label"),
+    ).toMatch(/^Subagents: 3 direct, 1 nested/);
+  });
+});
+
 describe("ThreadSubagentChip in the header", () => {
   it("shows the direct count, opens the Info tab, and points at the Subagents section", () => {
     const onToggle = vi.fn();

@@ -59,7 +59,8 @@ function useThreadSubagents(threadId: string): Omit<SubagentViewProps, "onCardEx
     freshness:
       connection !== "connected"
         ? { state: "paused", since: null }
-        : coverage === "direct-only" && entries !== undefined && direct.isError
+        : entries !== undefined &&
+            (coverage === "direct-only" ? direct.isError : sidebar.isError)
           ? { state: "paused", since: null, reason: "refresh-failed" }
           : { state: "live" },
     now: Date.now(),

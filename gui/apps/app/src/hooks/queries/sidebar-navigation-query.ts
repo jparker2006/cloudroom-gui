@@ -68,6 +68,7 @@ export function useProjectDisplayName(
 interface SidebarNavigationThreadSelection<T> {
   data: T | undefined;
   isBootstrapPending: boolean;
+  isError: boolean;
 }
 
 export function useSidebarNavigationThreadSelection<T>(
@@ -89,5 +90,6 @@ export function useSidebarNavigationThreadSelection<T>(
   return {
     data,
     isBootstrapPending: data === undefined && result.isFetching,
+    isError: result.isError,
   };
 }
