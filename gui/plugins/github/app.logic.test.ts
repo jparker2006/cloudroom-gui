@@ -151,6 +151,7 @@ describe("session pull request truth helpers", () => {
       failed: 0,
       pending: 0,
       unknown: 0,
+      neutral: 1,
     });
   });
 

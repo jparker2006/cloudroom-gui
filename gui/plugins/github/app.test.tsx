@@ -97,6 +97,7 @@ describe("GitHub app navigation", () => {
               kind: "candidate",
               repo: "get-bb/bb",
               number: 42,
+              id: null,
               sources: ["workspace"],
             },
           }),

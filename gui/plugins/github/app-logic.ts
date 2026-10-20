@@ -293,6 +293,7 @@ export type ChecksSummary =
       failed: number;
       pending: number;
       unknown: number;
+      neutral: number;
     };
 
 export function summarizeChecks(
@@ -308,6 +309,7 @@ export function summarizeChecks(
     failed: count("failure"),
     pending: count("pending"),
     unknown: count("unknown"),
+    neutral: count("neutral"),
   };
   const state =
     counts.failed > 0

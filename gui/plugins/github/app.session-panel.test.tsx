@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const panel = app.threadPanelActions.find((entry) => entry.id === "pull")!;
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
 
 type Sources = Array<"workspace" | "review">;
 
@@ -61,9 +65,15 @@ function candidate(number: number, sources: Sources) {
     threadId: "thr-1",
     environmentId: "env-1",
     selection: null,
-    candidates: [{ repo: "acme/widgets", number, sources }],
+    candidates: [{ repo: "acme/widgets", number, id: `PR_${number}`, sources }],
     failures: [],
-    resolution: { kind: "candidate", repo: "acme/widgets", number, sources },
+    resolution: {
+      kind: "candidate",
+      repo: "acme/widgets",
+      number,
+      id: `PR_${number}`,
+      sources,
+    },
   };
 }
 
@@ -101,7 +111,7 @@ describe("session PR panel association", () => {
 
     const text = slot.container.textContent ?? "";
     expect(text).not.toMatch(/no pull request/i);
-    expect(text).toContain("GitHub or the workspace is unavailable");
+    expect(text).toContain("GitHub is unavailable");
     expect(text).toContain("HTTP 502");
     expect(slot.rpcCalls.map((call) => call.method)).not.toContain("getPull");
     slot.lifecycle.unmount();
@@ -247,7 +257,7 @@ describe("session PR panel association", () => {
     await settle();
 
     expect(slot.container.textContent).toContain(
-      "is no longer the pull request you saved",
+      "is no longer the pull request linked to this session",
     );
     expect(slot.container.textContent).not.toContain("Pull 43");
     slot.lifecycle.unmount();
@@ -298,7 +308,7 @@ describe("session PR panel freshness and truth", () => {
 
     expect(slot.container.textContent).toContain("Fetch 2");
     expect(slot.getByRole("status").textContent).toBe(
-      "Pull request refreshed.",
+      "Pull request details refreshed.",
     );
     slot.lifecycle.unmount();
   });
@@ -438,6 +448,259 @@ describe("session PR panel freshness and truth", () => {
     expect(slot.container.textContent).not.toContain("Pull 42");
     expect(slot.rpcCalls.map((call) => call.method)).not.toContain("getPull");
     slot.lifecycle.unmount();
+  });
+});
+
+describe("session PR panel round-3 corrections", () => {
+  it("refuses an automatic review match whose GitHub id changed", async () => {
+    const slot = render({
+      pullForThread: () => ({
+        ...candidate(42, ["review"]),
+        resolution: {
+          kind: "candidate",
+          repo: "acme/widgets",
+          number: 42,
+          id: "PR_original",
+          sources: ["review"],
+        },
+      }),
+      getPull: () => ({ pull: pull(42), fetchedAt: new Date().toISOString() }),
+    });
+    await settle();
+
+    expect(slot.container.textContent).toContain(
+      "is no longer the pull request linked to this session",
+    );
+    expect(slot.container.textContent).not.toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+
+  it("fails closed when GitHub returns no id for an expected PR", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["review"]),
+      getPull: () => ({
+        pull: pull(42, { id: "" }),
+        fetchedAt: new Date().toISOString(),
+      }),
+    });
+    await settle();
+
+    expect(slot.container.textContent).toContain("can’t be confirmed");
+    expect(slot.container.textContent).not.toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+
+  it("warns when refreshing the match fails after it loaded", async () => {
+    let fail = false;
+    const slot = render({
+      pullForThread: () => {
+        if (fail) throw new Error("HTTP 502 Bad Gateway");
+        return association("thr-1", { kind: "none" });
+      },
+    });
+    await settle();
+    expect(slot.container.textContent).not.toContain("Couldn’t refresh");
+
+    fail = true;
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+
+    expect(slot.container.textContent).toContain(
+      "Couldn’t refresh this session’s match.",
+    );
+    expect(slot.getByRole("status").textContent).toContain(
+      "Couldn’t refresh this session’s pull request match.",
+    );
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps detail visible, moves focus into the chooser, and restores it", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: () => ({ pull: pull(42), fetchedAt: new Date().toISOString() }),
+    });
+    await settle();
+
+    await act(async () =>
+      slot.getByRole("button", { name: "Change…" }).click(),
+    );
+    await settle();
+    expect(document.activeElement?.textContent).toBe(
+      "Choose this session’s pull request",
+    );
+    expect(slot.container.textContent).toContain("Pull 42");
+
+    await act(async () => slot.getByRole("button", { name: "Cancel" }).click());
+    await settle();
+    expect(document.activeElement?.textContent).toBe("Change…");
+    slot.lifecycle.unmount();
+  });
+
+  it("locks Cancel while a save is in flight and keeps the old PR on failure", async () => {
+    let rejectSave: (error: Error) => void = () => {};
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: () => ({ pull: pull(42), fetchedAt: new Date().toISOString() }),
+      listItems: () => ({
+        items: [
+          {
+            repo: "acme/widgets",
+            number: 43,
+            kind: "pr",
+            title: "Pull 43",
+            state: "OPEN",
+            author: "octocat",
+            labels: [],
+            assignees: [],
+            url: "https://github.com/acme/widgets/pull/43",
+            body: "",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      setPullForThread: () =>
+        new Promise((_, reject) => {
+          rejectSave = reject;
+        }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Change…" }).click(),
+    );
+    await settle();
+    await act(async () => slot.getByText("acme/widgets#43").click());
+    await settle();
+
+    const saving = slot.getByRole("button", { name: "Saving…" });
+    expect((saving as HTMLButtonElement).disabled).toBe(true);
+    rejectSave(
+      new Error(
+        "acme/widgets#43 was not found, or this GitHub account cannot read it.",
+      ),
+    );
+    await settle();
+
+    expect(slot.getByRole("alert").textContent).toContain(
+      "Couldn’t save that choice.",
+    );
+    expect(slot.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(slot.container.textContent).toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+
+  it("names the machine and separates missing access from sign-in", async () => {
+    const access = render({
+      pullForThread: () =>
+        association(
+          "thr-1",
+          {
+            kind: "failed",
+            reason: "auth",
+            message:
+              "HTTP 403: Resource protected by organization SAML enforcement",
+          },
+          {
+            failures: [
+              {
+                source: "workspace",
+                reason: "auth",
+                message:
+                  "HTTP 403: Resource protected by organization SAML enforcement",
+              },
+            ],
+          },
+        ),
+    });
+    await settle();
+    expect(access.container.textContent).toContain("GitHub access needed");
+    expect(access.container.textContent).toContain(
+      "the machine that hosts this thread’s workspace",
+    );
+    access.lifecycle.unmount();
+
+    const signIn = render({
+      pullForThread: () => {
+        throw new Error("gh: not logged in to any GitHub hosts");
+      },
+    });
+    await settle();
+    expect(signIn.container.textContent).toContain("GitHub sign-in needed");
+    expect(signIn.container.textContent).toContain(
+      "the machine running the Cloudroom server",
+    );
+    signIn.lifecycle.unmount();
+  });
+
+  it("does not say passing when a check was skipped", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: () => ({
+        pull: pull(42, {
+          checks: [
+            { name: "build", status: "success", url: "" },
+            { name: "docs", status: "neutral", url: "" },
+          ],
+        }),
+        fetchedAt: new Date().toISOString(),
+      }),
+    });
+    await settle();
+
+    expect(slot.container.textContent).not.toContain("Checks passing");
+    expect(slot.container.textContent).toContain("1 skipped or neutral");
+    slot.lifecycle.unmount();
+  });
+
+  it("opens linked agent threads from a keyboard-reachable button", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: () => ({ pull: pull(42), fetchedAt: new Date().toISOString() }),
+      listLinks: () => ({
+        links: {
+          "pr:acme/widgets#42": [
+            {
+              kind: "pr",
+              repo: "acme/widgets",
+              number: 42,
+              threadId: "thr-review",
+              createdAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    });
+    await settle();
+
+    const pill = slot.getByRole("button", { name: "Open agent thread" });
+    expect(pill.tagName).toBe("BUTTON");
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps the fetch time current while the panel stays open", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      const slot = render({
+        pullForThread: () => candidate(42, ["workspace"]),
+        getPull: () => ({
+          pull: pull(42),
+          fetchedAt: new Date().toISOString(),
+        }),
+      });
+      await settle();
+      expect(slot.container.querySelector("time")?.textContent).toBe("1m ago");
+
+      await act(async () => {
+        vi.setSystemTime(Date.now() + 2 * 60 * 60_000);
+        vi.advanceTimersByTime(60_000);
+      });
+
+      expect(slot.container.querySelector("time")?.textContent).toBe("2h ago");
+      slot.lifecycle.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

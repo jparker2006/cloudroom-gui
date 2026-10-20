@@ -215,8 +215,8 @@ describe("pullForThread association", () => {
     })) as Association;
     expect(result.resolution).toEqual({ kind: "ambiguous" });
     expect(result.candidates).toEqual([
-      { repo: "acme/widgets", number: 42, sources: ["workspace"] },
-      { repo: "acme/widgets", number: 39, sources: ["review"] },
+      { repo: "acme/widgets", number: 42, id: null, sources: ["workspace"] },
+      { repo: "acme/widgets", number: 39, id: null, sources: ["review"] },
     ]);
   });
 
@@ -334,6 +334,46 @@ describe("pullForThread association", () => {
   });
 });
 
+describe("review link identity", () => {
+  it("records the GitHub id when a review starts and carries it to the candidate", async () => {
+    const world = newWorld();
+    const host = await loadPlugin(world);
+    const { threadId } = (await host.harness.callRpc("startReview", {
+      repo: "acme/widgets",
+      number: 42,
+    })) as { threadId: string };
+    world.environments[threadId] = null;
+
+    expect(
+      await host.bb.storage.kv.get("link:pr:acme/widgets#42"),
+    ).toMatchObject([{ threadId, pullId: "PR_node_42" }]);
+    await expect(
+      host.harness.callRpc("pullForThread", { threadId }),
+    ).resolves.toMatchObject({
+      resolution: {
+        kind: "candidate",
+        number: 42,
+        id: "PR_node_42",
+        sources: ["review"],
+      },
+    });
+  });
+
+  it("does not auto-show a legacy review link without an id", async () => {
+    const world = newWorld();
+    world.environments.thr_a = null;
+    const host = await loadPlugin(world);
+    await addReviewLink(host, 39, "thr_a");
+
+    await expect(
+      host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
+    ).resolves.toMatchObject({
+      candidates: [{ number: 39, id: null, sources: ["review"] }],
+      resolution: { kind: "ambiguous" },
+    });
+  });
+});
+
 describe("explicit pull request selection", () => {
   const selection = (
     host: Awaited<ReturnType<typeof loadPlugin>>,
@@ -363,7 +403,7 @@ describe("explicit pull request selection", () => {
       id: "PR_node_43",
     });
     expect(selected.candidates).toEqual([
-      { repo: "acme/widgets", number: 42, sources: ["workspace"] },
+      { repo: "acme/widgets", number: 42, id: null, sources: ["workspace"] },
     ]);
     expect(
       first.harness.realtimeSignals.filter(
@@ -662,6 +702,19 @@ esac
     await expect(
       host.harness.callRpc("cachedPull", { repo: "acme/widgets", number: 42 }),
     ).resolves.toMatchObject({ cached: { pull: { title: "newer" } } });
+  });
+
+  it("gives every fetch a distinct, increasing start time", async () => {
+    const host = await loadPlugin(newWorld());
+    const results = (await Promise.all(
+      [1, 2, 3].map(() =>
+        host.harness.callRpc("getPull", { repo: "acme/widgets", number: 42 }),
+      ),
+    )) as FetchedPull[];
+    const stamps = results.map((result) => result.fetchedAt);
+
+    expect(new Set(stamps).size).toBe(3);
+    expect([...stamps].sort()).toEqual(stamps);
   });
 
   it("returns fresh detail even when the cache cannot be read", async () => {

@@ -58,6 +58,7 @@ const threadLinkSchema = z
     number: itemNumberSchema,
     threadId: z.string().min(1),
     createdAt: z.string(),
+    pullId: z.string().min(1).optional(),
   })
   .strict();
 const pullSchema = z
@@ -142,7 +143,10 @@ const pullSelectionSchema = pullRefSchema
 const failureReasonSchema = z.enum(["auth", "unavailable", "lookup"]);
 const pullSourceSchema = z.enum(["workspace", "review"]);
 const pullCandidateSchema = pullRefSchema
-  .extend({ sources: z.array(pullSourceSchema).min(1) })
+  .extend({
+    id: z.string().nullable(),
+    sources: z.array(pullSourceSchema).min(1),
+  })
   .strict();
 const cachedPullSchema = z
   .object({ pull: pullSchema, fetchedAt: z.string() })
@@ -175,6 +179,7 @@ const pullAssociationSchema = z
           kind: z.literal("candidate"),
           repo: repoNameSchema,
           number: itemNumberSchema,
+          id: z.string().nullable(),
           sources: z.array(pullSourceSchema).min(1),
         })
         .strict(),
@@ -351,10 +356,14 @@ export function resolvePullAssociation(
   if (candidates.length === 0) return { kind: "none" };
   if (candidates.length > 1) return { kind: "ambiguous" };
   const [only] = candidates;
+  if (only.id === null && !only.sources.includes("workspace")) {
+    return { kind: "ambiguous" };
+  }
   return {
     kind: "candidate",
     repo: only.repo,
     number: only.number,
+    id: only.id,
     sources: only.sources,
   };
 }
@@ -1146,12 +1155,28 @@ export default async function plugin(bb: BbPluginApi) {
       title: `${ref}: ${title}`.slice(0, 120),
       prompt,
     });
+    let pullId: string | undefined;
+    if (kind === "pr") {
+      try {
+        const raw = await gh(
+          ["pr", "view", String(number), "-R", repo, "--json", "id"],
+          15_000,
+        );
+        const id = (JSON.parse(raw) as { id?: unknown }).id;
+        if (typeof id === "string" && id.length > 0) pullId = id;
+      } catch (error) {
+        bb.log.warn(
+          `could not record the GitHub id for ${ref}: ${errorMessage(error)}`,
+        );
+      }
+    }
     await addLink({
       kind,
       repo,
       number,
       threadId: thread.id,
       createdAt: new Date().toISOString(),
+      ...(pullId === undefined ? {} : { pullId }),
     });
     bb.log.info(`spawned thread ${thread.id} for ${kind} ${ref}`);
     return { threadId: thread.id };
@@ -1217,6 +1242,12 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   const associationWrites = new Map<string, Promise<void>>();
+  let lastFetchStamp = 0;
+
+  function nextFetchStamp(): string {
+    lastFetchStamp = Math.max(Date.now(), lastFetchStamp + 1);
+    return new Date(lastFetchStamp).toISOString();
+  }
 
   function pullDetailKey(repo: string, number: number): string {
     return `pull-detail:${pullKey(repo, number)}`;
@@ -1230,10 +1261,21 @@ export default async function plugin(bb: BbPluginApi) {
 
   const cacheWrites = new Map<string, Promise<void>>();
 
-  function cachePullDetail(
+  async function cachePullDetail(
+    fetched: z.infer<typeof cachedPullSchema>,
+    requestedRepo: string,
+  ): Promise<void> {
+    await cachePullDetailUnder(fetched.pull.repo, fetched);
+    if (pullKey(requestedRepo, 1) !== pullKey(fetched.pull.repo, 1)) {
+      await cachePullDetailUnder(requestedRepo, fetched);
+    }
+  }
+
+  function cachePullDetailUnder(
+    repo: string,
     fetched: z.infer<typeof cachedPullSchema>,
   ): Promise<void> {
-    const key = pullDetailKey(fetched.pull.repo, fetched.pull.number);
+    const key = pullDetailKey(repo, fetched.pull.number);
     const write = (cacheWrites.get(key) ?? Promise.resolve())
       .then(async () => {
         const stored = cachedPullSchema.safeParse(await bb.storage.kv.get(key));
@@ -1319,13 +1361,23 @@ export default async function plugin(bb: BbPluginApi) {
       repo: string,
       number: number,
       source: PullCandidate["sources"][number],
+      id: string | null = null,
     ) => {
       const key = pullKey(repo, number);
       const existing = candidates.get(key);
       if (existing === undefined) {
-        candidates.set(key, { repo, number, sources: [source] });
-      } else if (!existing.sources.includes(source)) {
-        existing.sources.push(source);
+        candidates.set(key, { repo, number, id, sources: [source] });
+        return;
+      }
+      if (!existing.sources.includes(source)) existing.sources.push(source);
+      if (existing.id === null) {
+        existing.id = id;
+      } else if (id !== null && id !== existing.id) {
+        failures.push({
+          source: "review",
+          reason: "lookup",
+          message: `Review threads link ${repo}#${number} to different GitHub pull requests.`,
+        });
       }
     };
 
@@ -1387,8 +1439,15 @@ export default async function plugin(bb: BbPluginApi) {
         const match = key.match(/^link:pr:([\w.-]+\/[\w.-]+)#(\d+)$/);
         if (match === null) continue;
         const links = (await bb.storage.kv.get<ThreadLink[]>(key)) ?? [];
-        if (links.some((link) => link.threadId === threadId)) {
-          addCandidate(match[1], Number(match[2]), "review");
+        for (const link of links) {
+          if (link.threadId === threadId) {
+            addCandidate(
+              match[1],
+              Number(match[2]),
+              "review",
+              link.pullId ?? null,
+            );
+          }
         }
       }
     } catch (error) {
@@ -1578,7 +1637,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     async getPull({ repo, number }) {
-      const startedAt = new Date().toISOString();
+      const startedAt = nextFetchStamp();
       const prFields =
         "id,number,title,body,state,isDraft,author,createdAt,updatedAt,labels," +
         "assignees,url,baseRefName,headRefName,additions,deletions," +
@@ -1785,7 +1844,7 @@ export default async function plugin(bb: BbPluginApi) {
         },
         fetchedAt: startedAt,
       };
-      await cachePullDetail(fetched);
+      await cachePullDetail(fetched, repo);
       return fetched;
     },
 

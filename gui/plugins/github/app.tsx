@@ -34,7 +34,7 @@ import {
 } from "./app-logic.js";
 import type { githubRpcContract } from "./server.js";
 import { toast } from "sonner";
-import { Badge } from "@cloudroom/shared-ui/badge";
+import { Badge, badgeVariants } from "@cloudroom/shared-ui/badge";
 import { Button } from "@cloudroom/shared-ui/button";
 import { DelayedLoading } from "@cloudroom/shared-ui/delayed-loading";
 import {
@@ -90,6 +90,14 @@ function relativeTime(iso: string): string {
 }
 
 const PANEL_PATH = "github";
+
+function useMinuteTick(): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((tick) => tick + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+}
 
 function useSubPathRoute(subPath: string): [Route, (route: Route) => void] {
   const bbNavigate = useBbNavigate();
@@ -279,18 +287,19 @@ function ThreadPills({ links }: { links: ThreadLink[] | undefined }) {
   return (
     <span className="flex shrink-0 items-center gap-1">
       {links.map((link, index) => (
-        <Badge
+        <button
+          type="button"
           key={link.threadId}
           title={`Open Cloudroom thread ${link.threadId}`}
+          aria-label={`Open agent thread${links.length > 1 ? ` ${index + 1}` : ""}`}
           onClick={(event) => {
             event.stopPropagation();
             navigate.toThread(link.threadId);
           }}
-          variant="secondary"
-          className="cursor-pointer whitespace-nowrap hover:bg-accent"
+          className={`${badgeVariants({ variant: "secondary" })} cursor-pointer whitespace-nowrap hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring pointer-coarse:min-h-11`}
         >
           ⚡ agent{links.length > 1 ? ` ${index + 1}` : ""}
-        </Badge>
+        </button>
       ))}
     </span>
   );
@@ -1396,6 +1405,7 @@ function checksSummaryParts(checks: PullCheck[] | null): {
     summary.pending > 0 ? `${summary.pending} pending` : null,
     summary.unknown > 0 ? `${summary.unknown} unknown` : null,
     `${summary.passed}/${summary.total} passed`,
+    summary.neutral > 0 ? `${summary.neutral} skipped or neutral` : null,
   ].filter((part) => part !== null);
   const display = {
     failing: CHECK_STATUS_DISPLAY.failure,
@@ -1405,7 +1415,7 @@ function checksSummaryParts(checks: PullCheck[] | null): {
     neutral: CHECK_STATUS_DISPLAY.neutral,
   }[summary.state];
   const prefix =
-    summary.state === "passing"
+    summary.state === "passing" && summary.neutral === 0
       ? "Checks passing"
       : summary.state === "neutral"
         ? "Checks skipped or neutral"
@@ -1417,12 +1427,23 @@ function checksSummaryParts(checks: PullCheck[] | null): {
   };
 }
 
-function ChecksSection({ checks }: { checks: PullCheck[] | null }) {
+function ChecksSection({
+  checks,
+  staleSince = null,
+}: {
+  checks: PullCheck[] | null;
+  staleSince?: string | null;
+}) {
   const [open, setOpen] = useState(
     () => checks?.some((check) => check.status === "failure") ?? false,
   );
   const listId = useId();
-  const { icon, className, text } = checksSummaryParts(checks);
+  const summary = checksSummaryParts(checks);
+  const { icon, className } = summary;
+  const text =
+    staleSince === null
+      ? summary.text
+      : `${summary.text} · as of ${staleSince}`;
   const summaryIcon = (
     <Icon name={icon} className={`size-4 shrink-0 ${className}`} aria-hidden />
   );
@@ -1480,7 +1501,7 @@ function ChecksSection({ checks }: { checks: PullCheck[] | null }) {
                 {check.url.length > 0 ? (
                   <UrlLink
                     href={check.url}
-                    className="shrink-0 text-muted-foreground underline hover:text-foreground"
+                    className="inline-flex shrink-0 items-center text-muted-foreground underline hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:px-2"
                     aria-label={`${check.name} details`}
                   >
                     details ↗
@@ -1510,7 +1531,7 @@ function FileDiffCard({
       <div className="flex w-full items-center gap-2 px-3 py-2 hover:bg-accent/50">
         <button
           type="button"
-          className="shrink-0 text-xs text-muted-foreground"
+          className="shrink-0 text-xs text-muted-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
           aria-label={`${open ? "Collapse" : "Expand"} ${file.path} diff`}
           onClick={() => setOpen((prev) => !prev)}
         >
@@ -1883,14 +1904,17 @@ function PullDetailBody({
   readOnly?: boolean;
   workspaceEnvironmentId?: string | null;
 }) {
+  useMinuteTick();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
   const { error, fetchedAt } = detail;
+  const staleSince =
+    error !== null && fetchedAt !== null ? relativeTime(fetchedAt) : null;
 
   const pullLinks = links[`pr:${repo}#${number}`];
   const mainColumn = (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
-      <ChecksSection checks={pull.checks} />
+      <ChecksSection checks={pull.checks} staleSince={staleSince} />
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
@@ -1949,7 +1973,8 @@ function PullDetailBody({
       {error !== null ? (
         <Notice tone="warn">
           Refresh failed. Showing data fetched{" "}
-          {fetchedAt !== null ? relativeTime(fetchedAt) : "earlier"}. {error}
+          {fetchedAt !== null ? relativeTime(fetchedAt) : "earlier"}.{" "}
+          {describeGhError(error)}
         </Notice>
       ) : null}
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1963,13 +1988,13 @@ function PullDetailBody({
             ← {backLabel}
           </Button>
         ) : null}
-        <span className="min-w-0 truncate">
+        <span className="min-w-0 break-all">
           {repo} · #{number}
         </span>
         <span className="flex-1" />
         <UrlLink
           href={pull.url}
-          className="shrink-0 underline hover:text-foreground"
+          className="inline-flex shrink-0 items-center underline hover:text-foreground pointer-coarse:min-h-11"
         >
           Open on GitHub ↗
         </UrlLink>
@@ -2118,6 +2143,7 @@ function usePullAssociation(threadId: string) {
             if (save === saveSequence.current) {
               setSaveError(errorText(err));
             }
+            setLoading(false);
             return false;
           },
         )
@@ -2200,25 +2226,28 @@ function PullChooser({
       <label htmlFor={inputId} className="text-xs text-muted-foreground">
         Search tracked PRs, or paste a PR link or owner/repo#number
       </label>
-      <div className="flex gap-2">
-        <Input
-          id={inputId}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="acme/widgets#42"
-          className="h-8 pointer-coarse:h-11"
-        />
-        {direct !== null ? (
+      <Input
+        id={inputId}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="acme/widgets#42"
+        className="h-8 min-w-0 pointer-coarse:h-11"
+      />
+      {direct !== null ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="min-w-0 break-all font-mono text-xs text-muted-foreground">
+            {direct.repo}#{direct.number}
+          </span>
           <Button
             size="sm"
-            className="h-8 shrink-0 pointer-coarse:h-11"
+            className="h-8 pointer-coarse:h-11"
             disabled={disabled}
             onClick={() => onChoose(direct)}
           >
-            Use {direct.repo}#{direct.number}
+            Use this pull request
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {error !== null ? (
         <p className="text-xs text-muted-foreground">{error}</p>
       ) : null}
@@ -2276,7 +2305,7 @@ function CandidateRow({
           {pull.repo}#{pull.number}
         </span>
         <span className="min-w-0 flex-1 text-foreground">
-          {title ?? "Title not cached"}
+          {title ?? "Title not loaded yet"}
         </span>
       </span>
       {state !== null || sources.length > 0 ? (
@@ -2338,6 +2367,7 @@ function RefreshPanelButton({
 }
 
 function FetchedTime({ detail }: { detail: PullDetailState }) {
+  useMinuteTick();
   if (detail.fetchedAt === null) {
     return <span>{detail.refreshing ? "Fetching…" : "Not fetched yet"}</span>;
   }
@@ -2374,36 +2404,81 @@ const FAILURE_SOURCE_LABELS: Record<
   review: "review threads",
 };
 
+function isPermissionFailure(message: string): boolean {
+  return /HTTP 403|forbidden|SAML|resource not accessible/i.test(message);
+}
+
 function FailureNotice({
   reason,
   message,
+  where,
 }: {
   reason: "auth" | "unavailable" | "lookup";
   message: string;
+  where: "workspace" | "plugin";
 }) {
+  const machine =
+    where === "workspace"
+      ? "the machine that hosts this thread’s workspace"
+      : "the machine running the Cloudroom server, where the GitHub plugin runs";
+  if (reason === "auth" && isPermissionFailure(message)) {
+    return (
+      <Notice tone="error">
+        <b>GitHub access needed.</b> The GitHub account signed in to{" "}
+        <code>gh</code> on {machine} can’t read this repository. Ask for access,
+        or authorize it for the organization’s single sign-on (for example{" "}
+        <code>gh auth refresh -h github.com</code>), then Refresh.
+        <span className="mt-1 block text-muted-foreground">
+          Details: {message}
+        </span>
+      </Notice>
+    );
+  }
   if (reason === "auth") {
     return (
       <Notice tone="error">
-        <b>GitHub sign-in needed.</b> The GitHub CLI that Cloudroom uses is not
-        signed in or cannot read this repository, so this session’s pull request
-        is unknown. Run <code>gh auth login</code> on the machine running
-        Cloudroom, then Refresh. ({message})
+        <b>GitHub sign-in needed.</b> <code>gh</code> on {machine} isn’t signed
+        in, so this session’s pull request is unknown. Run{" "}
+        <code>gh auth login</code> there, then Refresh.
+        <span className="mt-1 block text-muted-foreground">
+          Details: {message}
+        </span>
       </Notice>
     );
   }
   if (reason === "unavailable") {
     return (
       <Notice tone="warn">
-        <b>GitHub or the workspace is unavailable.</b> This session’s pull
-        request is unknown right now. Refresh to try again. ({message})
+        <b>
+          {where === "workspace"
+            ? "The workspace is unavailable."
+            : "GitHub is unavailable."}
+        </b>{" "}
+        This session’s pull request is unknown right now. Refresh to try again.
+        <span className="mt-1 block text-muted-foreground">
+          Details: {message}
+        </span>
       </Notice>
     );
   }
   return (
     <Notice tone="error">
-      <b>Couldn’t look up this session’s pull request.</b> {message}
+      <b>Couldn’t look up this session’s pull request.</b>
+      <span className="mt-1 block text-muted-foreground">
+        Details: {message}
+      </span>
     </Notice>
   );
+}
+
+function failureLocation(
+  association: PullAssociation | null,
+  reason: string,
+): "workspace" | "plugin" {
+  const failure = association?.failures.find(
+    (entry) => entry.reason === reason,
+  );
+  return failure?.source === "workspace" ? "workspace" : "plugin";
 }
 
 function PullPanelTab({ threadId }: PluginThreadPanelProps) {
@@ -2415,13 +2490,50 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
   const { items } = useItems("pr");
   const [choosing, setChoosing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [returnFocus, setReturnFocus] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const { association } = session;
+
+  useEffect(() => {
+    if (choosing) chooserHeadingRef.current?.focus();
+  }, [choosing]);
+  useEffect(() => {
+    if (returnFocus === 0) return;
+    containerRef.current
+      ?.querySelector<HTMLElement>("[data-return-focus]")
+      ?.focus();
+  }, [returnFocus]);
+  const previousError = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      session.error !== null &&
+      session.error !== previousError.current &&
+      association !== null
+    ) {
+      setAnnouncement("Couldn’t refresh this session’s pull request match.");
+    }
+    previousError.current = session.error;
+  }, [session.error, association]);
+
+  const closeChooser = useCallback(() => {
+    setChoosing(false);
+    setReturnFocus((count) => count + 1);
+  }, []);
 
   const choose = useCallback(
     (pull: PullRef | null) => {
+      setAnnouncement(
+        pull === null
+          ? "Clearing your saved choice…"
+          : `Checking ${pull.repo}#${pull.number} on GitHub…`,
+      );
       void session.choose(pull).then((saved) => {
-        if (!saved) return;
-        setChoosing(false);
+        if (!saved) {
+          setAnnouncement("Couldn’t save that choice.");
+          return;
+        }
+        closeChooser();
         setAnnouncement(
           pull === null
             ? "Saved choice cleared. Using automatic matching."
@@ -2429,7 +2541,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
         );
       });
     },
-    [session],
+    [session, closeChooser],
   );
 
   const titleFor = (repo: string, number: number) =>
@@ -2447,7 +2559,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
 
   if (association === null) {
     return (
-      <div className="flex flex-col gap-3">
+      <div ref={containerRef} className="flex flex-col gap-3">
         {liveRegion}
         {session.error !== null ? (
           <>
@@ -2455,6 +2567,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
             <FailureNotice
               reason={classifyGhFailure(session.error)}
               message={session.error}
+              where="plugin"
             />
           </>
         ) : (
@@ -2469,37 +2582,57 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     resolution.kind === "selected" || resolution.kind === "candidate"
       ? { repo: resolution.repo, number: resolution.number }
       : null;
+  const staleMatch =
+    session.error !== null ? (
+      <Notice tone="warn">
+        <b>Couldn’t refresh this session’s match.</b> Showing the last known
+        result; it may be out of date.
+        <span className="mt-1 block text-muted-foreground">
+          Details: {session.error}
+        </span>
+      </Notice>
+    ) : null;
   const saveError =
     session.saveError !== null ? (
       <Notice tone="error" urgent>
-        Couldn’t save that choice. {session.saveError}
+        Couldn’t save that choice. {describeGhError(session.saveError)}
       </Notice>
     ) : null;
-
-  if (choosing) {
-    return (
-      <div className="flex flex-col gap-3">
-        {liveRegion}
-        <div className="flex items-center gap-2">
-          <h2 className="min-w-0 flex-1 text-sm font-medium text-foreground">
-            Choose this session’s pull request
-          </h2>
-          <PanelButton variant="outline" onClick={() => setChoosing(false)}>
-            Cancel
-          </PanelButton>
-        </div>
-        {saveError}
-        {session.saving ? (
-          <p className="text-xs text-muted-foreground">Checking on GitHub…</p>
-        ) : null}
-        <PullChooser
-          candidates={candidates}
+  const chooser = choosing ? (
+    <section
+      aria-labelledby={`${threadId}-chooser`}
+      className="flex flex-col gap-3 rounded-lg border border-border p-3"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h2
+          id={`${threadId}-chooser`}
+          ref={chooserHeadingRef}
+          tabIndex={-1}
+          className="min-w-0 flex-1 text-sm font-medium text-foreground focus:outline-none"
+        >
+          Choose this session’s pull request
+        </h2>
+        <PanelButton
+          variant="outline"
           disabled={session.saving}
-          onChoose={choose}
-        />
+          onClick={closeChooser}
+        >
+          {session.saving ? "Saving…" : "Cancel"}
+        </PanelButton>
       </div>
-    );
-  }
+      {saveError}
+      {session.saving ? (
+        <p className="text-xs text-muted-foreground">
+          Checking on GitHub. This can’t be cancelled once started.
+        </p>
+      ) : null}
+      <PullChooser
+        candidates={candidates}
+        disabled={session.saving}
+        onChoose={choose}
+      />
+    </section>
+  ) : null;
 
   if (shown === null) {
     const candidateRows = candidates.map((candidate) => {
@@ -2520,50 +2653,65 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
       (failure) => failure.source === "selection",
     );
     return (
-      <div className="flex flex-col gap-3">
+      <div ref={containerRef} className="flex flex-col gap-3">
         {liveRegion}
         <SessionHeading busy={session.loading} onRefresh={session.reload} />
-        {saveError}
-        {resolution.kind === "ambiguous" ? (
-          <p className="text-sm text-foreground">
-            {candidates.length} pull requests match this session. Choose one:
-          </p>
-        ) : resolution.kind === "none" ? (
-          <p className="text-sm text-foreground">
-            No pull request matches this session’s workspace branch or review
-            threads.
-          </p>
-        ) : resolution.kind === "failed" ? (
-          <FailureNotice
-            reason={resolution.reason}
-            message={resolution.message}
-          />
-        ) : null}
-        {resolution.kind === "failed" && candidates.length > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            The lookup was incomplete. These were found; choose one only if it’s
-            right:
-          </p>
-        ) : null}
-        {candidateRows.length > 0 ? (
-          <div
-            role="group"
-            aria-label="Matching pull requests"
-            className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
-          >
-            {candidateRows}
-          </div>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <PanelButton variant="outline" onClick={() => setChoosing(true)}>
-            Choose a PR…
-          </PanelButton>
-          {selectionUnreadable ? (
-            <PanelButton disabled={session.saving} onClick={() => choose(null)}>
-              Use automatic matching
-            </PanelButton>
-          ) : null}
-        </div>
+        {staleMatch}
+        {chooser ?? (
+          <>
+            {saveError}
+            {resolution.kind === "ambiguous" ? (
+              <p className="text-sm text-foreground">
+                {candidates.length === 1
+                  ? "A review thread links this pull request, but its identity can’t be confirmed. Choose it if it’s right:"
+                  : `${candidates.length} pull requests match this session. Choose one:`}
+              </p>
+            ) : resolution.kind === "none" ? (
+              <p className="text-sm text-foreground">
+                No pull request matches this session’s workspace branch or
+                review threads.
+              </p>
+            ) : resolution.kind === "failed" ? (
+              <FailureNotice
+                reason={resolution.reason}
+                message={resolution.message}
+                where={failureLocation(association, resolution.reason)}
+              />
+            ) : null}
+            {resolution.kind === "failed" && candidates.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                The lookup was incomplete. These were found; choose one only if
+                it’s right:
+              </p>
+            ) : null}
+            {candidateRows.length > 0 ? (
+              <div
+                role="group"
+                aria-label="Matching pull requests"
+                className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
+              >
+                {candidateRows}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <PanelButton
+                variant="outline"
+                data-return-focus
+                onClick={() => setChoosing(true)}
+              >
+                Choose a PR…
+              </PanelButton>
+              {selectionUnreadable ? (
+                <PanelButton
+                  disabled={session.saving}
+                  onClick={() => choose(null)}
+                >
+                  Use automatic matching
+                </PanelButton>
+              ) : null}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -2578,9 +2726,16 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     (candidate) =>
       `${candidate.repo.toLowerCase()}#${candidate.number}` !== shownKey,
   );
+  const expectedId =
+    resolution.kind === "selected"
+      ? (selection?.id ?? null)
+      : resolution.kind === "candidate"
+        ? resolution.id
+        : null;
   const notices = (
     <>
-      {saveError}
+      {staleMatch}
+      {chooser === null ? saveError : null}
       {resolution.kind === "selected" && otherCandidates.length > 0 ? (
         <Notice tone="info">
           Also matching this session:{" "}
@@ -2601,25 +2756,28 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
           {failures
             .map((failure) => FAILURE_SOURCE_LABELS[failure.source])
             .join(" or ")}
-          , so other matches are unknown. ({failures[0].message})
+          , so other matches are unknown.
+          <span className="mt-1 block text-muted-foreground">
+            Details: {failures[0].message}
+          </span>
         </Notice>
       ) : null}
     </>
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={containerRef} className="flex flex-col gap-3">
       {liveRegion}
+      {chooser}
       <SessionPullDetail
         key={shownKey}
         repo={shown.repo}
         number={shown.number}
-        expectedId={
-          resolution.kind === "selected" ? (selection?.id ?? null) : null
-        }
+        expectedId={expectedId}
         provenance={provenanceLabel(resolution)}
         saved={selection !== null}
         saving={session.saving}
+        choosing={choosing}
         environmentId={workspaceMatch ? association.environmentId : null}
         notices={notices}
         onReloadAssociation={session.reload}
@@ -2655,6 +2813,7 @@ function SessionPullDetail({
   provenance,
   saved,
   saving,
+  choosing,
   environmentId,
   notices,
   onReloadAssociation,
@@ -2668,6 +2827,7 @@ function SessionPullDetail({
   provenance: string;
   saved: boolean;
   saving: boolean;
+  choosing: boolean;
   environmentId: string | null;
   notices: React.ReactNode;
   onReloadAssociation: () => void;
@@ -2684,18 +2844,21 @@ function SessionPullDetail({
       userRefresh.current = false;
       onAnnounce(
         detail.error === null
-          ? "Pull request refreshed."
-          : "Refresh failed. Showing earlier data.",
+          ? "Pull request details refreshed."
+          : "Refreshing pull request details failed. Showing earlier data.",
       );
     }
     wasRefreshing.current = detail.refreshing;
   }, [detail.refreshing, detail.error, onAnnounce]);
 
-  const identityChanged =
-    expectedId !== null &&
-    detail.pull !== null &&
-    detail.pull.id !== "" &&
-    detail.pull.id !== expectedId;
+  const identityProblem =
+    expectedId === null || detail.pull === null
+      ? null
+      : detail.pull.id === ""
+        ? "GitHub didn’t return an id for this pull request, so it can’t be confirmed as the one linked to this session."
+        : detail.pull.id !== expectedId
+          ? `${repo}#${number} is no longer the pull request linked to this session. The repository may have been renamed or reused.`
+          : null;
 
   return (
     <>
@@ -2714,21 +2877,23 @@ function SessionPullDetail({
             }}
           />
         </div>
-        <div className="-mx-1 flex flex-wrap items-center gap-1">
-          <PanelButton disabled={saving} onClick={onChange}>
-            Change…
-          </PanelButton>
-          {saved ? (
-            <PanelButton
-              disabled={saving}
-              aria-describedby={clearHintId}
-              onClick={onClear}
-            >
-              Use automatic matching
+        {choosing ? null : (
+          <div className="-mx-1 flex flex-wrap items-center gap-1">
+            <PanelButton disabled={saving} data-return-focus onClick={onChange}>
+              Change…
             </PanelButton>
-          ) : null}
-        </div>
-        {saved ? (
+            {saved ? (
+              <PanelButton
+                disabled={saving}
+                aria-describedby={clearHintId}
+                onClick={onClear}
+              >
+                Use automatic matching
+              </PanelButton>
+            ) : null}
+          </div>
+        )}
+        {saved && !choosing ? (
           <p id={clearHintId} className="pb-1">
             Clears your saved choice. The panel then follows the workspace
             branch and review threads, which may show this same PR.
@@ -2736,16 +2901,21 @@ function SessionPullDetail({
         ) : null}
       </div>
       {notices}
-      {identityChanged ? (
-        <Notice tone="error">
-          {repo}#{number} is no longer the pull request you saved. The
-          repository may have been renamed or reused. Choose again.
-        </Notice>
+      {identityProblem !== null ? (
+        <>
+          <Notice tone="error">{identityProblem} Choose again.</Notice>
+          {choosing ? null : (
+            <PanelButton variant="outline" onClick={onChange}>
+              Choose a PR…
+            </PanelButton>
+          )}
+        </>
       ) : detail.pull === null ? (
         detail.error !== null ? (
           <FailureNotice
             reason={classifyGhFailure(detail.error)}
             message={detail.error}
+            where="plugin"
           />
         ) : (
           <DetailSkeleton />
