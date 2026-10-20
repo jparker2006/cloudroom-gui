@@ -65,7 +65,11 @@ describe("context snapshot projection", () => {
   });
   it("invalidates prior usage on reset and restores only the new measurement", () => {
     const reset = event(2, { usedTokens: null, modelContextWindow: null });
-    expect(extractThreadContextWindowUsage([first, reset])).toBeNull();
+    expect(extractThreadContextWindowUsage([first, reset])).toEqual({
+      usedTokens: null,
+      modelContextWindow: 1_000,
+      estimated: true,
+    });
     expect(
       extractThreadContextWindowUsage([
         first,
@@ -73,6 +77,14 @@ describe("context snapshot projection", () => {
         event(3, { usedTokens: 200, modelContextWindow: 1_000 }),
       ]),
     ).toEqual({ usedTokens: 200, modelContextWindow: 1_000, estimated: true });
+  });
+  it("returns null only when no usage signal exists", () => {
+    expect(extractThreadContextWindowUsage([])).toBeNull();
+    expect(
+      extractThreadContextWindowUsage([
+        event(1, { usedTokens: null, modelContextWindow: null }),
+      ]),
+    ).toEqual({ usedTokens: null, modelContextWindow: null, estimated: true });
   });
   it("does not attach a snapshot to mismatched aggregate metrics", () => {
     expect(

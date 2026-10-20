@@ -609,6 +609,48 @@ describe("delta assembler", () => {
     ]);
   });
 
+  it("stamps each thread/compacted with its own compaction item, even twice in one turn", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const compactionOpen = {
+      kind: "item.open",
+      key: { channel: "compaction" },
+      item: { type: "compaction" },
+    } as const;
+    const compactionClose = {
+      kind: "item.close",
+      key: { channel: "compaction" },
+      status: "completed",
+      item: { type: "compaction" },
+    } as const;
+    const first = assemble(assembler, compactionOpen);
+    const firstMarker = assemble(assembler, { kind: "context.compacted" });
+    assemble(assembler, compactionClose);
+    const second = assemble(assembler, compactionOpen);
+    const secondMarker = assemble(assembler, { kind: "context.compacted" });
+    const firstItemId =
+      first[0]?.type === "item/started" ? first[0].item.id : "";
+    const secondItemId =
+      second[0]?.type === "item/started" ? second[0].item.id : "";
+    expect(firstItemId).not.toBe("");
+    expect(secondItemId).not.toBe(firstItemId);
+    expect(firstMarker).toEqual([
+      expect.objectContaining({
+        type: "thread/compacted",
+        itemId: firstItemId,
+      }),
+    ]);
+    expect(secondMarker).toEqual([
+      expect.objectContaining({
+        type: "thread/compacted",
+        itemId: secondItemId,
+      }),
+    ]);
+    expect(assemble(assembler, { kind: "context.compacted" })).toEqual([
+      expect.not.objectContaining({ itemId: expect.anything() }),
+    ]);
+  });
+
   it("a settling error fails the open turn after the error event", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });

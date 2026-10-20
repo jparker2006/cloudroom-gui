@@ -31,8 +31,8 @@ export function isCommaSeparatedIncludeQueryValue(
 
 export const threadContextWindowUsageSchema = z.object({
   snapshot: contextSnapshotSchema.optional(),
-  usedTokens: z.number(),
-  modelContextWindow: z.number(),
+  usedTokens: z.number().nullable(),
+  modelContextWindow: z.number().nullable(),
   estimated: z.boolean(),
   history: z.array(z.number()).optional(),
 });
@@ -40,8 +40,61 @@ export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema
 >;
 
+export const recordedCompactionGapSchema = z.enum([
+  "ambiguous-legacy",
+  "cloud-auto-not-reported",
+  "forked",
+  "imported-history",
+  "provider-unverified",
+  "rewound",
+  "teleported",
+  "unhandled-compaction-event",
+]);
+export type RecordedCompactionGap = z.infer<typeof recordedCompactionGapSchema>;
+
+export const recordedCompactionsSummarySchema = z.object({
+  revision: z.string(),
+  coverage: z.enum(["complete", "partial"]),
+  gaps: z.array(recordedCompactionGapSchema),
+  completedCount: z.number().int().nonnegative(),
+  inProgress: z.boolean(),
+});
+export type RecordedCompactionsSummary = z.infer<
+  typeof recordedCompactionsSummarySchema
+>;
+
+export const recordedCompactionEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("compaction"),
+    id: z.string(),
+    status: z.enum(["completed", "in_progress", "unconfirmed"]),
+    startedAt: z.number().nullable(),
+    completedAt: z.number().nullable(),
+    turnId: z.string().nullable(),
+    summary: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("clear"),
+    id: z.string(),
+    at: z.number(),
+  }),
+]);
+export type RecordedCompactionEntry = z.infer<
+  typeof recordedCompactionEntrySchema
+>;
+
+export const recordedCompactionsListSchema =
+  recordedCompactionsSummarySchema.extend({
+    entries: z.array(recordedCompactionEntrySchema),
+    truncated: z.boolean(),
+  });
+export type RecordedCompactionsList = z.infer<
+  typeof recordedCompactionsListSchema
+>;
+
 export const threadContextResponseSchema = z.object({
   usage: threadContextWindowUsageSchema.nullable(),
+  compactions: recordedCompactionsListSchema.optional(),
 });
 export type ThreadContextResponse = z.infer<typeof threadContextResponseSchema>;
 

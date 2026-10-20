@@ -1,5 +1,11 @@
 import type { ContextSnapshot } from "@cloudroom/domain";
-import type { ThreadContextWindowUsage } from "@cloudroom/server-contract";
+import { useQueryClient } from "@tanstack/react-query";
+import type {
+  RecordedCompactionsList,
+  RecordedCompactionsSummary,
+  ThreadContextWindowUsage,
+} from "@cloudroom/server-contract";
+import { threadRecordedCompactionsQueryKey } from "@/hooks/queries/query-keys";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import {
   ThreadContextWindowCard,
@@ -261,3 +267,158 @@ export function Overview() {
     </StoryCard>
   );
 }
+
+const HOUR = 60 * 60 * 1000;
+const storyNow = Date.parse("2026-10-20T14:10:00");
+
+const populatedCompactions: RecordedCompactionsList = {
+  revision: "story-populated",
+  coverage: "complete",
+  gaps: [],
+  completedCount: 3,
+  inProgress: true,
+  truncated: false,
+  entries: [
+    {
+      kind: "compaction",
+      id: "c4",
+      status: "in_progress",
+      startedAt: storyNow - 5 * 60_000,
+      completedAt: null,
+      turnId: "t4",
+      summary: null,
+    },
+    {
+      kind: "compaction",
+      id: "c3",
+      status: "completed",
+      startedAt: storyNow - 0.75 * HOUR,
+      completedAt: storyNow - 0.7 * HOUR,
+      turnId: "t3",
+      summary: null,
+    },
+    { kind: "clear", id: "clear:1", at: storyNow - 3 * HOUR },
+    {
+      kind: "compaction",
+      id: "c2",
+      status: "completed",
+      startedAt: storyNow - 3.5 * HOUR,
+      completedAt: storyNow - 3.45 * HOUR,
+      turnId: "t2",
+      summary:
+        "Kept the migration plan, failing test list and open review comments.",
+    },
+    {
+      kind: "compaction",
+      id: "c1",
+      status: "completed",
+      startedAt: null,
+      completedAt: storyNow - 5 * HOUR,
+      turnId: "t1",
+      summary: null,
+    },
+  ],
+};
+
+const partialCompactions: RecordedCompactionsList = {
+  revision: "story-partial",
+  coverage: "partial",
+  gaps: ["cloud-auto-not-reported", "teleported"],
+  completedCount: 2,
+  inProgress: false,
+  truncated: true,
+  entries: [
+    {
+      kind: "compaction",
+      id: "p3",
+      status: "unconfirmed",
+      startedAt: storyNow - HOUR,
+      completedAt: null,
+      turnId: "t3",
+      summary: null,
+    },
+    {
+      kind: "compaction",
+      id: "p2",
+      status: "completed",
+      startedAt: storyNow - 2 * HOUR,
+      completedAt: storyNow - 2 * HOUR,
+      turnId: "t2",
+      summary: null,
+    },
+    {
+      kind: "compaction",
+      id: "p1",
+      status: "completed",
+      startedAt: null,
+      completedAt: storyNow - 20 * HOUR,
+      turnId: "t1",
+      summary: null,
+    },
+  ],
+};
+
+function summaryOf(list: RecordedCompactionsList): RecordedCompactionsSummary {
+  const { entries: _entries, truncated: _truncated, ...summary } = list;
+  return summary;
+}
+
+function SeededIndicator({
+  threadId,
+  usage: u,
+  list,
+}: {
+  threadId: string;
+  usage: ThreadContextWindowUsage | null;
+  list: RecordedCompactionsList | null;
+}) {
+  const queryClient = useQueryClient();
+  if (list) {
+    queryClient.setQueryData(
+      threadRecordedCompactionsQueryKey(threadId, list.revision),
+      list,
+    );
+  }
+  return (
+    <div className="flex min-h-[720px] flex-col justify-end bg-background p-6 max-md:p-0">
+      <div className="mx-auto flex w-full max-w-2xl items-center justify-end gap-2 rounded-xl border bg-card p-3 text-xs text-muted-foreground max-md:rounded-none">
+        <span className="mr-auto">Ask for follow-up changes…</span>
+        <ThreadContextWindowIndicator
+          usage={u}
+          threadId={threadId}
+          compactions={list ? summaryOf(list) : null}
+          defaultOpen
+        />
+      </div>
+    </div>
+  );
+}
+
+export const RecordedCompactionsPopulated = () => (
+  <SeededIndicator
+    threadId="story-populated"
+    usage={{
+      usedTokens: claudeSnapshot.usedTokens,
+      modelContextWindow: claudeSnapshot.contextWindowTokens,
+      estimated: false,
+      snapshot: claudeSnapshot,
+    }}
+    list={populatedCompactions}
+  />
+);
+
+export const RecordedCompactionsPartial = () => (
+  <SeededIndicator
+    threadId="story-partial"
+    usage={estimated}
+    list={partialCompactions}
+  />
+);
+
+export const RecordedCompactionsUnavailable = () => (
+  <SeededIndicator
+    threadId="story-unavailable"
+    usage={{ usedTokens: null, modelContextWindow: null, estimated: false }}
+    list={null}
+  />
+);

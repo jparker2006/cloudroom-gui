@@ -89,7 +89,7 @@ export function extractThreadContextWindowUsage(
     }
   }
 
-  if (usedTokens === undefined || modelContextWindow === undefined) {
+  if (usedTokens === undefined && !usageIsUnknown) {
     return null;
   }
 
@@ -100,7 +100,7 @@ export function extractThreadContextWindowUsage(
       ? { snapshot }
       : {}),
     estimated: estimated ?? false,
-    modelContextWindow,
-    usedTokens,
+    modelContextWindow: modelContextWindow ?? null,
+    usedTokens: usedTokens ?? null,
   };
 }

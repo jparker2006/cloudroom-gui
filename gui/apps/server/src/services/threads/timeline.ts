@@ -11,6 +11,10 @@ import {
   type TimelineContentCursor,
 } from "./timeline-snapshot.js";
 import {
+  buildRecordedCompactions,
+  summarizeRecordedCompactions,
+} from "./recorded-compactions.js";
+import {
   buildThreadTimelineFromEvents,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
@@ -1509,6 +1513,12 @@ function buildThreadTimelineInternal(
               sequenceStart: contextBoundarySeq ?? 0,
               threadId: thread.id,
             }),
+          )
+        : undefined,
+    recordedCompactions:
+      options.page.kind === "latest"
+        ? summarizeRecordedCompactions(
+            buildRecordedCompactions(db, thread, snapshot.maxSeq),
           )
         : undefined,
     timelinePage: {

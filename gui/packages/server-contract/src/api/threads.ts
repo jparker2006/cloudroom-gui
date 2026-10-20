@@ -45,6 +45,7 @@ import {
   isCommaSeparatedIncludeQueryValue,
   pathListIncludeQueryValueSchema,
   threadContextWindowUsageSchema,
+  recordedCompactionsSummarySchema,
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
@@ -1053,6 +1054,7 @@ export const threadTimelineResponseSchema = z.object({
   goal: threadTimelineGoalSchema.nullable(),
   modelFallback: threadTimelineModelFallbackSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
+  recordedCompactions: recordedCompactionsSummarySchema.optional(),
   timelinePage: timelinePageMetadataSchema,
   maxSeq: z.number().int().nonnegative(),
   delta: timelineDeltaSchema.optional(),

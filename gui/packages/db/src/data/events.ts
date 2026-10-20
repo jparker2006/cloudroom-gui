@@ -1,5 +1,6 @@
 import {
   and,
+  asc,
   desc,
   eq,
   gt,
@@ -3224,6 +3225,48 @@ export function listContextWindowUsageRows(
     eventType: "thread/contextWindowUsage/updated",
     contextWindowJsonPath: "$.contextWindowUsage.modelContextWindow",
   });
+}
+
+export const RECORDED_COMPACTION_OPERATIONS = [
+  THREAD_CONTEXT_CLEAR_OPERATION,
+  "edit_message",
+  "import",
+  "teleport",
+] as const;
+
+export function listRecordedCompactionEventRows(
+  db: DbQueryConnection,
+  args: { threadId: string; sequenceEnd: number },
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        lte(events.sequence, args.sequenceEnd),
+        or(
+          and(
+            inArray(events.type, ["item/started", "item/completed"]),
+            eq(events.itemKind, "contextCompaction"),
+          ),
+          eq(events.type, "thread/compacted"),
+          and(
+            eq(events.type, "system/operation"),
+            inArray(
+              sql`json_extract(${events.data}, '$.operation')`,
+              [...RECORDED_COMPACTION_OPERATIONS],
+            ),
+          ),
+          and(
+            eq(events.type, "provider/unhandled"),
+            sql`lower(json_extract(${events.data}, '$.rawType')) LIKE '%compact%'`,
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(events.sequence))
+    .all();
 }
 
 export function listContextWindowUsageHistory(

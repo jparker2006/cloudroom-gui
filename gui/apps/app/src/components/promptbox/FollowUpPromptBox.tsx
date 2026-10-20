@@ -139,9 +139,12 @@ export interface FollowUpComposerProps {
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
 }
 
-type ContextWindowUsage = ComponentProps<
-  typeof ThreadContextWindowIndicator
->["usage"];
+type ContextWindowUsage = NonNullable<
+  ComponentProps<typeof ThreadContextWindowIndicator>["usage"]
+>;
+type RecordedCompactions = NonNullable<
+  ComponentProps<typeof ThreadContextWindowIndicator>["compactions"]
+>;
 
 export interface FollowUpPromptBoxProps {
   id?: string;
@@ -152,6 +155,8 @@ export interface FollowUpPromptBoxProps {
   environmentSummary: ReactNode | null;
   contextWindowUsage: ContextWindowUsage | null;
   contextWindowNote?: string | undefined;
+  contextThreadId?: string;
+  recordedCompactions?: RecordedCompactions | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
   executionReadOnly?: boolean;
@@ -224,6 +229,8 @@ function FollowUpPromptBoxWithComposer({
   environmentSummary,
   contextWindowUsage,
   contextWindowNote,
+  contextThreadId,
+  recordedCompactions = null,
   execution,
   permission,
   executionReadOnly,
@@ -757,10 +764,12 @@ function FollowUpPromptBoxWithComposer({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {permissionControl}
-            {contextWindowUsage ? (
+            {contextWindowUsage || recordedCompactions ? (
               <ThreadContextWindowIndicator
                 usage={contextWindowUsage}
                 note={contextWindowNote}
+                threadId={contextThreadId}
+                compactions={recordedCompactions}
               />
             ) : null}
           </div>

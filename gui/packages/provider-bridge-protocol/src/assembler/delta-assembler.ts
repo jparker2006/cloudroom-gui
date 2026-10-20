@@ -138,6 +138,7 @@ interface ThreadAssemblyState {
   pendingProgressByKey: Map<string, PendingProgressState>;
   textLastEmitByStream: Map<string, number>;
   pendingTextByStream: Map<string, PendingTextState>;
+  unmarkedCompactions: Array<{ turnId: string; itemId: string }>;
 }
 
 export interface CreateDeltaAssemblerOptions {
@@ -234,6 +235,7 @@ export function createDeltaAssembler(
       lastTurnId: undefined,
       pendingAccepted: [],
       openItemsByKey: new Map(),
+      unmarkedCompactions: [],
       commandSnapshotsByKey: new Map(),
       bbItemIdByProviderItemId: new Map(),
       providerItemIdByBbItemId: new Map(),
@@ -454,6 +456,38 @@ export function createDeltaAssembler(
       });
     }
     return turnId;
+  }
+
+  function rememberUnmarkedCompaction(
+    state: ThreadAssemblyState,
+    turnId: string,
+    itemId: string,
+  ): void {
+    if (state.unmarkedCompactions.some((entry) => entry.itemId === itemId)) {
+      return;
+    }
+    state.unmarkedCompactions.push({ turnId, itemId });
+    if (state.unmarkedCompactions.length > 8) {
+      state.unmarkedCompactions.shift();
+    }
+  }
+
+  function takeUnmarkedCompaction(
+    state: ThreadAssemblyState,
+    turnId: string,
+  ): string | undefined {
+    for (
+      let index = state.unmarkedCompactions.length - 1;
+      index >= 0;
+      index -= 1
+    ) {
+      const entry = state.unmarkedCompactions[index];
+      if (entry.turnId === turnId) {
+        state.unmarkedCompactions.splice(index, 1);
+        return entry.itemId;
+      }
+    }
+    return undefined;
   }
 
   function finishTurn(state: ThreadAssemblyState): void {
@@ -1371,6 +1405,9 @@ export function createDeltaAssembler(
           summaryText: "",
         });
         rememberProgressEmit(state, keyStr);
+        if (item.type === "contextCompaction") {
+          rememberUnmarkedCompaction(state, turnId, item.id);
+        }
         events.push({
           type: "item/started",
           threadId: UNSTAMPED_THREAD_ID,
@@ -1485,6 +1522,9 @@ export function createDeltaAssembler(
           return;
         }
         if (turnId !== undefined) {
+          if (open === undefined && item.type === "contextCompaction") {
+            rememberUnmarkedCompaction(state, turnId, item.id);
+          }
           events.push({
             type: "item/completed",
             threadId: UNSTAMPED_THREAD_ID,
@@ -1867,11 +1907,13 @@ export function createDeltaAssembler(
           pushNoTurnFallback(state, delta.noTurnFallback, undefined, events);
           return;
         }
+        const itemId = takeUnmarkedCompaction(state, turnId);
         events.push({
           type: "thread/compacted",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: turnScope(turnId),
+          ...(itemId === undefined ? {} : { itemId }),
         });
         return;
       }

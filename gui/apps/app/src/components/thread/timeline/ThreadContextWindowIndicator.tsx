@@ -1,6 +1,13 @@
 import { useId, useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@cloudroom/shared-ui/popover";
-import type { ThreadContextWindowUsage } from "@cloudroom/server-contract";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@cloudroom/shared-ui/popover";
+import type {
+  RecordedCompactionsSummary,
+  ThreadContextWindowUsage,
+} from "@cloudroom/server-contract";
 import { useHoverPopover } from "../../ui/hooks/use-hover-popover.js";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import {
@@ -13,18 +20,46 @@ import {
   ThreadContextWindowDetails,
   ThreadContextWindowSegments,
 } from "./ThreadContextWindowDetails.js";
+import {
+  RecordedCompactionsSection,
+  recordedCompactionsCountLabel,
+} from "./RecordedCompactionsSection.js";
 
 interface ThreadContextWindowCardProps {
-  usage: ThreadContextWindowUsage;
+  usage: ThreadContextWindowUsage | null;
   note?: string | undefined;
   expanded?: boolean;
   className?: string;
+  compactions?: RecordedCompactionsSummary | null;
+  threadId?: string | undefined;
+  open?: boolean;
 }
 
 interface ThreadContextWindowIndicatorProps {
-  usage: ThreadContextWindowUsage;
+  usage: ThreadContextWindowUsage | null;
   note?: string | undefined;
   defaultOpen?: boolean;
+  compactions?: RecordedCompactionsSummary | null;
+  threadId?: string | undefined;
+}
+
+function usageToneClass(usedPercent: number | null): string {
+  if (usedPercent === null) return "text-muted-foreground";
+  return usedPercent >= 90
+    ? "text-destructive"
+    : usedPercent >= 75
+      ? "text-warning-text"
+      : "text-muted-foreground";
+}
+
+function usageTokensLabel(usage: ThreadContextWindowUsage | null): string {
+  if (usage === null || usage.usedTokens === null) {
+    return "Token count not reported";
+  }
+  const used = formatCompactTokenCount(usage.usedTokens);
+  return usage.modelContextWindow === null
+    ? `${used} tokens · window size not reported`
+    : `${used} / ${formatCompactTokenCount(usage.modelContextWindow)} tokens`;
 }
 
 const CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS = 60;
@@ -68,33 +103,34 @@ export function ThreadContextWindowCard({
   note,
   expanded = false,
   className,
+  compactions,
+  threadId,
+  open = true,
 }: ThreadContextWindowCardProps) {
-  const details = usage.snapshot?.categories.length
+  const details = usage?.snapshot?.categories.length
     ? usage.snapshot
     : undefined;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const detailsId = useId();
   const usedPercent = calculateContextWindowUsagePercent(usage);
-  const leftPercent = Math.max(0, 100 - usedPercent);
-  const visualPercent = Math.min(Math.max(usedPercent, 0), 100);
-
-  const toneClass =
-    usedPercent >= 90
-      ? "text-destructive"
-      : usedPercent >= 75
-        ? "text-warning-text"
-        : "text-muted-foreground";
-
-  const usedTokensLabel = formatCompactTokenCount(usage.usedTokens);
-  const windowTokensLabel = formatCompactTokenCount(usage.modelContextWindow);
-  const titleLabel = usage.estimated ? "Estimated context" : "Context window";
-  const history = usage.history ?? [];
-  const showHistory = expanded && history.length >= 2 && !detailsExpanded;
+  const visualPercent =
+    usedPercent === null ? 0 : Math.min(Math.max(usedPercent, 0), 100);
+  const toneClass = usageToneClass(usedPercent);
+  const titleLabel = usage?.estimated ? "Estimated context" : "Context window";
+  const history = usage?.history ?? [];
+  const modelContextWindow = usage?.modelContextWindow ?? null;
+  const showHistory =
+    expanded &&
+    history.length >= 2 &&
+    !detailsExpanded &&
+    modelContextWindow !== null;
+  const showCompactions = compactions !== undefined;
 
   return (
     <div
       className={cn(
         "@container/context-window w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md max-md:px-4",
+        showCompactions && "w-90",
         details &&
           "transition-[width] duration-200 ease-out motion-reduce:transition-none",
         details && detailsExpanded && "w-90",
@@ -112,20 +148,24 @@ export function ThreadContextWindowCard({
             {titleLabel}
           </span>
           <span className={cn("font-medium tabular-nums", toneClass)}>
-            {usedPercent}% used
+            {usedPercent === null
+              ? "Usage not reported"
+              : `${usedPercent}% used`}
           </span>
         </div>
-        {showHistory ? (
+        {showHistory && modelContextWindow !== null ? (
           <ThreadContextWindowHistory
             history={history}
-            modelContextWindow={usage.modelContextWindow}
-            autoCompactAtTokens={usage.snapshot?.autoCompactAtTokens}
+            modelContextWindow={modelContextWindow}
+            autoCompactAtTokens={usage?.snapshot?.autoCompactAtTokens}
           />
         ) : null}
         <div
           className={cn(
             showHistory && "hidden",
             "relative h-1.5 w-full overflow-hidden rounded-full bg-border transition-[height] duration-200 motion-reduce:transition-none max-md:h-2",
+            usedPercent === null &&
+              "border border-dashed border-border bg-transparent",
             details && detailsExpanded && "order-2 h-4 max-md:h-5",
           )}
         >
@@ -137,10 +177,10 @@ export function ThreadContextWindowCard({
             )}
             style={{ width: `${visualPercent}%` }}
           />
-          {details ? (
+          {details && modelContextWindow !== null ? (
             <ThreadContextWindowSegments
               details={details}
-              modelContextWindow={usage.modelContextWindow}
+              modelContextWindow={modelContextWindow}
               visible={detailsExpanded}
             />
           ) : null}
@@ -151,18 +191,19 @@ export function ThreadContextWindowCard({
             details && detailsExpanded && "order-1",
           )}
         >
-          <span>
-            <span
-              className={cn(
-                details && detailsExpanded && "font-medium text-foreground",
-              )}
-            >
-              {usedTokensLabel}
-            </span>{" "}
-            / {windowTokensLabel} tokens
+          <span
+            className={cn(
+              details && detailsExpanded && "font-medium text-foreground",
+            )}
+          >
+            {usageTokensLabel(usage)}
           </span>
           <span>
-            {showHistory ? `${history.length} turns` : `${leftPercent}% left`}
+            {showHistory
+              ? `${history.length} turns`
+              : usedPercent === null
+                ? null
+                : `${Math.max(0, 100 - usedPercent)}% left`}
           </span>
         </div>
         {note ? (
@@ -175,7 +216,7 @@ export function ThreadContextWindowCard({
             <ContextWindowReveal id={detailsId} open={detailsExpanded}>
               <ThreadContextWindowDetails
                 details={details}
-                capacity={usage.modelContextWindow}
+                capacity={modelContextWindow ?? details.contextWindowTokens}
               />
             </ContextWindowReveal>
           </div>
@@ -204,6 +245,13 @@ export function ThreadContextWindowCard({
           </button>
         </>
       ) : null}
+      {showCompactions ? (
+        <RecordedCompactionsSection
+          summary={compactions}
+          threadId={threadId}
+          open={open}
+        />
+      ) : null}
     </div>
   );
 }
@@ -212,37 +260,48 @@ export function ThreadContextWindowIndicator({
   usage,
   note,
   defaultOpen,
+  compactions,
+  threadId,
 }: ThreadContextWindowIndicatorProps) {
-  const details = usage.snapshot?.categories.length
+  const details = usage?.snapshot?.categories.length
     ? usage.snapshot
     : undefined;
+  const hoverableContent = details !== undefined || compactions !== undefined;
   const {
     open: hoverOpen,
     triggerHoverProps,
     contentHoverProps,
     handleOpenChange,
   } = useHoverPopover({
-    closeDelayMs: details ? 200 : CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS,
-    hoverableContent: details !== undefined,
+    closeDelayMs: hoverableContent
+      ? 200
+      : CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS,
+    hoverableContent,
   });
   const [pinned, setPinned] = useState(false);
   const open = defaultOpen || hoverOpen || pinned;
 
   const usedPercent = calculateContextWindowUsagePercent(usage);
-  const visualPercent = Math.min(Math.max(usedPercent, 0), 100);
+  const visualPercent =
+    usedPercent === null ? 0 : Math.min(Math.max(usedPercent, 0), 100);
 
   const radius = 6.5;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - visualPercent / 100);
 
-  const toneClass =
-    usedPercent >= 90
-      ? "text-destructive"
-      : usedPercent >= 75
-        ? "text-warning-text"
-        : "text-muted-foreground";
+  const toneClass = usageToneClass(usedPercent);
 
-  const titleLabel = usage.estimated ? "Estimated context" : "Context window";
+  const titleLabel = usage?.estimated ? "Estimated context" : "Context window";
+  const ariaLabel = [
+    usedPercent === null
+      ? "Context usage not reported"
+      : `Context window ${usedPercent}% used`,
+    compactions === undefined
+      ? null
+      : `recorded compactions: ${recordedCompactionsCountLabel(compactions)}`,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <Popover
@@ -261,7 +320,7 @@ export function ThreadContextWindowIndicator({
             setPinned((value) => !value);
           }}
           className="-m-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Context window ${usedPercent}% used`}
+          aria-label={ariaLabel}
         >
           <svg
             viewBox="0 0 16 16"
@@ -275,19 +334,22 @@ export function ThreadContextWindowIndicator({
               fill="none"
               strokeWidth="3"
               className="stroke-border-hairline"
+              strokeDasharray={usedPercent === null ? "2 2" : undefined}
             />
-            <circle
-              cx="8"
-              cy="8"
-              r={radius}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={dashOffset}
-              transform="rotate(-90 8 8)"
-            />
+            {usedPercent === null ? null : (
+              <circle
+                cx="8"
+                cy="8"
+                r={radius}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={dashOffset}
+                transform="rotate(-90 8 8)"
+              />
+            )}
           </svg>
         </button>
       </PopoverTrigger>
@@ -303,6 +365,9 @@ export function ThreadContextWindowIndicator({
           usage={usage}
           note={note}
           expanded={pinned}
+          compactions={compactions}
+          threadId={threadId}
+          open={open}
           className="max-md:w-full max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none"
         />
       </PopoverContent>

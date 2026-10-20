@@ -55,6 +55,7 @@ import {
   serveDaemonFileContent,
 } from "../../services/hosts/daemon-file-response.js";
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
+import { buildRecordedCompactions } from "../../services/threads/recorded-compactions.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   toThreadEventWithMeta,
@@ -401,6 +402,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     });
     return context.json({
       usage: extractThreadContextWindowUsage(rows.map(toThreadEventWithMeta)),
+      compactions: buildRecordedCompactions(
+        deps.db,
+        thread,
+        getLatestThreadSequence(deps.db, { threadId: thread.id }),
+      ),
     });
   });
 
