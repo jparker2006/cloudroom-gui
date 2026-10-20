@@ -213,6 +213,19 @@ function reconcileWithStoredNewThreadDraft(
   return true;
 }
 
+function writeNewThreadSentMarker(storageKey: string): void {
+  const marker = withDraftRev(storageKey, JSON.stringify({ sent: true }));
+  promptDraftCache.set(storageKey, { rawValue: marker, draft: EMPTY_PROMPT_DRAFT });
+  try {
+    window.localStorage.setItem(storageKey, marker);
+    unsavedPromptDraftKeys.delete(storageKey);
+  } catch (error) {
+    unsavedPromptDraftKeys.add(storageKey);
+    console.warn(`[prompt-draft] could not mark ${storageKey} as sent`, error);
+  }
+  emitPromptDraftChange(storageKey);
+}
+
 function readStoredPromptDraftValue(storageKey: string): string | null {
   try {
     return window.localStorage.getItem(storageKey);
@@ -495,6 +508,12 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         return false;
       }
 
+      if (isNewThreadProjectDraftKey(storageKey)) {
+        clearPromptDraftPersistTimer(storageKey);
+        pendingPromptDraftStorageKeys.delete(storageKey);
+        writeNewThreadSentMarker(storageKey);
+        return true;
+      }
       setDraftAndPersist(EMPTY_PROMPT_DRAFT);
       return true;
     },

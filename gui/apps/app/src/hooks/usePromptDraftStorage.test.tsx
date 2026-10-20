@@ -550,3 +550,65 @@ describe("new-thread draft save failures", () => {
     expect(result.current.text).toBe("unsaved");
   });
 });
+
+describe("clearing a new-thread draft after a send", () => {
+  it("replaces a sent draft with a sent marker instead of removing it", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+
+    let cleared = false;
+    act(() => {
+      cleared = result.current.clearIfCurrentMatches(sent);
+    });
+
+    expect(cleared).toBe(true);
+    expect(result.current.text).toBe("");
+    expect(storedRecord(ALPHA_KEY)).toMatchObject({ sent: true });
+    expect(storedRecord(ALPHA_KEY).rev).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("keeps another window's newer draft when the send succeeds", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+    const otherWindowRecord = JSON.stringify({
+      text: "written in another window",
+      attachments: [],
+      rev: "eeeeeeeeeeeeeeee",
+    });
+    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+
+    let cleared = true;
+    act(() => {
+      cleared = result.current.clearIfCurrentMatches(sent);
+    });
+
+    expect(cleared).toBe(false);
+    expect(window.localStorage.getItem(ALPHA_KEY)).toBe(otherWindowRecord);
+  });
+
+  it("keeps text typed during the send that hasn't been saved yet", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+    act(() => result.current.setTextAndMentions("send me, then more", []));
+
+    let cleared = true;
+    act(() => {
+      cleared = result.current.clearIfCurrentMatches(sent);
+    });
+    act(() => vi.advanceTimersByTime(250));
+
+    expect(cleared).toBe(false);
+    expect(result.current.text).toBe("send me, then more");
+    expect(storedRecord(ALPHA_KEY).text).toBe("send me, then more");
+  });
+});
