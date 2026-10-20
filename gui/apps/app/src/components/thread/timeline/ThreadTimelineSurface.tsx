@@ -49,6 +49,7 @@ export interface ThreadTimelineSurfaceProps {
   timelineError: boolean;
   loadingContent?: ReactNode;
   leadingContent?: ReactNode;
+  emptyContent?: ReactNode;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
@@ -146,6 +147,7 @@ export function ThreadTimelineSurface({
   threadOriginKind = null,
   hasOlderTimelineRows = false,
   hostConnectionNotice,
+  emptyContent,
   isLoadingOlderTimelineRows = false,
   isThreadTimelinePending,
   timelineError,
@@ -204,6 +206,12 @@ export function ThreadTimelineSurface({
     onLoadOlderRows !== undefined &&
     !isThreadTimelinePending &&
     !timelineError;
+  const showEmptyContent =
+    emptyContent !== undefined &&
+    !hasOlderTimelineRows &&
+    !showOngoingIndicator &&
+    !hostConnectionNotice &&
+    threadRuntimeDisplayStatus === "idle";
 
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
@@ -255,6 +263,8 @@ export function ThreadTimelineSurface({
             unreadDividerPlacement={unreadDividerPlacement}
             workspaceRootPath={workspaceRootPath}
           />
+        ) : showEmptyContent ? (
+          emptyContent
         ) : null}
         {hostConnectionNotice ? (
           <TimelineStatusIndicator

@@ -1,6 +1,8 @@
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import roomLogoUrl from "../../../../../assets/room-logo.png";
 
+export { roomLogoUrl };
+
 export function BbLogo({ className = "size-4" }: { className?: string }) {
   return (
     <img

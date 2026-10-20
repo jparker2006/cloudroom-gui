@@ -14,6 +14,8 @@ import {
   threadListIndicatorStateForThread,
 } from "@cloudroom/client-core";
 import { CHROME_SECTION_LABEL_CLASS } from "@cloudroom/shared-ui/chrome-style-tokens";
+import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 import { Icon, type IconName } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import {
@@ -306,10 +308,23 @@ export function ThreadPaletteResults({
         <ThreadSearchMessage iconName="AlertCircle" text="Search failed." />
       ) : null}
       {showNoSearchResults ? (
-        <ThreadSearchMessage
-          iconName="MessageQuestion"
-          text="No matching results"
-        />
+        navigationQuery.isSuccess &&
+        !navigationQuery.isPlaceholderData &&
+        !navigationQuery.isFetching &&
+        !threadSearch.isFetching ? (
+          <EmptyStateScene
+            scene="search"
+            logoSrc={roomLogoUrl}
+            title="No matching results"
+            description={`Nothing matches “${trimmedQuery}”. Try fewer or different words.`}
+            className="py-4"
+          />
+        ) : (
+          <ThreadSearchMessage
+            iconName="MessageQuestion"
+            text="No matching results"
+          />
+        )
       ) : null}
       {showTypeToSearch ? (
         <ThreadSearchMessage
