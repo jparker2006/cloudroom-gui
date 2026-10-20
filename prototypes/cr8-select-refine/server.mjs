@@ -64,7 +64,7 @@ function json(res, status, value) {
 const fixtureDir = join(root, "fixture");
 const appServer = createServer(async (req, res) => {
   const url = new URL(req.url, "http://fixture");
-  if (url.pathname === "/" || url.pathname === "/pricing") return serveFile(res, fixtureDir, "index.html");
+  if (url.pathname === "/" || url.pathname === "/pricing" || url.pathname.startsWith("/invite/")) return serveFile(res, fixtureDir, "index.html");
   if (url.pathname === "/about") return serveFile(res, fixtureDir, "about.html");
   if (url.pathname === "/framed-deny") {
     res.writeHead(200, { "content-type": "text/html", "x-frame-options": "DENY", "cache-control": "no-store" });
@@ -82,12 +82,12 @@ const shareServer = createServer(async (req, res) => {
     if (rest === "/index.html" || rest === "/") {
       const html = (await readFile(join(shellDir, "index.html"), "utf8")).replace(
         "__CLOUDROOM_APP_ORIGIN__",
-        JSON.stringify(ROOM_ORIGIN).slice(1, -1),
+        [ROOM_ORIGIN, ...(process.env.CR8_EXTRA_APP_ORIGINS ?? "").split(",").filter(Boolean)].join(" "),
       );
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
-        "content-security-policy": `frame-ancestors ${ROOM_ORIGIN}; default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self'; script-src 'self'`,
+        "content-security-policy": `frame-ancestors ${[ROOM_ORIGIN, ...(process.env.CR8_EXTRA_APP_ORIGINS ?? "").split(",").filter(Boolean)].join(" ")}; default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self'; script-src 'self'`,
         "referrer-policy": "no-referrer",
         "x-content-type-options": "nosniff",
       });
@@ -111,12 +111,15 @@ const shareServer = createServer(async (req, res) => {
 const roomDir = join(root, "room");
 const state = {
   threads: [
-    { id: "thr_pricing", projectId: "prj_acme", projectName: "Acme Web", title: "Polish pricing page", running: true, preview: { port: APP_PORT, label: `Port ${APP_PORT}` } },
-    { id: "thr_docs", projectId: "prj_docs", projectName: "Docs Site", title: "Rewrite onboarding", running: false, preview: null },
+    { id: "thr_pricing", projectId: "prj_acme", projectName: "Acme Web", title: "Polish pricing page", running: true, preview: { port: APP_PORT, label: `Port ${APP_PORT}`, ownerThreadId: "thr_pricing" } },
+    { id: "thr_docs", projectId: "prj_docs", projectName: "Docs Site", title: "Rewrite onboarding", running: false, preview: { port: APP_PORT, label: `Port ${APP_PORT}`, ownerThreadId: "thr_pricing" } },
+    { id: "thr_blog", projectId: "prj_blog", projectName: "Blog", title: "New post layout", running: false, preview: null },
   ],
   messages: [],
   queued: [],
   uploads: [],
+  verifyDelayMs: 0,
+  verifyCalls: 0,
   workspaceFiles: new Set(["src/components/PricingCard.tsx", "src/components/Hero.tsx"]),
 };
 
@@ -126,12 +129,14 @@ const roomServer = createServer(async (req, res) => {
     return json(res, 200, { threads: state.threads, shareOrigin: SHARE_ORIGIN, shellPath: SHELL_PATH });
   }
   if (url.pathname === "/api/log") {
-    return json(res, 200, { messages: state.messages, queued: state.queued, uploads: state.uploads.map(({ bytes, ...rest }) => rest) });
+    return json(res, 200, { messages: state.messages, queued: state.queued, uploads: state.uploads.map(({ bytes, ...rest }) => rest), verifyCalls: state.verifyCalls });
   }
   if (url.pathname === "/api/reset" && req.method === "POST") {
     state.messages = [];
     state.queued = [];
     state.uploads = [];
+    state.verifyDelayMs = 0;
+    state.verifyCalls = 0;
     state.threads[0].running = true;
     return json(res, 200, { ok: true });
   }
@@ -147,9 +152,15 @@ const roomServer = createServer(async (req, res) => {
     }
     return json(res, 200, thread);
   }
+  if (url.pathname === "/api/test/verify-delay" && req.method === "POST") {
+    state.verifyDelayMs = Math.min(5000, Number(url.searchParams.get("ms")) || 0);
+    return json(res, 200, { ok: true });
+  }
   const verify = /^\/api\/projects\/([^/]+)\/verify-source$/.exec(url.pathname);
   if (verify && req.method === "POST") {
     const { file } = JSON.parse((await readBody(req, 4096)).toString());
+    state.verifyCalls++;
+    if (state.verifyDelayMs) await new Promise((r) => setTimeout(r, state.verifyDelayMs));
     const ok = typeof file === "string" && /^[\w./-]{1,200}$/.test(file) && !file.includes("..") && verify[1] === "prj_acme" && state.workspaceFiles.has(file);
     return json(res, 200, { verified: ok });
   }

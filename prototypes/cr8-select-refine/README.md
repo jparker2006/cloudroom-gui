@@ -4,6 +4,8 @@ Isolated prototype. It does not touch `gui/`. No project dependencies; Node 22+ 
 Tests and design renders need Playwright (a tool, not a project dependency).
 
 Findings, source map, contract, design options and tickets: [FINDINGS.md](FINDINGS.md).
+Recovered upstream comparison: [RECONCILIATION.md](RECONCILIATION.md). Review status and validation: [REVIEWS.md](REVIEWS.md).
+No production implementation or design choice is approved.
 
 ## What runs
 
@@ -13,7 +15,7 @@ Findings, source map, contract, design options and tickets: [FINDINGS.md](FINDIN
 | --- | --- | --- |
 | 4300 | The user's app being built | Pricing page with a login form, password, card field, hidden CSRF input, an API key in page text, a prompt-injection paragraph, SPA and full navigation links. |
 | 4301 | A Connect port share (`<handle>--4300.cloudroom.run`) | Proxies to 4300 like the tunnel client does, and serves the **select shell** at `/.well-known/cloudroom/select/`. |
-| 4302 | The Cloudroom app (`<handle>.cloudroom.run`) | Thread view, composer with an existing draft, queue, preview panel, review panel. Mock API for attachments, messages (queue-if-active only) and source verification. |
+| 4302 | The Cloudroom app (`app.<base>` in upstream v111; legacy `<handle>.<base>`) | Thread view, composer with an existing draft, queue, preview panel, review panel. Mock API for attachments, messages (queue-if-active only) and source verification. |
 
 Open `http://localhost:4302/` (desktop layout) or the same URL in a phone-sized window with `?tab=preview`.
 `?layout=b` shows design option B.
@@ -22,7 +24,7 @@ Open `http://localhost:4302/` (desktop layout) or the same URL in a phone-sized 
 
 ```sh
 node server.mjs
-CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/run.mjs            # 102 checks: chromium-phone, webkit-phone, chromium-desktop
+CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/run.mjs            # current counts in REVIEWS.md; chromium-phone, webkit-phone, chromium-desktop
 CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/render-designs.mjs # writes designs/*.png
 electron --no-sandbox desktop/electron-select.cjs                          # native desktop path, needs a display (Xvfb)
 ```

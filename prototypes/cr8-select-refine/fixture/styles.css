@@ -24,3 +24,6 @@ main { padding: 20px; max-width: 880px; margin: 0 auto; }
 .counter { color: #5b6478; }
 .spacer { height: 900px; }
 footer { padding: 20px; text-align: center; color: #5b6478; }
+.extras { display: grid; gap: 8px; padding: 6px; }
+.scroller { height: 64px; overflow: auto; border: 1px solid #cfd5e3; border-radius: 10px; background: #fff; padding: 0 12px; font-size: 14px; }
+#private-btn { padding: 10px; border-radius: 10px; border: 1px solid #cfd5e3; background: #fff; font-size: 14px; }

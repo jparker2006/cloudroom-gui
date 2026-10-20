@@ -13,11 +13,24 @@ function createSelector(contents) {
   const dbg = contents.debugger;
   let generation = 0;
   let pending = null;
+  let owns = false;
+  let listener = null;
+  const clearListener = () => {
+    if (listener) dbg.off("message", listener);
+    listener = null;
+  };
   const bump = () => {
     generation++;
     if (pending) pending.reject(new Error("stale: page changed"));
     pending = null;
+    clearListener();
   };
+  dbg.on("detach", () => {
+    owns = false;
+    clearListener();
+    if (pending) pending.reject(new Error("cancelled: debugger detached"));
+    pending = null;
+  });
   contents.on("did-start-navigation", (_e, _url, isInPlace, isMainFrame) => isMainFrame && bump());
   contents.on("did-navigate-in-page", (_e, _url, isMainFrame) => isMainFrame && bump());
   contents.on("render-process-gone", bump);
@@ -27,18 +40,25 @@ function createSelector(contents) {
   async function start() {
     if (dbg.isAttached()) throw new Error("busy: an agent is controlling this tab");
     dbg.attach("1.3");
-    await send("DOM.enable");
-    await send("DOM.getDocument", { depth: 0 });
-    await send("Overlay.enable");
-    await send("Page.enable");
-    await send("Runtime.enable");
+    owns = true;
+    try {
+      await send("DOM.enable");
+      await send("DOM.getDocument", { depth: 0 });
+      await send("Overlay.enable");
+      await send("Page.enable");
+      await send("Runtime.enable");
+    } catch (error) {
+      stop();
+      throw error;
+    }
     const startedAt = generation;
     const picked = new Promise((resolve, reject) => {
       pending = { resolve, reject, startedAt };
     });
-    dbg.on("message", function onMessage(_event, method, params) {
+    clearListener();
+    listener = (_event, method, params) => {
       if (method !== "Overlay.inspectNodeRequested") return;
-      dbg.off("message", onMessage);
+      clearListener();
       if (!pending) return;
       if (pending.startedAt !== generation) {
         pending.reject(new Error("stale: page changed"));
@@ -47,7 +67,8 @@ function createSelector(contents) {
       }
       pending.resolve({ backendNodeId: params.backendNodeId, generation });
       pending = null;
-    });
+    };
+    dbg.on("message", listener);
     await send("Overlay.setInspectMode", {
       mode: "searchForNode",
       highlightConfig: { showInfo: true, contentColor: { r: 191, g: 255, b: 0, a: 0.18 }, borderColor: { r: 191, g: 255, b: 0, a: 1 } },
@@ -76,11 +97,32 @@ function createSelector(contents) {
     };
     area.width = Math.min(w, r.x + r.width + PAD) - area.x;
     area.height = Math.min(h, r.y + r.height + PAD) - area.y;
-    const masks = (await send("Runtime.evaluate", {
-      expression: `globalThis.__cr8ElementContext.sensitiveRects(document, ${JSON.stringify(area)})`,
-      contextId: executionContextId,
+    const measure = async () => (await send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      functionDeclaration: "function (area) { return { rect: this.getBoundingClientRect().toJSON(), masks: globalThis.__cr8ElementContext.sensitiveRects(this.ownerDocument, area, this) }; }",
+      arguments: [{ value: area }],
       returnByValue: true,
     })).result.value;
+    const before = await measure();
+    const masks = before.masks;
+    const { root } = await send("DOM.getDocument", { depth: -1, pierce: true });
+    const closedHosts = [];
+    const walk = (node) => {
+      if (node.shadowRoots?.some((r) => r.shadowRootType === "closed")) closedHosts.push(node.backendNodeId);
+      for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) walk(child);
+      if (node.contentDocument) walk(node.contentDocument);
+    };
+    walk(root);
+    for (const backend of closedHosts) {
+      try {
+        const { model } = await send("DOM.getBoxModel", { backendNodeId: backend });
+        const q = model.border;
+        const xs = [q[0], q[2], q[4], q[6]];
+        const ys = [q[1], q[3], q[5], q[7]];
+        const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), reason: "closed component" };
+        if (box.x < area.x + area.width && box.x + box.width > area.x && box.y < area.y + area.height && box.y + box.height > area.y) masks.push(box);
+      } catch {}
+    }
     if (at !== generation) throw new Error("stale: page changed");
     const shot = await send("Page.captureScreenshot", {
       format: "png",
@@ -88,6 +130,10 @@ function createSelector(contents) {
       clip: { x: area.x + sx, y: area.y + sy, width: area.width, height: area.height, scale: 1 },
     });
     if (at !== generation) throw new Error("stale: page changed");
+    const after = await measure();
+    const moved = ["x", "y", "width", "height"].some((key) => Math.abs(after.rect[key] - before.rect[key]) > 0.5);
+    if (moved) throw new Error("changed: the page moved during capture");
+    for (const m of after.masks) if (!masks.some((n) => n.x === m.x && n.y === m.y && n.width === m.width && n.height === m.height)) masks.push(m);
     const image = nativeImage.createFromBuffer(Buffer.from(shot.data, "base64"));
     const size = image.getSize();
     const scale = size.width / area.width;
@@ -115,10 +161,12 @@ function createSelector(contents) {
   function stop() {
     if (pending) pending.reject(new Error("cancelled"));
     pending = null;
-    if (dbg.isAttached()) dbg.detach();
+    clearListener();
+    if (owns && dbg.isAttached()) dbg.detach();
+    owns = false;
   }
 
-  return { start, describe, stop, get generation() { return generation; } };
+  return { start, describe, stop, get generation() { return generation; }, get listenerCount() { return dbg.listenerCount("message"); } };
 }
 
 async function evalMain(contents, expression) {
@@ -211,8 +259,31 @@ app.whenReady().then(async () => {
     } catch (error) {
       results.leaseConflictRefused = /busy/.test(error.message);
     }
+    selector.stop();
+    results.agentLeaseSurvivesStop = contents.debugger.isAttached();
     contents.debugger.detach();
-    results.ok = results.clickSuppressed && results.rectMatches && results.staleRejected && results.leaseConflictRefused && results.loginMasks.includes("password") && results.loginSubmits === 0;
+
+    await loaded(contents, FIXTURE);
+    const baseline = selector.listenerCount;
+    await selector.start();
+    selector.stop();
+    results.listenersCleaned = selector.listenerCount === baseline;
+
+    const extras = await evalMain(contents, "(() => { const e = document.querySelector('.extras'); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: Math.round(r.left + 2), y: Math.round(r.top + r.height / 2) }; })()");
+    await new Promise((r) => setTimeout(r, 150));
+    const extrasSession = await selector.start();
+    await new Promise((r) => setTimeout(r, 150));
+    await clickAt(contents, extras.x, extras.y);
+    const extrasPicked = await withTimeout(extrasSession.picked, 3000, "extras pick");
+    const extrasResult = await selector.describe(extrasPicked);
+    selector.stop();
+    writeFileSync(join(OUT, "desktop-crop-extras-redacted.png"), extrasResult.crop.png);
+    const reasons = extrasResult.crop.masks.map((m) => m.reason);
+    results.extrasElement = { tag: extrasResult.element.tag, name: extrasResult.element.name, text: extrasResult.element.text };
+    results.extrasMaskReasons = [...new Set(reasons)];
+    results.extrasTextClean = !/Nightingale|4242|4111|AbCdEfGh12IjKl|billing@|dana@/.test(JSON.stringify(results.extrasElement));
+    results.extrasMasksComplete = ["marked private", "secret-like text", "closed component", "embedded content"].every((reason) => reasons.includes(reason));
+    results.ok = results.clickSuppressed && results.rectMatches && results.staleRejected && results.leaseConflictRefused && results.agentLeaseSurvivesStop && results.listenersCleaned && results.extrasTextClean && results.extrasMasksComplete && results.loginMasks.includes("password") && results.loginSubmits === 0;
   } catch (error) {
     results.error = String(error && error.stack || error);
     results.ok = false;

@@ -86,6 +86,12 @@ textarea { width: 100%; resize: vertical; background: var(--canvas); border: 1px
 .review-actions .spacer { flex: 1; }
 #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--strong); color: var(--canvas); padding: 8px 14px; border-radius: 999px; font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50; }
 #toast.show { opacity: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#candidate-list { flex-basis: 100%; list-style: none; margin: 4px 0 0; padding: 0; max-height: 40vh; overflow: auto; display: grid; gap: 4px; }
+#candidate-list[hidden] { display: none; }
+#candidate-list button { width: 100%; text-align: left; }
+#select-hint { flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 
 #app.layout-b #review-slot-chat .review { margin: 0 14px; border: 1px solid var(--border); border-radius: 12px; grid-template-columns: 132px 1fr; }
 #app.layout-b .crop-canvas { max-height: 110px; }
@@ -98,25 +104,33 @@ textarea { width: 100%; resize: vertical; background: var(--canvas); border: 1px
   #app[data-tab="preview"] #chat > :not(#thread-header):not(#mobile-tabs) { display: none; }
   #app[data-tab="preview"] #chat { pointer-events: none; }
   #app[data-tab="preview"] #chat > #thread-header, #app[data-tab="preview"] #chat > #mobile-tabs { pointer-events: auto; }
-  #app[data-tab="preview"] #preview { top: 96px; position: absolute; inset: 96px 0 0 0; }
+  #app[data-tab="preview"] #preview { position: absolute; inset: var(--chrome-h, 114px) 0 0 0; }
   #thread-header { padding-top: max(10px, env(safe-area-inset-top)); }
   #mobile-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-  #mobile-tabs button { flex: 1; min-height: 36px; border: 0; background: transparent; color: var(--muted-fg); }
+  #mobile-tabs button { flex: 1; min-height: 44px; border: 0; background: transparent; color: var(--muted-fg); }
   #mobile-tabs button[aria-pressed="true"] { background: var(--muted); color: var(--strong); }
   button { min-height: 44px; }
   button.icon { width: 44px; }
-  .chips button { min-height: 32px; width: 32px; }
+  .chips button { min-height: 44px; width: 44px; }
   #review-slot-preview .review { position: absolute; left: 0; right: 0; bottom: 0; max-height: 64%; overflow: auto; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45); padding-bottom: max(12px, env(safe-area-inset-bottom)); z-index: 5; grid-template-columns: 1fr; grid-template-areas: "target" "crop" "chips" "request" "note" "actions"; }
-  .crop { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .crop-stage { flex: 0 0 44%; max-width: 44%; }
-  .crop-canvas { max-height: 96px; }
-  .crop-caption { flex: 1 1 50%; }
-  .crop-tools { flex-basis: 100%; }
-  .crop-tools button { min-height: 36px; }
-  .request-text { min-height: 64px; }
+  #review-slot-preview .review { padding-top: 0; }
+  #review-slot-preview .review::before { display: none; }
+  #review-slot-preview .review-target { position: sticky; top: 0; z-index: 1; background: var(--sidebar); padding: 10px 0 6px; flex-wrap: nowrap; box-shadow: 0 10px 14px var(--sidebar); }
+  #review-slot-preview .review-target strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #review-slot-preview .review-target .delivery { flex: none; }
+  .crop { display: grid; grid-template-columns: 42% 1fr; grid-template-areas: "stage caption" "stage tools"; gap: 4px 10px; align-items: start; }
+  .crop-stage { grid-area: stage; }
+  .crop-canvas { max-height: 92px; }
+  .crop-caption { grid-area: caption; }
+  .crop-tools { grid-area: tools; flex-wrap: nowrap; overflow-x: auto; }
+  .crop-tools button { padding: 0 8px; white-space: nowrap; }
+  #review-slot-preview .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  #review-slot-preview .chips li { flex: none; max-width: 75%; }
+  .crop-tools button { min-height: 44px; }
+  .review-actions { position: sticky; bottom: calc(-1 * max(12px, env(safe-area-inset-bottom))); background: var(--sidebar); padding: 8px 0 max(0px, env(safe-area-inset-bottom)); margin-bottom: calc(-1 * max(12px, env(safe-area-inset-bottom))); box-shadow: 0 -10px 14px var(--sidebar); }
+  .request-text { min-height: 56px; }
   #app.layout-b #review-slot-preview .review { top: 0; max-height: none; border-radius: 0; }
   #app.layout-b #review-slot-preview .crop { flex-direction: column; align-items: stretch; }
   #app.layout-b #review-slot-preview .crop-stage { max-width: none; }
   #app.layout-b #review-slot-preview .crop-canvas { max-height: 240px; }
-}
 }

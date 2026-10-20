@@ -15,7 +15,7 @@
         <button type="button" data-tab="chat" aria-pressed="true">Chat</button>
         <button type="button" data-tab="preview" aria-pressed="false">Preview</button>
       </nav>
-      <div id="timeline" aria-live="polite"></div>
+      <div id="timeline"></div>
       <div id="queue" aria-label="Queued messages"></div>
       <div id="review-slot-chat"></div>
       <form id="composer" aria-label="Composer">
@@ -35,7 +35,9 @@
       </div>
       <div id="select-hint" role="status" hidden>
         <span>Tap an element to choose it. Drag to scroll.</span>
+        <button type="button" id="select-list" class="ghost">Choose from list</button>
         <button type="button" id="select-cancel" class="ghost">Cancel</button>
+        <ul id="candidate-list" aria-label="Elements on screen" hidden></ul>
       </div>
       <div id="preview-body"></div>
       <div id="review-slot-preview"></div>
@@ -67,7 +69,8 @@
       </div>
     </section>
   </template>
-  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="toast" aria-hidden="true"></div>
+  <div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>
   <script src="/element-context.js"></script>
   <script src="/app.js" type="module"></script>
 </body>

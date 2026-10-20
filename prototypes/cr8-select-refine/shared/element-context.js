@@ -74,17 +74,61 @@
     return node.getClientRects().length > 0 && style.visibility !== "hidden" && style.opacity !== "0";
   }
 
+  function up(node) {
+    return node.parentElement || node.getRootNode().host || null;
+  }
+
+  function clipRect(el, rect) {
+    const win = el.ownerDocument.defaultView;
+    let left = rect.left;
+    let top = rect.top;
+    let right = rect.right;
+    let bottom = rect.bottom;
+    for (let node = up(el); node && node !== el.ownerDocument.documentElement; node = up(node)) {
+      const style = win.getComputedStyle(node);
+      if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+      const box = node.getBoundingClientRect();
+      left = Math.max(left, box.left);
+      top = Math.max(top, box.top);
+      right = Math.min(right, box.right);
+      bottom = Math.min(bottom, box.bottom);
+    }
+    return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+  }
+
+  function blockOf(el) {
+    const win = el.ownerDocument.defaultView;
+    for (let node = el; node; node = up(node)) {
+      const display = win.getComputedStyle(node).display;
+      if (!display.startsWith("inline") && display !== "contents") return node;
+    }
+    return el;
+  }
+
+  function textRuns(root, doc, keep) {
+    const runs = new Map();
+    const walker = doc.createTreeWalker(root, doc.defaultView.NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || !node.nodeValue || !keep(parent) || !rendered(parent)) continue;
+      const range = doc.createRange();
+      range.selectNodeContents(node);
+      const box = range.getBoundingClientRect();
+      const clipped = clipRect(parent, box);
+      if ((clipped.width === 0 || clipped.height === 0) && box.width > 0) continue;
+      const block = blockOf(parent);
+      let run = runs.get(block);
+      if (!run) runs.set(block, (run = { block, text: "", parts: [] }));
+      run.parts.push({ node, start: run.text.length });
+      run.text += node.nodeValue;
+    }
+    return [...runs.values()];
+  }
+
   function visibleText(el) {
     if (isField(el)) return "";
-    const doc = el.ownerDocument;
-    const walker = doc.createTreeWalker(el, doc.defaultView.NodeFilter.SHOW_TEXT);
-    let out = "";
-    for (let node = walker.nextNode(); node && out.length < 2000; node = walker.nextNode()) {
-      const parent = node.parentElement;
-      if (!parent || parent.closest(EXCLUDED_TEXT) || !rendered(parent)) continue;
-      out += ` ${node.nodeValue}`;
-    }
-    return out;
+    const runs = textRuns(el, el.ownerDocument, (parent) => !parent.closest(EXCLUDED_TEXT) && (parent === el || !parent.closest("[data-private],[data-cloudroom-redact]")));
+    return runs.map((run) => run.text).join(" ").slice(0, 4000);
   }
 
   function textOfIds(doc, ids) {
@@ -92,6 +136,7 @@
       .split(/\s+/)
       .map((id) => doc.getElementById(id))
       .filter(Boolean)
+      .filter((node) => !isPrivate(node))
       .map((node) => visibleText(node))
       .join(" ");
   }
@@ -192,13 +237,21 @@
     return null;
   }
 
+  function safePath(pathname) {
+    return pathname
+      .split("/")
+      .map((part) => (part.length >= 12 && /\d/.test(part) && /[a-z]/i.test(part)) || /^[0-9a-f-]{16,}$/i.test(part) ? ":id" : part)
+      .join("/")
+      .slice(0, 200);
+  }
+
   function safeHref(el) {
     const raw = el.getAttribute("href");
     if (!raw) return null;
     try {
       const url = new URL(raw, el.ownerDocument.baseURI);
       if (!/^https?:$/.test(url.protocol)) return url.protocol;
-      return url.origin === el.ownerDocument.defaultView.location.origin ? url.pathname : url.origin;
+      return url.origin === el.ownerDocument.defaultView.location.origin ? safePath(url.pathname) : url.origin;
     } catch {
       return null;
     }
@@ -213,11 +266,16 @@
     };
   }
 
+  function isPrivate(el) {
+    return Boolean(el.closest("[data-private],[data-cloudroom-redact],input[type=password]"));
+  }
+
   function describe(el) {
     const win = el.ownerDocument.defaultView;
     const style = win.getComputedStyle(el);
-    const name = clean(accessibleName(el), MAX_NAME);
-    const text = clean(visibleText(el), MAX_TEXT);
+    const hidden = isPrivate(el);
+    const name = hidden ? "[private]" : clean(accessibleName(el), MAX_NAME);
+    const text = hidden ? "" : clean(visibleText(el), MAX_TEXT);
     const attributes = {};
     if (el.localName === "input") attributes.type = (el.getAttribute("type") || "text").toLowerCase();
     const href = safeHref(el);
@@ -237,7 +295,7 @@
       sensitiveField: isField(el),
       rect: round(el.getBoundingClientRect()),
       viewport: { width: el.ownerDocument.documentElement.clientWidth, height: win.innerHeight, dpr: win.devicePixelRatio || 1 },
-      path: win.location.pathname,
+      path: safePath(win.location.pathname),
       style: {
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
@@ -254,33 +312,58 @@
     return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   }
 
-  function sensitiveRects(doc, area) {
+  function roots(doc) {
+    const out = [doc];
+    for (let i = 0; i < out.length; i++) {
+      for (const el of out[i].querySelectorAll("*")) if (el.shadowRoot) out.push(el.shadowRoot);
+    }
+    return out;
+  }
+
+  function sensitiveRects(doc, area, target) {
     const out = [];
-    const add = (rect, reason) => {
-      const r = round(rect);
+    const add = (el, rect, reason) => {
+      const r = round(clipRect(el, rect));
       if (r.width > 0 && r.height > 0 && intersects(r, area)) out.push({ ...r, reason });
     };
-    for (const el of doc.querySelectorAll(SENSITIVE_SELECTOR)) {
-      const type = (el.getAttribute("type") || "").toLowerCase();
-      const reason = type === "password" ? "password" : /^cc-/.test(el.getAttribute("autocomplete") || "") ? "payment field" : el.matches("[data-private],[data-cloudroom-redact]") ? "marked private" : "form value";
-      add(el.getBoundingClientRect(), reason);
-    }
-    const walker = doc.createTreeWalker(doc.body, doc.defaultView.NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const value = node.nodeValue || "";
-      if (value.length < 8) continue;
-      for (const pattern of SECRET_PATTERNS) {
-        pattern.lastIndex = 0;
-        for (let match = pattern.exec(value); match; match = pattern.exec(value)) {
-          const range = doc.createRange();
-          range.setStart(node, match.index);
-          range.setEnd(node, match.index + match[0].length);
-          for (const rect of range.getClientRects()) add(rect, "secret-like text");
+    for (const root of roots(doc)) {
+      for (const el of root.querySelectorAll(SENSITIVE_SELECTOR)) {
+        const type = (el.getAttribute("type") || "").toLowerCase();
+        const reason = type === "password" ? "password" : /^cc-/.test(el.getAttribute("autocomplete") || "") ? "payment field" : el.matches("[data-private],[data-cloudroom-redact]") ? "marked private" : "form value";
+        add(el, el.getBoundingClientRect(), reason);
+      }
+      for (const el of root.querySelectorAll("iframe,object,embed,canvas,video")) {
+        if (el === target && !["iframe", "object", "embed"].includes(el.localName)) continue;
+        add(el, el.getBoundingClientRect(), "embedded content");
+      }
+      for (const run of textRuns(root === doc ? doc.body : root, doc, () => true)) {
+        if (run.text.length < 8) continue;
+        for (const pattern of SECRET_PATTERNS) {
+          pattern.lastIndex = 0;
+          for (let match = pattern.exec(run.text); match; match = pattern.exec(run.text)) {
+            const end = match.index + match[0].length;
+            const first = run.parts.findLast((part) => part.start <= match.index);
+            const last = run.parts.findLast((part) => part.start < end);
+            const range = doc.createRange();
+            range.setStart(first.node, match.index - first.start);
+            range.setEnd(last.node, end - last.start);
+            for (const rect of range.getClientRects()) add(first.node.parentElement, rect, "secret-like text");
+          }
         }
       }
     }
     return out;
   }
 
-  globalThis.__cr8ElementContext = { describe, sensitiveRects, clean, redactText };
+  function scrolledRegions(doc, area) {
+    const out = [];
+    for (const root of roots(doc)) {
+      for (const el of root.querySelectorAll("*")) {
+        if ((el.scrollTop || el.scrollLeft) && el !== doc.documentElement && el !== doc.body && intersects(round(el.getBoundingClientRect()), area)) out.push(el);
+      }
+    }
+    return out;
+  }
+
+  globalThis.__cr8ElementContext = { describe, sensitiveRects, scrolledRegions, clean, redactText };
 })();

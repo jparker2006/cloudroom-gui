@@ -1,7 +1,7 @@
 window.addEventListener("message", (event) => {
   const d = event.data;
   if (d?.type !== "select:start") return;
-  const appOrigin = document.querySelector('meta[name="cloudroom-app-origin"]').content;
+  const appOrigin = event.origin;
   for (let generation = 0; generation < 6; generation++) {
     window.parent.postMessage({
       cr8: 1, previewId: d.previewId, generation, type: "select:result", nonce: d.nonce, seq: 99,

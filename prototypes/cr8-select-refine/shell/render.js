@@ -92,6 +92,7 @@
   async function renderCrop(win, rect, masks) {
     const doc = win.document;
     const area = cropArea(win, rect);
+    if (globalThis.__cr8ElementContext.scrolledRegions(doc, area).length > 0) throw new Error("scrolled-region");
     const scale = Math.min(2, Math.max(1, win.devicePixelRatio || 1));
     const clone = await snapshotDocument(win);
     const width = Math.max(doc.documentElement.scrollWidth, doc.documentElement.clientWidth);
