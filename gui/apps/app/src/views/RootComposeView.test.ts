@@ -20,6 +20,7 @@ import {
 } from "@/components/promptbox/NewThreadComposer";
 import {
   getCrossProjectPromptAttachmentCopies,
+  getProjectOwnedPromptAttachmentPaths,
   getProjectStoredPromptAttachmentPaths,
   parsePromptDraftStorage,
   promptDraftToInput,
@@ -691,6 +692,15 @@ describe("getCrossProjectPromptAttachmentCopies", () => {
         "proj_b",
       ),
     ).toEqual([{ sourceProjectId: "proj_a", paths: ["a-1.png", "a-2.png"] }]);
+  });
+
+  it("lets the project picker move only what the current project owns", () => {
+    expect(
+      getProjectOwnedPromptAttachmentPaths(
+        [image("a-1.png", "proj_a"), image("b-1.png", "proj_b"), image("legacy.png")],
+        "proj_b",
+      ),
+    ).toEqual(["b-1.png", "legacy.png"]);
   });
 
   it("copies nothing for same-project or legacy untagged attachments", () => {

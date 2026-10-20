@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir, stat, rename, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, isAbsolute, join, win32 } from "node:path";
 import { and, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { createThread, getAppSettings, getProject, getThread, getThreadExecutionOverride, setThreadExecutionOverride, updateThread, cloudroomThreads, cloudroomCommands, events, threads, type DbConnection, type DbQueryConnection, type DbTransaction } from "@cloudroom/db";
 import { PERSONAL_PROJECT_ID, encodeClientTurnRequestIdNumber, isStandaloneBuiltinCompactCommand, promptInputSchema, reasoningLevelSchema, threadQueuedMessageSchema, type Thread, type PromptInput, type ThreadEventType, type ThreadEventTurnStatus, type ThreadChangeKind, type ReasoningLevel } from "@cloudroom/domain";
@@ -1396,7 +1396,6 @@ class CloudroomService {
     await this.requireOwnThread(saved);
     if (!saved.sessionId && command(this.deps.db, `first_${thread.id}`)?.state === "failed") throw new ApiError(409, "cloudroom_start_failed", "Retry the rejected cloud start before sending more messages. Your original prompt is saved.");
     if (thread.archivedAt || thread.deletedAt) throw new ApiError(409, "thread_not_writable", "Thread is archived or deleted");
-    await this.requireProjectAttachments(payload.input, thread.projectId);
     if (payload.sendAt || payload.pluginSubmission) throw new ApiError(409, "cloudroom_unsupported", "Cloud follow-ups use the core queue. Scheduling is not enabled.");
     if (isStandaloneBuiltinCompactCommand(payload.input)) {
       await this.compact(thread);
@@ -1406,6 +1405,7 @@ class CloudroomService {
     const id = payload.requestId ?? randomUUID();
     const steer = (payload.mode === "steer" || payload.mode === "steer-if-active") && thread.status === "active" && saved.turnId && !unstartedTurn(this.deps.db, thread.id);
     const previous = command(this.deps.db, id);
+    if (!previous) await this.requireProjectAttachments(payload.input, thread.projectId);
     // A side chat's first message carries its quoted message, as on Local; a retry repeats what was sent.
     const seed = steer ? [] : previous?.command === "prompt"
       ? getLeadingAgentOnlyInput(z.array(promptInputSchema).catch([]).parse(JSON.parse(previous.input).content))
@@ -1551,6 +1551,9 @@ class CloudroomService {
   }
 
   private requireProjectAttachments(input: PromptInput[], projectId: string): Promise<void> {
+    if (input.some((part) => (part.type === "localImage" || part.type === "localFile") && (isAbsolute(part.path) || win32.isAbsolute(part.path)))) {
+      throw new ApiError(400, "cloudroom_unsupported", "Cloud attachments must be uploaded files. Attach the file again.");
+    }
     return validatePromptAttachmentReferences({ dataDir: this.deps.config.dataDir, input, projectId });
   }
 
@@ -1574,10 +1577,10 @@ class CloudroomService {
       let bytes: Buffer<ArrayBuffer>;
       try {
         if (!projectId) throw new Error("The thread has no project");
-        bytes = localPath.startsWith("/") ? await readFile(localPath) : (await readAttachment(this.deps.config.dataDir, projectId, localPath)).content;
+        bytes = (await readAttachment(this.deps.config.dataDir, projectId, localPath)).content;
       } catch (error) {
         this.warn("A Cloud attachment could not be read and was left out", error, { projectId, promptId, attachment: attachment.name });
-        missing.push(attachment.name);
+        missing.push(basename(attachment.name.replaceAll("\\", "/")));
         continue;
       }
       const attachmentId = `${promptId}a${index}`;

@@ -1210,25 +1210,36 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     const created = await createIn(projectB.id, "after-copy", path);
     expect(created.status, await created.clone().text()).toBe(201);
     const thread = await created.json();
-    await expect.poll(() => prompts.some((prompt) => prompt.text.includes("after-copy"))).toBe(true);
+    await expect.poll(() => prompts.some((prompt) => prompt.text.includes("after-copy")), { timeout: 5000 }).toBe(true);
     expect(uploads).toHaveLength(1);
     expect(uploads[0]!.equals(png)).toBe(true);
     expect((await readFile(fileInA)).equals(png)).toBe(true);
 
     const { path: onlyInA } = await upload(projectA.id);
+    const sendImage = (requestId: string, imagePath: string) => request(`/threads/${thread.id}/send`, { requestId, mode: "auto", input: [{ type: "text", text: requestId, mentions: [] }, { type: "localImage", path: imagePath }] });
+    const crossSend = await sendImage("cross-send", onlyInA);
+    expect(crossSend.status).toBe(400);
+    expect(await crossSend.text()).toContain("was not uploaded for this project");
+    const absoluteSend = await sendImage("absolute-send", fileInA);
+    expect(absoluteSend.status).toBe(400);
+    expect(await absoluteSend.text()).toContain("Cloud attachments must be uploaded files");
+    expect(command(harness.db, "cross-send")).toBeNull();
+    expect(command(harness.db, "absolute-send")).toBeNull();
     const storeLegacyPrompt = (requestId: string, localPath: string, at: number) => harness.db.insert(cloudroomCommands).values({
       id: requestId, threadId: thread.id, command: "prompt", createdAt: at,
       input: JSON.stringify({ text: requestId, content: [{ type: "text", text: requestId, mentions: [] }, { type: "localImage", path: localPath }], attachments: [{ name: localPath, kind: "image", localPath }], customInstructions: "" }),
     }).run();
     storeLegacyPrompt("legacy-bare-name", onlyInA, Date.now());
     storeLegacyPrompt("legacy-escaping", `../${projectA.id}/${onlyInA}`, Date.now() + 1);
+    storeLegacyPrompt("legacy-absolute", join(harness.config.dataDir, "attachments", projectA.id, onlyInA), Date.now() + 2);
     expect((await request(`/threads/${thread.id}/send`, { requestId: "continues", mode: "auto", input: [{ type: "text", text: "continues", mentions: [] }, { type: "localImage", path }] })).status).toBe(200);
 
-    await expect.poll(() => prompts.map((prompt) => prompt.request_id)).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "continues"]);
-    for (const [id, name] of [["legacy-bare-name", onlyInA], ["legacy-escaping", `../${projectA.id}/${onlyInA}`]] as const) {
+    await expect.poll(() => prompts.map((prompt) => prompt.request_id), { timeout: 5000 }).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "legacy-absolute", "continues"]);
+    for (const id of ["legacy-bare-name", "legacy-escaping", "legacy-absolute"]) {
       const prompt = prompts.find((item) => item.request_id === id)!;
       expect(prompt.attachments ?? []).toEqual([]);
-      expect(prompt.text).toContain(`[Attachment "${name}" could not be delivered`);
+      expect(prompt.text).toContain(`[Attachment "${onlyInA}" could not be delivered`);
+      expect(prompt.text).not.toContain(projectA.id);
       expect(prompt.text).toContain("You have not seen it");
     }
     expect(prompts.at(-1)!.attachments).toHaveLength(1);

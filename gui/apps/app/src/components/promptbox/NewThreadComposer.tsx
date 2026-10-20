@@ -105,7 +105,7 @@ import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import {
   arePromptDraftStatesEqual,
   getCrossProjectPromptAttachmentCopies,
-  getProjectStoredPromptAttachmentPaths,
+  getProjectOwnedPromptAttachmentPaths,
   isPromptDraftEmpty,
   promptDraftToInput,
   type PromptDraftAttachment,
@@ -1324,8 +1324,9 @@ export function NewThreadComposer({
       ) {
         return;
       }
-      const attachmentPaths = getProjectStoredPromptAttachmentPaths(
+      const attachmentPaths = getProjectOwnedPromptAttachmentPaths(
         promptDraft.getCurrent().attachments,
+        projectId,
       );
       isCopyingAttachmentsRef.current = true;
       setIsCopyingAttachments(true);

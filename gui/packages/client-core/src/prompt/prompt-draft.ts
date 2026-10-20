@@ -482,6 +482,17 @@ export function promptInputToDraft(
   };
 }
 
+export function getProjectOwnedPromptAttachmentPaths(
+  attachments: readonly PromptDraftAttachment[],
+  projectId: string,
+): string[] {
+  return getProjectStoredPromptAttachmentPaths(
+    attachments.filter(
+      (attachment) => (attachment.projectId ?? projectId) === projectId,
+    ),
+  );
+}
+
 export function getCrossProjectPromptAttachmentCopies(
   attachments: readonly PromptDraftAttachment[],
   projectId: string,

@@ -212,6 +212,14 @@ export async function readAttachment(
   };
 }
 
+function attachmentCopyConflict(attachmentPath: string): ApiError {
+  return new ApiError(
+    409,
+    "invalid_request",
+    `Attachment ${attachmentPath} already exists in the target project with different content`,
+  );
+}
+
 export async function copyProjectAttachments(
   dataDir: string,
   sourceProjectId: string,
@@ -232,21 +240,25 @@ export async function copyProjectAttachments(
       const targetPath = resolveAttachmentPath(targetDir, attachmentPath);
       const existing = await readFile(targetPath).catch(() => null);
       if (existing && !existing.equals(content)) {
-        throw new ApiError(
-          409,
-          "invalid_request",
-          `Attachment ${attachmentPath} already exists in the target project with different content`,
-        );
+        throw attachmentCopyConflict(attachmentPath);
       }
-      return { content, exists: existing !== null, targetPath };
+      return { attachmentPath, content, exists: existing !== null, targetPath };
     }),
   );
 
   await Promise.all(
-    attachments.map(async ({ content, exists, targetPath }) => {
+    attachments.map(async ({ attachmentPath, content, exists, targetPath }) => {
       if (exists) return;
       await mkdir(dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, content, { flag: "wx" });
+      try {
+        await writeFile(targetPath, content, { flag: "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        const existing = await readFile(targetPath).catch(() => null);
+        if (!existing?.equals(content)) {
+          throw attachmentCopyConflict(attachmentPath);
+        }
+      }
     }),
   );
 }
