@@ -4,6 +4,7 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPromptDraftAccessor,
+  discardNewThreadDraft,
   moveNewThreadDraft,
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
@@ -862,5 +863,55 @@ describe("moving the pre-upgrade draft into a project", () => {
     expect(result).toEqual({ status: "failed" });
     expect(target.getCurrent().text).toBe("alpha text");
     expect(window.localStorage.getItem(LEGACY_KEY)).toBe(storedDraft("legacy text"));
+  });
+});
+
+describe("discarding a draft the composer doesn't show", () => {
+  const LEGACY_KEY = "bb.promptbox.contents-draft-3";
+
+  function backups(): string[] {
+    return Object.keys(window.localStorage).filter((key) =>
+      key.startsWith("bb.promptbox.unreadable-draft-"),
+    );
+  }
+
+  it("marks a readable draft as discarded instead of removing it", () => {
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("legacy text"));
+
+    expect(discardNewThreadDraft(LEGACY_KEY)).toBe("discarded");
+    expect(JSON.parse(window.localStorage.getItem(LEGACY_KEY) ?? "null")).toMatchObject({
+      discarded: true,
+    });
+  });
+
+  it("backs up each unreadable value under its own key before discarding it", () => {
+    window.localStorage.setItem(LEGACY_KEY, "{first bad");
+    discardNewThreadDraft(LEGACY_KEY);
+    window.localStorage.setItem(LEGACY_KEY, "{second bad");
+    discardNewThreadDraft(LEGACY_KEY);
+
+    expect(backups().map((key) => window.localStorage.getItem(key)).sort()).toEqual([
+      "{first bad",
+      "{second bad",
+    ]);
+    expect(backups().every((key) => /-[0-9a-f]{16}-3$/.test(key))).toBe(true);
+  });
+
+  it("leaves an unreadable value in place when its backup can't be saved", () => {
+    window.localStorage.setItem(LEGACY_KEY, "{bad");
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let result;
+    try {
+      result = discardNewThreadDraft(LEGACY_KEY);
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(result).toBe("failed");
+    expect(window.localStorage.getItem(LEGACY_KEY)).toBe("{bad");
   });
 });

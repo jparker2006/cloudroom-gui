@@ -559,6 +559,52 @@ export function moveNewThreadDraft(
   return { status: "moved", leftoverAttachments: leftovers.map((attachment) => attachment.name) };
 }
 
+function unreadableBackupPrefix(storageKey: string): string {
+  return isNewThreadProjectDraftKey(storageKey)
+    ? `bb.promptbox.unreadable-new-thread-${newThreadProjectSegment(storageKey)}-`
+    : "bb.promptbox.unreadable-draft-";
+}
+
+function backUpUnreadableDraft(storageKey: string, rawValue: string): boolean {
+  let backupKey: string;
+  do {
+    backupKey = `${unreadableBackupPrefix(storageKey)}${createDraftRev()}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+  } while (readStoredPromptDraftValue(backupKey) !== null);
+  try {
+    window.localStorage.setItem(backupKey, rawValue);
+  } catch (error) {
+    console.warn(`[prompt-draft] could not back up ${storageKey}`, error);
+    return false;
+  }
+  return readStoredPromptDraftValue(backupKey) === rawValue;
+}
+
+export function discardNewThreadDraft(
+  storageKey: string,
+): "discarded" | "failed" | "nothing-to-discard" {
+  const rawValue = readStoredPromptDraftValue(storageKey);
+  if (rawValue === null) return "nothing-to-discard";
+  if (
+    readNewThreadRecord(rawValue).kind === "unreadable" &&
+    (!backUpUnreadableDraft(storageKey, rawValue) ||
+      readStoredPromptDraftValue(storageKey) !== rawValue)
+  ) {
+    return "failed";
+  }
+  try {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({ rev: createDraftRev(), discarded: true }),
+    );
+  } catch (error) {
+    console.warn(`[prompt-draft] could not discard ${storageKey}`, error);
+    return "failed";
+  }
+  promptDraftCache.delete(storageKey);
+  emitPromptDraftChange(storageKey);
+  return "discarded";
+}
+
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
   storageKey: string;
   getCurrent: () => PromptDraftState;
