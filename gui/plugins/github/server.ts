@@ -371,7 +371,8 @@ export function resolvePullAssociation(
 
 function checkHost(url: unknown): string | null {
   try {
-    return new URL(String(url)).host || null;
+    const { host } = new URL(String(url));
+    return host === "" || host === "github.com" ? null : host;
   } catch {
     return null;
   }
@@ -393,14 +394,17 @@ export function latestCheckRuns<
       entry.__typename ??
       (entry.context === undefined ? "CheckRun" : "StatusContext");
     const workflow = String(entry.workflowName ?? "");
+    const host = checkHost(entry.detailsUrl);
     const source =
-      kind === "CheckRun" && workflow === ""
-        ? checkHost(entry.detailsUrl)
-        : workflow;
+      kind !== "CheckRun" || workflow !== ""
+        ? ["workflow", workflow]
+        : host === null
+          ? null
+          : ["host", host];
     const name = JSON.stringify(
       source === null
         ? [kind, index]
-        : [kind, source, entry.name ?? entry.context ?? "check"],
+        : [kind, ...source, entry.name ?? entry.context ?? "check"],
     );
     const current = latest.get(name);
     const started = Date.parse(String(entry.startedAt ?? ""));

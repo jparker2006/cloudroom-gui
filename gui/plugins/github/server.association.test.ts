@@ -1114,6 +1114,60 @@ esac
     ]);
   });
 
+  it("keeps workflow-less checks that only link to GitHub run pages apart", async () => {
+    writeGh({
+      42: pullView(42, {
+        statusCheckRollup: [
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T12:00:00Z",
+            detailsUrl: "https://github.com/acme/widgets/runs/1",
+          },
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T12:01:00Z",
+            detailsUrl: "https://github.com/acme/widgets/runs/2",
+          },
+          {
+            __typename: "CheckRun",
+            name: "lint",
+            workflowName: "ci.example",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T12:00:00Z",
+          },
+          {
+            __typename: "CheckRun",
+            name: "lint",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T12:01:00Z",
+            detailsUrl: "https://ci.example/lint/1",
+          },
+        ],
+      }),
+    });
+    const { harness } = await loadPlugin(newWorld());
+
+    const { pull } = (await harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    })) as FetchedPull;
+    expect(pull.checks).toHaveLength(4);
+    expect(
+      pull.checks?.filter((check) => check.status === "failure"),
+    ).toHaveLength(2);
+  });
+
   it("refuses detail that GitHub reports for a different number", async () => {
     writeGh({ 42: pullView(43) });
     const { harness } = await loadPlugin(newWorld());
