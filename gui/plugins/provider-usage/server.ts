@@ -45,6 +45,13 @@ export const providerUsageRpcContract = defineRpcContract({
   },
 });
 
+function isoTime(ms: number | null): string | null {
+  const time = ms === null ? null : new Date(ms);
+  return time !== null && Number.isFinite(time.getTime())
+    ? time.toISOString()
+    : null;
+}
+
 type UsageRequest = z.infer<typeof providerUsageRpcContract.getUsage.input>;
 function normalizedTint(
   tint: { light: string; dark: string } | undefined,
@@ -70,6 +77,8 @@ function normalizedUsage(
         accountEmail: usage.accountEmail || null,
         planLabel: usage.planLabel || null,
         windows: usage.windows.map((window) => ({
+          id: window.id,
+          kind: window.kind,
           label: window.label,
           usedPercent: window.usedPercent,
           resetsAt: window.resetsAt || null,
@@ -222,6 +231,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                 accountId: account.id,
                 inUse: account.inUse,
                 observedAt: account.observedAt ?? null,
+                ...(account.error ? { refreshFailed: true } : {}),
                 usage:
                   windows.length === 0
                     ? null
@@ -230,18 +240,19 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                         accountEmail: account.email,
                         planLabel: account.plan,
                         windows: windows.map((window) => ({
+                          id: null,
+                          kind: "custom" as const,
                           label: window.label,
                           usedPercent: window.usedPercent,
-                          resetsAt:
-                            window.resetsAt === null
-                              ? null
-                              : new Date(window.resetsAt).toISOString(),
+                          resetsAt: isoTime(window.resetsAt),
                           cost: null,
                         })),
                       },
               },
             ];
           });
+          if (entries.some((entry) => entry.refreshFailed))
+            machine.error ??= "Some usage could not be refreshed.";
           if (index < 0) machine.providers.push(...entries);
           else machine.providers.splice(index, 1, ...entries);
         }

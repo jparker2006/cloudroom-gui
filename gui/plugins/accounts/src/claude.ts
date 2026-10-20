@@ -190,7 +190,8 @@ export async function claudeUsage(secret: Secret): Promise<UsageWindow[]> {
     ] as const
   ).flatMap(([label, key]) => {
     const used = response.headers.get(`${LIMITS}-${key}-utilization`);
-    if (used === null || !Number.isFinite(Number(used))) return [];
+    if (used === null || used.trim() === "" || !Number.isFinite(Number(used)))
+      return [];
     return [
       {
         label,

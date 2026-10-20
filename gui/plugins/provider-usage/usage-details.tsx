@@ -61,6 +61,88 @@ export function usageAllowance(
   };
 }
 
+const VERIFIED_WINDOW_MS: Partial<Record<UsageWindow["kind"], number>> = {
+  "five-hour": 5 * 60 * 60_000,
+  weekly: 7 * 24 * 60 * 60_000,
+};
+const ON_PACE_POINTS = 2;
+const MIN_ELAPSED_FRACTION = 0.03;
+
+export type UsagePace =
+  | {
+      kind: "estimate";
+      status: "deficit" | "reserve" | "on-pace";
+      points: number;
+      observedAt: number;
+    }
+  | { kind: "unavailable"; reason: string };
+
+export const usagePaceMessages = {
+  basis: "Compared with even usage through this window",
+  noObservation: "No successful measurement time",
+  noDuration: "Window length not reported",
+  noReset: "Reset time not reported",
+  noUsage: "Usage not reported",
+  expired: "Window had already reset when measured",
+  resetSinceUpdate: "Reset since last update",
+  mismatch: "Reset time doesn’t match the window length",
+  early: "Too early in the window",
+} as const;
+
+export function usagePace(
+  window: Pick<UsageWindow, "kind" | "usedPercent" | "resetsAt">,
+  observedAt: number | null,
+  now: number,
+): UsagePace {
+  const unavailable = (reason: string): UsagePace => ({
+    kind: "unavailable",
+    reason,
+  });
+  if (observedAt === null || !Number.isFinite(observedAt))
+    return unavailable(usagePaceMessages.noObservation);
+  const duration = VERIFIED_WINDOW_MS[window.kind];
+  if (duration === undefined) return unavailable(usagePaceMessages.noDuration);
+  const resetAt =
+    window.resetsAt === null ? Number.NaN : Date.parse(window.resetsAt);
+  if (!Number.isFinite(resetAt)) return unavailable(usagePaceMessages.noReset);
+  if (resetAt <= observedAt) return unavailable(usagePaceMessages.expired);
+  if (now >= resetAt) return unavailable(usagePaceMessages.resetSinceUpdate);
+  const used = window.usedPercent;
+  if (used === null || !Number.isFinite(used) || used < 0)
+    return unavailable(usagePaceMessages.noUsage);
+  const elapsed = (observedAt - (resetAt - duration)) / duration;
+  if (elapsed < 0) return unavailable(usagePaceMessages.mismatch);
+  if (elapsed < MIN_ELAPSED_FRACTION)
+    return unavailable(usagePaceMessages.early);
+  const difference = used - elapsed * 100;
+  return {
+    kind: "estimate",
+    status:
+      difference > ON_PACE_POINTS
+        ? "deficit"
+        : difference < -ON_PACE_POINTS
+          ? "reserve"
+          : "on-pace",
+    points: Math.abs(difference),
+    observedAt,
+  };
+}
+
+export function paceText(
+  pace: Extract<UsagePace, { kind: "estimate" }>,
+): string {
+  const points = Math.round(pace.points * 10) / 10;
+  const unit = points === 1 ? "percentage point" : "percentage points";
+  switch (pace.status) {
+    case "deficit":
+      return `Deficit by ${points} ${unit}`;
+    case "reserve":
+      return `Reserve by ${points} ${unit}`;
+    case "on-pace":
+      return "On pace";
+  }
+}
+
 export function formatPercent(percent: number): string {
   return `${Math.round(percent)}%`;
 }
@@ -142,6 +224,29 @@ function UsageFreshness({
   );
 }
 
+function UsagePaceLine({ pace }: { pace: UsagePace }) {
+  if (pace.kind === "unavailable")
+    return (
+      <p className="text-xs text-subtle-foreground">
+        Pace unavailable: {pace.reason.toLowerCase()}
+      </p>
+    );
+  return (
+    <p className="text-xs text-subtle-foreground">
+      <span
+        className={cn(
+          "font-medium",
+          pace.status === "deficit" ? "text-warning-text" : "text-foreground",
+        )}
+      >
+        {paceText(pace)}
+      </span>
+      {` · As of ${formatObservedTime(pace.observedAt)}. `}
+      {usagePaceMessages.basis}.
+    </p>
+  );
+}
+
 function UsageWindowRow({
   window,
   observedAt,
@@ -172,9 +277,10 @@ function UsageWindowRow({
                 {formatPercent(allowance.remainingPercent)} remaining
               </span>
               {" · "}
+              {`${formatPercent(allowance.usedPercent)} used`}
               {window.cost === null
-                ? `${formatPercent(allowance.usedPercent)} used`
-                : `${formatUsdCents(window.cost.usedUsdCents, true)} / ${formatUsdCents(window.cost.limitUsdCents, false)}`}
+                ? null
+                : ` · ${formatUsdCents(window.cost.usedUsdCents, true)} / ${formatUsdCents(window.cost.limitUsdCents, false)}`}
             </>
           ) : (
             allowanceText(allowance)
@@ -197,6 +303,9 @@ function UsageWindowRow({
           {reset ?? usageAllowanceMessages.resetUnknown}
         </p>
       )}
+      {allowance.kind === "reported" ? (
+        <UsagePaceLine pace={usagePace(window, observedAt, now)} />
+      ) : null}
     </div>
   );
 }
@@ -281,7 +390,9 @@ function UsageAccountDetails({
     provider.accountLabel;
   const headingId = useId();
   const showsWindows =
-    !isError && usage?.status === "ok" && usage.windows.length > 0;
+    !(isError && usage === null) &&
+    usage?.status === "ok" &&
+    usage.windows.length > 0;
   const body = (
     <ProviderUsageBody
       provider={provider}

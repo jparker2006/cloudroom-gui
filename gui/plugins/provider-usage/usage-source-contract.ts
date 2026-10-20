@@ -141,6 +141,7 @@ export const accountViewsSchema = z.array(
     email: z.string().nullable(),
     plan: z.string().nullable(),
     inUse: z.boolean(),
+    error: z.string().nullish(),
     observedAt: z.number().nullish(),
     windows: z.array(
       z.object({

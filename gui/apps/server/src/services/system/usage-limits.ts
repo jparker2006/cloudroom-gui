@@ -149,9 +149,9 @@ export async function cloudClaudeUsage(
         ["Weekly limit", "7d", "weekly"],
       ] as const
     ).flatMap(([label, key, kind]) => {
-      const used = Number(
-        response.headers.get(`${LIMITS}-${key}-utilization`) ?? NaN,
-      );
+      const header =
+        response.headers.get(`${LIMITS}-${key}-utilization`)?.trim() || null;
+      const used = header === null ? Number.NaN : Number(header);
       if (!Number.isFinite(used)) return [];
       return [
         {

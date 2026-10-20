@@ -24,6 +24,8 @@ function account(id: string, providerId = "codex"): UsageProvider {
       planLabel: "Max (20x)",
       windows: [
         {
+          id: null,
+          kind: "weekly",
           label: "Weekly limit",
           usedPercent: 42,
           resetsAt: new Date(Date.now() + 3600_000).toISOString(),
@@ -263,6 +265,8 @@ function windowed(
       accountEmail: `${id}@example.com`,
       planLabel: null,
       windows: windows.map((window, index) => ({
+        id: null,
+        kind: "custom",
         label: `Limit ${index + 1}`,
         cost: null,
         ...window,
@@ -329,4 +333,48 @@ it("shows remaining, over-limit, unavailable and reset-since-update states with 
   ).toBeTruthy();
   expect(slot.queryByText("over@example.com")).toBeNull();
   expect(slot.getByText(/Last updated 30 min ago/)).toBeTruthy();
+});
+
+it("shows even-window pacing as of each account's own measurement without leaking across accounts", async () => {
+  const app = await loadPluginApp(() => import("./app"));
+  const hour = 3600_000;
+  const resetsAt = new Date(Date.now() + 3.75 * hour).toISOString();
+  const paced = (id: string, observedAt: number, usedPercent: number) => {
+    const base = windowed(id, observedAt, [{ usedPercent, resetsAt }]);
+    if (base.usage?.status !== "ok") throw new Error("expected usage");
+    return {
+      ...base,
+      usage: {
+        ...base.usage,
+        windows: base.usage.windows.map((window) => ({
+          ...window,
+          kind: "five-hour" as const,
+        })),
+      },
+    };
+  };
+  const result = {
+    machines: [
+      machine("source:pool", [
+        paced("ahead", Date.now() - 0, 40),
+        paced("behind", Date.now() - 0, 10),
+        { ...paced("early", Date.now() - 1.2 * hour, 5) },
+      ]),
+    ],
+  };
+  const slot = renderSlot(
+    app.settingsSections[0]!,
+    {},
+    { rpc: { getUsage: () => result } },
+  );
+  await slot.findByText("ahead@example.com");
+  expect(slot.getByText("Deficit by 15 percentage points")).toBeTruthy();
+  expect(slot.getByText("Reserve by 15 percentage points")).toBeTruthy();
+  expect(
+    slot.getByText(/Pace unavailable: too early in the window/),
+  ).toBeTruthy();
+  expect(
+    slot.getAllByText(/Compared with even usage through this window/).length,
+  ).toBe(2);
+  expect(slot.getAllByText(/As of/).length).toBe(2);
 });

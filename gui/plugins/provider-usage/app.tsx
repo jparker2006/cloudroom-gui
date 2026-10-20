@@ -43,9 +43,13 @@ import {
   allowanceText,
   formatObservedAge,
   formatPercent,
+  formatObservedTime,
   freshnessText,
+  paceText,
   usageAllowance,
   usageAllowanceMessages,
+  usagePace,
+  usagePaceMessages,
 } from "./usage-details.js";
 import {
   emptyUsageMessage,
@@ -55,7 +59,7 @@ import {
   usageFeedbackMessages,
 } from "./usage-feedback.js";
 
-import { UsageSettings } from "./settings.js";
+import { requestUsageDetailsMachine, UsageSettings } from "./settings.js";
 
 export interface UsageStoreSnapshot {
   data: UsageSnapshot | null;
@@ -215,6 +219,11 @@ function UsageWindow({
   const [showReset, setShowReset] = useState(false);
   const now = Date.now();
   const allowance = usageAllowance(window, account.observedAt, now);
+  const pace = usagePace(window, account.observedAt, now);
+  const paceSummary =
+    pace.kind === "estimate"
+      ? `${paceText(pace)} as of ${formatObservedTime(pace.observedAt)}, ${usagePaceMessages.basis.toLowerCase()}.`
+      : `Pace unavailable: ${pace.reason.toLowerCase()}.`;
   const reset = formatUsageReset(window.resetsAt);
   const resetText = reset ?? usageAllowanceMessages.resetUnknown;
   const countdown =
@@ -233,7 +242,7 @@ function UsageWindow({
     .replace(/^Daily limit$/u, "1d")
     .replace(/^Plan usage$/u, "plan")
     .replace(/^On-demand spend$/u, "spend");
-  const description = `${window.label}: ${allowanceText(allowance)}${cost === null ? "" : `, ${cost}`}.${allowance.kind === "reset-since-update" ? "" : ` ${reset ?? "Reset time not reported"}.`} ${freshnessText(account, now)}.`;
+  const description = `${window.label}: ${allowanceText(allowance)}${cost === null ? "" : `, ${cost}`}.${allowance.kind === "reset-since-update" ? "" : ` ${reset ?? "Reset time not reported"}.`}${allowance.kind === "reported" ? ` ${paceSummary}` : ""} ${freshnessText(account, now)}.`;
   return (
     <button
       type="button"
@@ -273,9 +282,24 @@ function UsageWindow({
           aria-hidden="true"
           className="ml-auto min-w-0 truncate tabular-nums text-subtle-foreground"
         >
-          {countdown ?? "—"}
+          {countdown ?? (allowance.kind === "reset-since-update" ? "" : "—")}
         </span>
       </span>
+      {allowance.kind === "reported" &&
+      pace.kind === "estimate" &&
+      pace.status !== "on-pace" ? (
+        <span
+          className={cn(
+            "block pl-3.5",
+            pace.status === "deficit"
+              ? "text-warning-text"
+              : "text-subtle-foreground",
+          )}
+        >
+          {pace.status} {Math.round(pace.points * 10) / 10} pts · as of{" "}
+          {formatObservedTime(pace.observedAt)}
+        </span>
+      ) : null}
       {allowance.kind === "reported" && allowance.overLimit ? (
         <span className="block pl-3.5 text-destructive-text">
           Over limit · {formatPercent(allowance.usedPercent)} used
@@ -292,6 +316,9 @@ function UsageWindow({
             ? ` · ${formatPercent(allowance.usedPercent)} used`
             : null}
           {cost === null ? null : ` · ${cost}`}
+          {allowance.kind === "reported" ? (
+            <span className="block">{paceSummary}</span>
+          ) : null}
         </span>
       ) : null}
     </button>
@@ -309,23 +336,24 @@ function AccountFreshness({ account }: { account: UsageProvider }) {
   return (
     <span
       className={cn(
-        "ml-auto flex shrink-0 items-center gap-1 font-normal text-subtle-foreground",
+        "ml-auto shrink-0 font-normal text-subtle-foreground",
         account.refreshFailed && "text-warning-text",
       )}
     >
-      {account.refreshFailed ? (
-        <span role="img" aria-label="Refresh failed" title="Refresh failed">
-          <Icon
-            name="AlertTriangle"
-            aria-hidden="true"
-            className="size-3 shrink-0"
-          />
-        </span>
-      ) : null}
       {account.observedAt === null
         ? usageAllowanceMessages.updateUnavailable
         : `updated ${formatObservedAge(account.observedAt, Date.now())}`}
     </span>
+  );
+}
+
+function RefreshFailedNote({ account }: { account: UsageProvider }) {
+  if (!account.refreshFailed) return null;
+  return (
+    <p className="flex items-center gap-1 text-warning-text">
+      <Icon name="AlertTriangle" aria-hidden="true" className="size-3 shrink-0" />
+      Couldn’t refresh · showing last update
+    </p>
   );
 }
 
@@ -609,7 +637,7 @@ export function ProviderUsageStatusContent({
   snapshot: UsageStoreSnapshot;
   threadMachineId: string | null;
   refreshEnabled?: boolean;
-  onViewDetails?: () => void;
+  onViewDetails?: (machineId: string | null) => void;
 }) {
   const [, refreshCountdowns] = useState(0);
   useEffect(() => {
@@ -789,6 +817,7 @@ export function ProviderUsageStatusContent({
                     <AccountFreshness account={account} />
                   </div>
                 )}
+                <RefreshFailedNote account={account} />
                 {account.usage === null && snapshot.isRefreshing ? (
                   <UsageNote>{usageFeedbackMessages.loading}</UsageNote>
                 ) : account.usage === null &&
@@ -822,7 +851,7 @@ export function ProviderUsageStatusContent({
         <button
           type="button"
           className="mx-1.5 flex min-h-8 shrink-0 items-center justify-between gap-2 border-t border-sidebar-border px-1.5 text-left font-mono text-[10.5px] text-muted-foreground hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring pointer-coarse:min-h-11"
-          onClick={onViewDetails}
+          onClick={() => onViewDetails(activeMachineId)}
         >
           View usage details
           <Icon name="ChevronRight" aria-hidden="true" className="size-3" />
@@ -851,6 +880,10 @@ function ProviderUsageStatus(props: ExperimentalSidebarFooterDisclosureProps) {
       {...props}
       snapshot={snapshot}
       threadMachineId={threadMachineId}
+      onViewDetails={(machineId) => {
+        requestUsageDetailsMachine(machineId);
+        props.openPluginDetails();
+      }}
     />
   );
 }

@@ -147,10 +147,21 @@ export function UsageSettingsContent({
   );
 }
 
+let requestedMachineId: string | null = null;
+
+export function requestUsageDetailsMachine(machineId: string | null): void {
+  requestedMachineId = machineId;
+}
+
 export function UsageSettings() {
   const rpc = useRpc<typeof providerUsageRpcContract>();
   const [machines, setMachines] = useState<UsageMachine[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => requestedMachineId,
+  );
+  useEffect(() => {
+    requestedMachineId = null;
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);

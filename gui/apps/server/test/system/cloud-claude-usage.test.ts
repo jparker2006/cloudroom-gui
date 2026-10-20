@@ -36,6 +36,27 @@ afterEach(() => {
 });
 
 describe("cloudClaudeUsage", () => {
+  it("treats a blank utilization header as missing, not zero", async () => {
+    stubAnthropic(200, {
+      "anthropic-ratelimit-unified-5h-utilization": " ",
+      "anthropic-ratelimit-unified-7d-utilization": "0.4",
+    });
+
+    const usage = await cloudClaudeUsage(
+      tokenLogin.map((entry) => ({
+        ...entry,
+        source: { core: "machine-environment" as const },
+        reason: "Cloud Claude login",
+      })),
+    );
+
+    expect(usage).toMatchObject({
+      status: "ok",
+      windows: [{ label: "Weekly limit", usedPercent: 40 }],
+    });
+    expect(usage.status === "ok" && usage.windows).toHaveLength(1);
+  });
+
   it("reads the limits from a rate-limited reply's headers", async () => {
     const fetch = stubAnthropic(429, {
       "anthropic-ratelimit-unified-5h-utilization": "0.25",

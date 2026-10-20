@@ -2175,7 +2175,10 @@ An item is either an `action`, whose `onActivate` callback runs when selected,
 or a `disclosure`, whose React component is revealed above the footer row. The
 host owns button chrome, accessibility, responsive containment, and a
 single active disclosure across all plugins. A disclosure component owns
-everything inside its boundary and receives only `dismiss()`.
+everything inside its boundary and receives `dismiss()` and
+`openPluginDetails()`. The latter hides the disclosure and opens the plugin's
+existing detail page, the same destination as an action's
+`openPluginDetails()`; it grants no other navigation or access.
 
 Registering an action returns nothing. Registering a disclosure returns a
 controller that can request `open`, `close`, or `toggle`. Those requests go
@@ -2206,6 +2209,9 @@ renders in the same footer row.
 7. **Focus and dismissal.** Validate icon toggling, Escape, focus return,
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
+8. **Detail navigation.** Confirm disclosures should keep
+   `openPluginDetails()` rather than a general navigation API, and that
+   closing the compact sidebar on navigation is the right default.
 
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 

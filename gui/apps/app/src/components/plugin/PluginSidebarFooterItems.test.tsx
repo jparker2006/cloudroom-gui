@@ -282,6 +282,39 @@ describe("PluginSidebarFooterItems", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  it("lets a disclosure close itself and open its plugin details", () => {
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Provider usage",
+        icon: "ChartColumn",
+        component: ({ openPluginDetails }) => (
+          <button type="button" onClick={openPluginDetails}>
+            View usage details
+          </button>
+        ),
+      });
+    });
+    setPluginSlotRegistrations(
+      "provider-usage",
+      collectPluginAppRegistrations(definition),
+    );
+
+    renderWithProviders(<FooterHarness />);
+    const trigger = screen.getByRole("button", { name: "Provider usage" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "View usage details" }));
+
+    expect(screen.getByLabelText("Current path").textContent).toBe(
+      "/settings/plugins/provider-usage",
+    );
+    expect(
+      screen.queryByRole("button", { name: "View usage details" }),
+    ).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("keeps the tooltip closed when the More drawer returns focus after a touch dismissal", () => {
     const definition = definePluginApp((app) => {
       app.experimental_sidebarFooter.register({

@@ -70,6 +70,8 @@ function measured(
     planLabel,
     windows: [
       {
+        id: null,
+        kind: "weekly",
         label: "Weekly limit",
         usedPercent,
         resetsAt: futureIso(usedPercent > 90 ? 18 : 83),
@@ -107,12 +109,16 @@ function local(
       planLabel: "Max",
       windows: [
         {
+          id: null,
+          kind: "five-hour",
           label: "Five-hour limit",
           usedPercent: fiveHour,
           resetsAt: futureIso(1),
           cost: null,
         },
         {
+          id: null,
+          kind: "weekly",
           label: "Weekly limit",
           usedPercent: weekly,
           resetsAt: futureIso(40),
@@ -153,12 +159,16 @@ const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
               planLabel: "Pro",
               windows: [
                 {
+                  id: null,
+                  kind: "five-hour",
                   label: "Five-hour limit",
                   usedPercent: 28,
                   resetsAt: futureIso(1.2),
                   cost: null,
                 },
                 {
+                  id: null,
+                  kind: "weekly",
                   label: "Weekly limit",
                   usedPercent: 61,
                   resetsAt: futureIso(83),
@@ -175,6 +185,8 @@ const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
               planLabel: "Team",
               windows: [
                 {
+                  id: null,
+                  kind: "weekly",
                   label: "Weekly limit",
                   usedPercent: 86,
                   resetsAt: null,
@@ -191,6 +203,8 @@ const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
             planLabel: "Max (20x)",
             windows: [
               {
+                id: null,
+                kind: "weekly",
                 label: "Weekly limit",
                 usedPercent: 112,
                 resetsAt: futureIso(18),
@@ -205,6 +219,8 @@ const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
               planLabel: "Max",
               windows: [
                 {
+                  id: null,
+                  kind: "weekly",
                   label: "Weekly limit",
                   usedPercent: 74,
                   resetsAt: futureIso(-1),
@@ -299,6 +315,7 @@ function FooterPreview({ scenario }: { scenario: ScenarioName }) {
     <div className="w-[303px] overflow-hidden rounded-xl border border-sidebar-border bg-sidebar text-sidebar-foreground">
       <ProviderUsageStatusContent
         dismiss={() => {}}
+        openPluginDetails={() => {}}
         snapshot={storySnapshot(scenario)}
         threadMachineId={null}
         refreshEnabled={false}

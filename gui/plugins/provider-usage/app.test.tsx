@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UsageProvider } from "./usage-schema.js";
+import type { UsageProvider, UsageWindow } from "./usage-schema.js";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
@@ -76,6 +76,8 @@ describe("provider usage footer disclosure", () => {
         planLabel: "Pro",
         windows: [
           {
+            id: null,
+            kind: "weekly",
             label: "Weekly limit",
             usedPercent: usedPercent,
             resetsAt:
@@ -120,6 +122,8 @@ describe("provider usage footer disclosure", () => {
                         planLabel: "Max",
                         windows: [
                           {
+                            id: null,
+                            kind: "five-hour",
                             label: "Five-hour limit",
                             usedPercent: 82,
                             resetsAt: new Date(
@@ -147,6 +151,8 @@ describe("provider usage footer disclosure", () => {
                         planLabel: "Plus",
                         windows: [
                           {
+                            id: null,
+                            kind: "weekly",
                             label: "Weekly limit",
                             usedPercent: 37,
                             resetsAt: null,
@@ -180,6 +186,8 @@ describe("provider usage footer disclosure", () => {
                         planLabel: "Plus",
                         windows: [
                           {
+                            id: null,
+                            kind: "weekly",
                             label: "Weekly limit",
                             usedPercent: 97,
                             resetsAt: null,
@@ -241,7 +249,7 @@ describe("provider usage footer disclosure", () => {
     const dismiss = vi.fn();
     const slot = renderSlot(
       item,
-      { dismiss },
+      { dismiss, openPluginDetails: vi.fn() },
       {
         context: { threadId: "thread-active" },
         sidebarThreads: {
@@ -358,7 +366,7 @@ describe("provider usage footer disclosure", () => {
       "Claude Codeclaude-team@example.com",
     ]);
     const windowButton = slot.getByRole("button", {
-      name: "Weekly limit: 54% left, 46% used. Reset time not reported. Last update unavailable.",
+      name: "Weekly limit: 54% left, 46% used. Reset time not reported. Pace unavailable: no successful measurement time. Last update unavailable.",
     });
     fireEvent.click(windowButton);
     expect(slot.getByText("Reset time not reported.")).toBeTruthy();
@@ -435,6 +443,8 @@ it.each([
               ? []
               : [
                   {
+                    id: null,
+                    kind: "weekly",
                     label: "Weekly limit",
                     usedPercent: 42,
                     resetsAt: null,
@@ -480,7 +490,10 @@ it.each([
   });
   const item = app.experimentalSidebarFooterItems[0];
   if (item?.kind !== "disclosure") throw new Error("missing disclosure");
-  const slot = renderSlot(item, { dismiss: vi.fn() });
+  const slot = renderSlot(item, {
+    dismiss: vi.fn(),
+    openPluginDetails: vi.fn(),
+  });
   await waitFor(() =>
     expect(slot.getByText(expected, { exact: false })).toBeTruthy(),
   );
@@ -499,11 +512,8 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   const account = (
     id: string,
     observedAt: number | null,
-    windows: {
-      label: string;
-      usedPercent: number | null;
-      resetsAt: string | null;
-    }[],
+    windows: (Pick<UsageWindow, "label" | "usedPercent" | "resetsAt"> &
+      Partial<Pick<UsageWindow, "id" | "kind">>)[],
     extra: Partial<UsageProvider> = {},
   ): UsageProvider => ({
     id,
@@ -520,7 +530,12 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
       status: "ok",
       accountEmail: `${id}@example.com`,
       planLabel: null,
-      windows: windows.map((window) => ({ ...window, cost: null })),
+      windows: windows.map((window) => ({
+        id: null,
+        kind: "custom",
+        ...window,
+        cost: null,
+      })),
     },
     ...extra,
   });
@@ -541,6 +556,8 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
               providers: [
                 account("fresh", Date.now() - 4 * 60_000, [
                   {
+                    id: null,
+                    kind: "five-hour",
                     label: "Five-hour limit",
                     usedPercent: 28,
                     resetsAt: inHours(1),
@@ -554,6 +571,8 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
                 ),
                 account("unknown", null, [
                   {
+                    id: null,
+                    kind: "custom",
                     label: "Limit hit",
                     usedPercent: null,
                     resetsAt: inHours(2),
@@ -561,6 +580,8 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
                 ]),
                 account("reset", Date.now() - 3 * hour, [
                   {
+                    id: null,
+                    kind: "weekly",
                     label: "Weekly limit",
                     usedPercent: 90,
                     resetsAt: inHours(-1),
@@ -579,12 +600,13 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   });
   const item = app.experimentalSidebarFooterItems[0];
   if (item?.kind !== "disclosure") throw new Error("missing disclosure");
-  const slot = renderSlot(item, { dismiss: vi.fn() });
+  const openPluginDetails = vi.fn();
+  const slot = renderSlot(item, { dismiss: vi.fn(), openPluginDetails });
   await slot.findByText("fresh@example.com");
   expect(slot.getByText("72% left")).toBeTruthy();
   expect(slot.getByText("updated 4 min ago")).toBeTruthy();
   expect(slot.getByText("updated 2 hr ago")).toBeTruthy();
-  expect(slot.getByRole("img", { name: "Refresh failed" })).toBeTruthy();
+  expect(slot.getByText("Couldn’t refresh · showing last update")).toBeTruthy();
   expect(slot.getByText("0% left")).toBeTruthy();
   expect(slot.getByText("Over limit · 125% used")).toBeTruthy();
   expect(slot.getByText("Last update unavailable")).toBeTruthy();
@@ -594,7 +616,7 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   expect(slot.queryByText("100% left")).toBeNull();
   expect(
     slot.getByRole("button", {
-      name: "Weekly limit: Over limit · 0% left, 125% used. Reset time not reported. Updated 2 hr ago · Couldn’t refresh.",
+      name: "Weekly limit: Over limit · 0% left, 125% used. Reset time not reported. Pace unavailable: window length not reported. Updated 2 hr ago · Couldn’t refresh.",
     }),
   ).toBeTruthy();
   const reset = slot.getByRole("button", {
@@ -604,6 +626,36 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   expect(slot.getByText("Reset since last update.")).toBeTruthy();
   expect(slot.queryByText("Resetting now")).toBeNull();
   expect(slot.getByText(/Showing the last available update/)).toBeTruthy();
-  expect(slot.queryByRole("button", { name: "View usage details" })).toBeNull();
+  fireEvent.click(slot.getByRole("button", { name: "View usage details" }));
+  expect(openPluginDetails).toHaveBeenCalledOnce();
+  const settings = renderSlot(
+    app.settingsSections[0]!,
+    {},
+    {
+      rpc: {
+        getUsage: () => ({
+          machines: [
+            {
+              id: "source:other",
+              displayName: "Other",
+              status: "connected",
+              error: null,
+              providers: [],
+            },
+            {
+              id: "source:pool",
+              displayName: "Pool",
+              status: "connected",
+              error: null,
+              providers: [],
+            },
+          ],
+        }),
+      },
+    },
+  );
+  expect(
+    (await settings.findByRole("button", { name: "Usage source" })).textContent,
+  ).toContain("Pool");
   await mounted.lifecycle.dispose();
 });

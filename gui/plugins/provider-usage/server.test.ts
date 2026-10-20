@@ -61,6 +61,7 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
         windows: [
           {
             id: "week",
+            kind: "weekly",
             label: "Weekly",
             usedPercent: 42,
             resetsAt: null,
@@ -393,6 +394,7 @@ it("fetches every provider on a selected machine when no provider is named", asy
                   windows: [
                     {
                       id: "week",
+                      kind: "weekly",
                       label: "Weekly",
                       usedPercent: 42,
                       resetsAt: null,
@@ -479,6 +481,7 @@ function measurement(
       windows: [
         {
           id: "week",
+          kind: "weekly",
           label: "Weekly",
           usedPercent,
           resetsAt: null,
@@ -581,6 +584,15 @@ it("gives merged accounts their own observedAt and never invents a percentage fo
           windows: [{ label: "Weekly", usedPercent: 120, resetsAt: null }],
         },
         {
+          id: "failing",
+          email: "failing@example.com",
+          plan: null,
+          inUse: false,
+          error: "Claude usage failed.",
+          observedAt: 1_500,
+          windows: [{ label: "Weekly", usedPercent: 30, resetsAt: 1e17 }],
+        },
+        {
           id: "limited",
           email: "limited@example.com",
           plan: null,
@@ -608,9 +620,48 @@ it("gives merged accounts their own observedAt and never invents a percentage fo
       usage: { windows: [{ usedPercent: 120 }] },
     },
     {
+      accountId: "failing",
+      observedAt: 1_500,
+      refreshFailed: true,
+      usage: { windows: [{ usedPercent: 30, resetsAt: null }] },
+    },
+    {
       accountId: "limited",
       observedAt: null,
       usage: { windows: [{ label: "Limit hit", usedPercent: null }] },
     },
   ]);
+  expect(providers[0]!.refreshFailed).toBeUndefined();
+  expect(providers[1]!.refreshFailed).toBeUndefined();
+  expect(
+    snapshot.machines.find((machine) => machine.id === "host")!.error,
+  ).toBe("Some usage could not be refreshed.");
+});
+
+it("preserves window kind and identity through aggregation for pacing", async () => {
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: [
+          {
+            id: "a",
+            providerId: "claude-code",
+            label: "a",
+            scope: { kind: "shared" },
+          },
+        ],
+      };
+    return measurement(input.resourceId!, 1_000, 40);
+  });
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["source:pool"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  expect(
+    snapshot.machines.find((machine) => machine.id === "source:pool")!
+      .providers[0]!.usage,
+  ).toMatchObject({ windows: [{ id: "week", kind: "weekly" }] });
 });
