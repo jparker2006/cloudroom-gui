@@ -858,3 +858,136 @@ describe("main GitHub panel keeps its existing actions", () => {
     slot.lifecycle.unmount();
   });
 });
+
+describe("session PR panel accessibility corrections", () => {
+  it("announces an identity mismatch revealed by a refresh instead of success", async () => {
+    let calls = 0;
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace", "review"]),
+      getPull: () => {
+        calls += 1;
+        return {
+          pull: pull(42, { id: calls === 1 ? "PR_42" : "PR_reused" }),
+          fetchedAt: new Date().toISOString(),
+        };
+      },
+    });
+    await settle();
+    expect(slot.container.textContent).toContain("Pull 42");
+
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+
+    expect(slot.getByRole("alert").textContent).toContain(
+      "is no longer the pull request linked to this session",
+    );
+    expect(slot.getByRole("status").textContent).not.toBe(
+      "Pull request details refreshed.",
+    );
+    slot.lifecycle.unmount();
+  });
+
+  it("moves focus to the save error after a failed save", async () => {
+    let rejectSave: (error: Error) => void = () => {};
+    const slot = render({
+      pullForThread: () =>
+        association(
+          "thr-1",
+          { kind: "ambiguous" },
+          {
+            candidates: [
+              {
+                repo: "acme/widgets",
+                number: 42,
+                id: "PR_42",
+                sources: ["workspace"],
+              },
+              {
+                repo: "acme/widgets",
+                number: 43,
+                id: "PR_43",
+                sources: ["review"],
+              },
+            ],
+          },
+        ),
+      getPull: () => ({ pull: pull(42), fetchedAt: new Date().toISOString() }),
+      setPullForThread: () =>
+        new Promise((_, reject) => {
+          rejectSave = reject;
+        }),
+    });
+    await settle();
+    const row = slot.getByText("acme/widgets#43").closest("button")!;
+    row.focus();
+    await act(async () => row.click());
+    await settle();
+    rejectSave(new Error("HTTP 403: Resource not accessible by integration"));
+    await settle();
+
+    expect(slot.getByRole("alert").textContent).toContain(
+      "Couldn’t save that choice.",
+    );
+    expect(slot.container.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).not.toBe(row);
+    expect(document.activeElement?.textContent).toContain(
+      "Couldn’t save that choice.",
+    );
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps focus in the panel after clearing a saved choice fails", async () => {
+    const slot = render({
+      pullForThread: () =>
+        association(
+          "thr-1",
+          { kind: "selected", repo: "acme/widgets", number: 43 },
+          {
+            selection: {
+              repo: "acme/widgets",
+              number: 43,
+              id: "PR_43",
+              selectedAt: "2026-10-01T00:00:00.000Z",
+            },
+          },
+        ),
+      getPull: () => ({ pull: pull(43), fetchedAt: new Date().toISOString() }),
+      setPullForThread: () => {
+        throw new Error("kv offline");
+      },
+    });
+    await settle();
+    const clear = slot.getByRole("button", { name: "Use automatic matching" });
+    clear.focus();
+    await act(async () => clear.click());
+    await settle();
+
+    expect(slot.container.textContent).toContain("Pull 43");
+    expect(slot.container.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).not.toBe(clear);
+    slot.lifecycle.unmount();
+  });
+
+  it("does not show the passing icon when a check was skipped", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: () => ({
+        pull: pull(42, {
+          checks: [
+            { name: "build", status: "success", url: "" },
+            { name: "docs", status: "neutral", url: "" },
+          ],
+        }),
+        fetchedAt: new Date().toISOString(),
+      }),
+    });
+    await settle();
+
+    const summary = slot.getByText(/1 skipped or neutral/).closest("button")!;
+    expect(summary.querySelector('[data-icon="CircleCheck"]')).toBeNull();
+    expect(summary.querySelector('[data-icon="Unavailable"]')).not.toBeNull();
+    slot.lifecycle.unmount();
+  });
+});

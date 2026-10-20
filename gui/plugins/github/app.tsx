@@ -1411,7 +1411,10 @@ function checksSummaryParts(checks: PullCheck[] | null): {
     failing: CHECK_STATUS_DISPLAY.failure,
     pending: CHECK_STATUS_DISPLAY.pending,
     unknown_results: CHECK_STATUS_DISPLAY.unknown,
-    passing: CHECK_STATUS_DISPLAY.success,
+    passing:
+      summary.neutral > 0
+        ? CHECK_STATUS_DISPLAY.neutral
+        : CHECK_STATUS_DISPLAY.success,
     neutral: CHECK_STATUS_DISPLAY.neutral,
   }[summary.state];
   const prefix =
@@ -2501,6 +2504,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
   const [choosing, setChoosing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [returnFocus, setReturnFocus] = useState(0);
+  const [saveFailed, setSaveFailed] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const { association } = session;
@@ -2514,6 +2518,14 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
       ?.querySelector<HTMLElement>("[data-return-focus]")
       ?.focus();
   }, [returnFocus]);
+  useEffect(() => {
+    if (saveFailed === 0) return;
+    const container = containerRef.current;
+    (
+      container?.querySelector<HTMLElement>("[data-save-error]") ??
+      container?.querySelector<HTMLElement>("[data-return-focus]")
+    )?.focus();
+  }, [saveFailed]);
   const previousError = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -2541,6 +2553,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
       void session.choose(pull).then((saved) => {
         if (!saved) {
           setAnnouncement("Couldn’t save that choice.");
+          setSaveFailed((count) => count + 1);
           return;
         }
         closeChooser();
@@ -2604,9 +2617,11 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     ) : null;
   const saveError =
     session.saveError !== null ? (
-      <Notice tone="error" urgent>
-        Couldn’t save that choice. {describeGhError(session.saveError)}
-      </Notice>
+      <div tabIndex={-1} data-save-error className="focus:outline-none">
+        <Notice tone="error" urgent>
+          Couldn’t save that choice. {describeGhError(session.saveError)}
+        </Notice>
+      </div>
     ) : null;
   const chooser = choosing ? (
     <section
@@ -2847,20 +2862,6 @@ function SessionPullDetail({
 }) {
   const detail = usePullDetail(repo, number);
   const clearHintId = useId();
-  const userRefresh = useRef(false);
-  const wasRefreshing = useRef(detail.refreshing);
-  useEffect(() => {
-    if (wasRefreshing.current && !detail.refreshing && userRefresh.current) {
-      userRefresh.current = false;
-      onAnnounce(
-        detail.error === null
-          ? "Pull request details refreshed."
-          : "Refreshing pull request details failed. Showing earlier data.",
-      );
-    }
-    wasRefreshing.current = detail.refreshing;
-  }, [detail.refreshing, detail.error, onAnnounce]);
-
   const identityProblem =
     expectedId === null || detail.pull === null
       ? null
@@ -2869,6 +2870,20 @@ function SessionPullDetail({
         : detail.pull.id !== expectedId
           ? `${repo}#${number} is no longer the pull request linked to this session. The repository may have been renamed or reused.`
           : null;
+  const userRefresh = useRef(false);
+  const wasRefreshing = useRef(detail.refreshing);
+  useEffect(() => {
+    if (wasRefreshing.current && !detail.refreshing && userRefresh.current) {
+      userRefresh.current = false;
+      onAnnounce(
+        identityProblem ??
+          (detail.error === null
+            ? "Pull request details refreshed."
+            : "Refreshing pull request details failed. Showing earlier data."),
+      );
+    }
+    wasRefreshing.current = detail.refreshing;
+  }, [detail.refreshing, detail.error, identityProblem, onAnnounce]);
 
   return (
     <>
@@ -2913,7 +2928,9 @@ function SessionPullDetail({
       {notices}
       {identityProblem !== null ? (
         <>
-          <Notice tone="error">{identityProblem} Choose again.</Notice>
+          <Notice tone="error" urgent>
+            {identityProblem} Choose again.
+          </Notice>
           {choosing ? null : (
             <PanelButton variant="outline" onClick={onChange}>
               Choose a PR…
