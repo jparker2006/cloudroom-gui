@@ -332,3 +332,62 @@ export async function cloudroomRequestId(key: string, input: unknown): Promise<s
 export function clearCloudroomRequestId(key: string): void {
   localStorage.removeItem(`cloudroom-request:${key}`);
 }
+
+export interface NewThreadCloudroomRequest {
+  id: string;
+  fingerprint: string;
+  recordKey: string;
+}
+
+const LEGACY_NEW_THREAD_REQUEST_KEY = "cloudroom-request:bb.promptbox.contents-draft-3";
+const NEW_THREAD_REQUEST_PREFIX = "cloudroom-request:bb.promptbox.contents-new-thread-";
+
+async function requestFingerprint(input: unknown): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(input)));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function withNewThreadRequestLock<T>(run: () => T): Promise<T> {
+  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  if (!locks) return Promise.resolve(run());
+  return locks.request("bb.promptbox.request", () => run());
+}
+
+function newThreadRequestRecordKeys(draftKey: string): string[] {
+  const keys = [`cloudroom-request:${draftKey}`, LEGACY_NEW_THREAD_REQUEST_KEY];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(NEW_THREAD_REQUEST_PREFIX) && !keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+export async function newThreadCloudroomRequest(
+  draftKey: string,
+  input: unknown,
+): Promise<NewThreadCloudroomRequest> {
+  const fingerprint = await requestFingerprint(input);
+  const hasLocks = typeof navigator !== "undefined" && navigator.locks !== undefined;
+  return withNewThreadRequestLock(() => {
+    for (const recordKey of newThreadRequestRecordKeys(draftKey)) {
+      const [recordFingerprint, id] = localStorage.getItem(recordKey)?.split(":") ?? [];
+      if (recordFingerprint === fingerprint && id) return { id, fingerprint, recordKey };
+    }
+    const id = crypto.randomUUID();
+    const ownKey = `cloudroom-request:${draftKey}`;
+    const recordKey =
+      hasLocks && localStorage.getItem(ownKey) === null ? ownKey : `${ownKey}:${id}`;
+    localStorage.setItem(recordKey, `${fingerprint}:${id}`);
+    return { id, fingerprint, recordKey };
+  });
+}
+
+export function clearNewThreadCloudroomRequest(
+  evidence: NewThreadCloudroomRequest,
+): Promise<void> {
+  return withNewThreadRequestLock(() => {
+    if (localStorage.getItem(evidence.recordKey) === `${evidence.fingerprint}:${evidence.id}`) {
+      localStorage.removeItem(evidence.recordKey);
+    }
+  });
+}
