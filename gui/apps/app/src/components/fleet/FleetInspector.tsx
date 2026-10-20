@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
 import { useEnvironmentPullRequest } from "@/hooks/queries/environment-queries";
@@ -174,6 +175,30 @@ export function FleetInspector({
     pullRequest.data?.outcome === "available"
       ? pullRequest.data.pullRequest
       : null;
+  const timelineNote = thread.archived
+    ? "Not loaded for archived threads"
+    : timeline.isError
+      ? "Couldn't load thread history"
+      : timeline.isPending
+        ? "Loading…"
+        : null;
+  const prText = thread.archived
+    ? "Not loaded for archived threads"
+    : thread.entry.environmentId === null
+      ? "No workspace for this thread"
+      : pullRequest.isError
+        ? "Couldn't load"
+        : pullRequest.isPending
+          ? "Loading…"
+          : pullRequest.data?.outcome === "unavailable"
+            ? `Unavailable: ${redact.text(pullRequest.data.message) ?? "details hidden"}`
+            : pr
+              ? `#${pr.number} ${pr.state} · ${pr.checks.pendingCount} checks pending, ${pr.checks.passedCount} passed`
+              : "None found for this branch";
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (compact) headingRef.current?.focus();
+  }, [compact, thread.id]);
 
   return (
     <aside
@@ -201,6 +226,8 @@ export function FleetInspector({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         <h2
+          ref={headingRef}
+          tabIndex={-1}
           className={cn(
             "mt-1 text-base font-semibold leading-snug text-foreground",
             redact.on && "italic text-muted-foreground",
@@ -259,14 +286,23 @@ export function FleetInspector({
                     : "Input requested"
                 : "None"}
             </Row>
-            <Row label="Connection" source="host link">
-              {thread.runtime === "offline"
-                ? "Host offline"
-                : thread.runtime === "reconnecting"
-                  ? "Reconnecting"
-                  : thread.runtime === "starting"
-                    ? "Starting"
-                    : "Connected"}
+            <Row
+              label="Connection"
+              source={
+                thread.location.kind === "cloud" ? undefined : "host link"
+              }
+            >
+              {thread.location.kind === "cloud"
+                ? "Not applicable (cloud sandbox)"
+                : thread.runtime === "offline"
+                  ? "Host offline"
+                  : thread.runtime === "reconnecting"
+                    ? "Reconnecting"
+                    : thread.location.online === true
+                      ? "Host online"
+                      : thread.location.online === false
+                        ? "Host offline"
+                        : "Host status unknown"}
             </Row>
             {thread.location.kind === "cloud" ? (
               <Row
@@ -275,7 +311,7 @@ export function FleetInspector({
                   pending.has("cloudSandboxState")
                     ? "not reported by this server"
                     : sandbox?.lastCheckError
-                      ? `check error: ${sandbox.lastCheckError}`
+                      ? `check error: ${redact.text(sandbox.lastCheckError) ?? "details hidden"}`
                       : sandbox?.lastSuccessfulCheckAt
                         ? `checked ${formatAge(now - sandbox.lastSuccessfulCheckAt)}`
                         : undefined
@@ -298,7 +334,12 @@ export function FleetInspector({
                   ? "Message waiting"
                   : "Empty"}
             </Row>
-            <Row label="Updated" source="realtime">
+            <Row
+              label="Updated"
+              source={
+                model.source === "fixture" ? "sample time" : "thread list"
+              }
+            >
               {formatAge(now - thread.entry.updatedAt)}
             </Row>
           </dl>
@@ -320,9 +361,7 @@ export function FleetInspector({
             <Row label="Served by" source="thread history">
               {fallback
                 ? `Fallback to ${fallback.fallbackModel} (from ${fallback.originalModel})`
-                : timeline.isLoading
-                  ? "Loading…"
-                  : "No fallback seen in loaded turns"}
+                : (timelineNote ?? "No fallback seen in loaded turns")}
             </Row>
             <Row label="In-turn" source="activity, not threads">
               {thread.inTurnSubagents > 0
@@ -348,27 +387,21 @@ export function FleetInspector({
         <Section title="WORK">
           <dl className="grid grid-cols-[112px_1fr] gap-x-2 gap-y-1 text-sm">
             <Row label="Pull request" source={pr ? "workspace PR" : undefined}>
-              {thread.archived
-                ? "Not loaded for archived threads"
-                : pullRequest.isLoading
-                  ? "Loading…"
-                  : pr
-                    ? `#${pr.number} ${pr.state} · ${pr.checks.pendingCount} checks pending, ${pr.checks.passedCount} passed`
-                    : "None found for this branch"}
+              {prText}
             </Row>
             <Row
               label="Todo list"
               source={todos ? "agent-reported" : undefined}
             >
-              {timeline.isLoading
-                ? "Loading…"
+              {timelineNote
+                ? timelineNote
                 : todos
                   ? `${todos.items.filter((item) => item.status === "completed").length} of ${todos.items.length} marked done`
                   : "No todo list"}
             </Row>
             <Row label="Context" source={context ? "at last turn" : undefined}>
-              {timeline.isLoading
-                ? "Loading…"
+              {timelineNote
+                ? timelineNote
                 : context
                   ? `${Math.round((context.usedTokens / context.modelContextWindow) * 100)}% of ${Math.round(context.modelContextWindow / 1000)}k${context.estimated ? " (estimated)" : ""}`
                   : "Not reported"}

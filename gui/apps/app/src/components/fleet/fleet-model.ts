@@ -1,5 +1,6 @@
 import {
   getThreadListIndicatorLabel,
+  isUnreadDoneThread,
   resolveThreadListIndicator,
   threadListIndicatorStateForThread,
   type ThreadListIndicatorKind,
@@ -12,8 +13,14 @@ import type {
   SidebarBootstrapResponse,
 } from "@cloudroom/server-contract";
 
-export type FleetThreadKind = "thread" | "child" | "side-chat" | "workflow";
-export type FleetParentStatus = "none" | "known" | "unknown";
+export type FleetThreadKind =
+  | "thread"
+  | "child"
+  | "side-chat"
+  | "workflow"
+  | "plugin"
+  | "fork";
+export type FleetParentStatus = "none" | "known" | "unknown" | "archived";
 export type FleetRuntime =
   | "input"
   | "error"
@@ -132,6 +139,7 @@ const ATTENTION_ORDER: Record<FleetAttention, number> = {
 export const ALL_PENDING_FIELDS: readonly FleetPendingField[] = [
   "configuredExecution",
   "inputRequest",
+  "errorSummary",
   "activityLabel",
   "fallbackModel",
   "cloudSandboxState",
@@ -140,8 +148,10 @@ export const ALL_PENDING_FIELDS: readonly FleetPendingField[] = [
 
 function kindOf(entry: ThreadListEntry): FleetThreadKind {
   if (entry.originPluginId === "workflows") return "workflow";
-  if (entry.originKind === "fork" || entry.originPluginId === "side-chat")
-    return "side-chat";
+  if (entry.originPluginId === "side-chat") return "side-chat";
+  if (entry.visibility === "hidden" && entry.originPluginId !== null)
+    return "plugin";
+  if (entry.originKind === "fork") return "fork";
   if (entry.parentThreadId !== null) return "child";
   return "thread";
 }
@@ -176,9 +186,7 @@ function runtimeOf(entry: ThreadListEntry): FleetRuntime {
 }
 
 export function isUnread(entry: ThreadListEntry): boolean {
-  return (
-    entry.lastReadAt === null || entry.lastReadAt < entry.latestAttentionAt
-  );
+  return isUnreadDoneThread(entry);
 }
 
 function attentionOf(
@@ -246,7 +254,11 @@ export function locationKey(thread: FleetThread): string {
     : `host:${thread.location.hostId ?? "unknown"}`;
 }
 
-function matchesFilters(thread: FleetThread, filters: FleetFilters): boolean {
+function matchesFilters(
+  thread: FleetThread,
+  filters: FleetFilters,
+  searchNames: boolean,
+): boolean {
   if (!matchesState(thread, filters.state)) return false;
   if (filters.projectIds.size > 0 && !filters.projectIds.has(thread.projectId))
     return false;
@@ -260,11 +272,11 @@ function matchesFilters(thread: FleetThread, filters: FleetFilters): boolean {
   const query = filters.query.trim().toLowerCase();
   if (query === "") return true;
   const haystack = [
-    thread.title,
-    thread.projectName,
-    thread.entry.environmentBranchName ?? "",
+    searchNames ? thread.title : "",
+    searchNames ? thread.projectName : "",
+    searchNames ? (thread.entry.environmentBranchName ?? "") : "",
     thread.fields?.configuredModel ?? "",
-    thread.location.hostName ?? "",
+    searchNames ? (thread.location.hostName ?? "") : "",
   ]
     .join(" ")
     .toLowerCase();
@@ -280,6 +292,7 @@ export function buildFleetModel(args: {
   supplement: FleetSupplementResponse | undefined;
   hosts: readonly Host[] | undefined;
   filters: FleetFilters;
+  searchNames?: boolean;
 }): FleetModel {
   const { bootstrap, supplement, filters } = args;
   const hosts = new Map((args.hosts ?? []).map((host) => [host.id, host]));
@@ -325,18 +338,38 @@ export function buildFleetModel(args: {
     });
   }
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const archivedView = filters.state === "archived";
   for (const thread of threads) {
-    if (thread.parentId !== null && byId.has(thread.parentId))
-      thread.parentStatus = "known";
+    const parent =
+      thread.parentId !== null ? byId.get(thread.parentId) : undefined;
+    if (parent && !archivedView && parent.archived && !thread.archived) {
+      thread.parentStatus = "archived";
+      thread.parentId = null;
+    } else if (parent) thread.parentStatus = "known";
     else if (thread.parentId !== null || thread.kind === "workflow") {
       thread.parentStatus = "unknown";
       thread.parentId = null;
     }
   }
+  for (const thread of threads) {
+    const seenInChain = new Set<string>([thread.id]);
+    let cursor = thread.parentId;
+    while (cursor !== null) {
+      if (seenInChain.has(cursor)) {
+        thread.parentStatus = "unknown";
+        thread.parentId = null;
+        break;
+      }
+      seenInChain.add(cursor);
+      cursor = byId.get(cursor)?.parentId ?? null;
+    }
+  }
 
   const matched = new Set(
     threads
-      .filter((thread) => matchesFilters(thread, filters))
+      .filter((thread) =>
+        matchesFilters(thread, filters, args.searchNames ?? true),
+      )
       .map((thread) => thread.id),
   );
   const visible = new Set(matched);
@@ -494,6 +527,8 @@ export function stateWord(thread: FleetThread): FleetStateWord {
     case "working":
       return { glyph: "◐", word: "Working", tone: "busy" };
     case "idle":
+      if (thread.archived)
+        return { glyph: "▪", word: "Archived", tone: "idle" };
       if (thread.entry.queuedWork === "failed")
         return { glyph: "▲", word: "Queue failed", tone: "error" };
       return thread.unread
@@ -514,6 +549,8 @@ export const KIND_LABELS: Record<FleetThreadKind, string | null> = {
   child: "child thread",
   "side-chat": "side chat",
   workflow: "workflow worker",
+  plugin: "plugin thread",
+  fork: "fork",
 };
 
 export function sandboxWord(thread: FleetThread, now: number): string | null {
@@ -575,8 +612,11 @@ export function createRedactor(
     title: (thread) => (on ? "Hidden title" : thread.title),
     project: (projectId, name) =>
       on ? `Project ${projectOrder.indexOf(projectId) + 1}` : name,
-    host: (hostId, name) =>
-      on ? `Machine ${hostOrder.indexOf(hostId ?? "") + 1}` : name,
+    host: (hostId, name) => {
+      if (!on) return name;
+      const index = hostId === null ? -1 : hostOrder.indexOf(hostId);
+      return index === -1 ? "Machine (name hidden)" : `Machine ${index + 1}`;
+    },
     text: (value) => (on ? null : value),
   };
 }

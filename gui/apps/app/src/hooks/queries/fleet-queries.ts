@@ -5,14 +5,18 @@ import { apiClient } from "@/lib/api-server";
 import { request, requestOptions } from "@/lib/api";
 
 const FLEET_SUPPLEMENT_QUERY_KEY = ["fleet-supplement"] as const;
+const SUPPLEMENT_REFRESH_DEBOUNCE_MS = 1_000;
 
 export function useFleetSupplement(bootstrapUpdatedAt: number) {
   const queryClient = useQueryClient();
   useEffect(() => {
     if (bootstrapUpdatedAt === 0) return;
-    void queryClient.invalidateQueries({
-      queryKey: FLEET_SUPPLEMENT_QUERY_KEY,
-    });
+    const timer = window.setTimeout(() => {
+      void queryClient.invalidateQueries({
+        queryKey: FLEET_SUPPLEMENT_QUERY_KEY,
+      });
+    }, SUPPLEMENT_REFRESH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
   }, [bootstrapUpdatedAt, queryClient]);
   return useQuery<FleetSupplementResponse>({
     queryKey: FLEET_SUPPLEMENT_QUERY_KEY,

@@ -10,6 +10,7 @@ import {
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
+import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useFleetSupplement } from "@/hooks/queries/fleet-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -133,8 +134,9 @@ export function FleetView() {
       supplement: supplement.data,
       hosts: hosts.data,
       filters,
+      searchNames: !hideTitles,
     });
-  }, [navigation.data, supplement.data, hosts.data, filters]);
+  }, [navigation.data, supplement.data, hosts.data, filters, hideTitles]);
 
   const redact = useMemo<FleetRedactor>(() => {
     const projects = navigation.data
@@ -149,6 +151,17 @@ export function FleetView() {
       (hosts.data ?? []).map((host) => host.id),
     );
   }, [hideTitles, navigation.data, hosts.data]);
+
+  const connection = useServerConnectionState();
+  const familyById = useMemo(() => {
+    const map = new Map<string, FleetFamily>();
+    const walk = (family: FleetFamily) => {
+      if (family.children.length > 0) map.set(family.thread.id, family);
+      family.children.forEach(walk);
+    };
+    model?.projects.forEach((group) => group.families.forEach(walk));
+    return map;
+  }, [model]);
 
   const selected =
     selectedId && model ? (model.byId.get(selectedId) ?? null) : null;
@@ -364,7 +377,13 @@ export function FleetView() {
         key={key}
         threads={threads}
         redact={redact}
-        onGo={(thread) => focusCard(thread.id)}
+        onGo={(thread) => {
+          const rendered = bodyRef.current?.querySelector(
+            `[data-fleet-card="${thread.id}"]`,
+          );
+          if (!rendered) setShowAllAttention(true);
+          window.requestAnimationFrame(() => focusCard(thread.id));
+        }}
       />
     ) : null;
 
@@ -372,6 +391,7 @@ export function FleetView() {
     <div
       className="flex h-full min-h-0 w-full bg-background text-foreground"
       data-testid="fleet-view"
+      onKeyDown={onKeyDown}
     >
       <div
         className={cn(
@@ -416,17 +436,25 @@ export function FleetView() {
           <button
             type="button"
             onClick={() => setHideTitles((value) => !value)}
-            aria-pressed={hideTitles}
             className={cn(
               "min-h-11 rounded-full border border-border px-3 text-sm focus-visible:outline-2 focus-visible:outline-foreground md:min-h-9",
               hideTitles && "bg-surface-selected font-semibold",
             )}
           >
-            <span aria-hidden="true">▒ </span>Hide titles:{" "}
+            <span aria-hidden="true">▒ </span>Hide titles in Fleet:{" "}
             {hideTitles ? "On" : "Off"}
           </button>
         </header>
 
+        {hideTitles ? (
+          <div
+            role="note"
+            className="mx-3 mb-2 rounded-md border border-dotted border-muted-foreground px-3 py-1.5 text-sm md:mx-5"
+          >
+            Hide titles applies to Fleet only in this preview. The app sidebar,
+            palette and notifications still show titles.
+          </div>
+        ) : null}
         {model.source === "fixture" ? (
           <div
             role="note"
@@ -439,7 +467,8 @@ export function FleetView() {
               <>
                 Controlled demo data from the demo server (
                 <span className="font-mono text-xs">DEMO_FLEET_FIXTURE=1</span>
-                ). Counts, models and states are not live telemetry.
+                ). Counts, models and states are not live telemetry. The app
+                sidebar shows the same sample data.
               </>
             )}
           </div>
@@ -456,6 +485,15 @@ export function FleetView() {
           </div>
         ) : null}
 
+        {compact ? (
+          <p className="mx-3 mt-1 text-xs text-muted-foreground">
+            Not available here:{" "}
+            {hideTitles
+              ? "some sources (names hidden)"
+              : model.unavailableSources.join("; ")}
+            .
+          </p>
+        ) : null}
         <CompactDisclosure
           compact={compact}
           label={`Coverage · Cloud ${model.counts.byLocation.cloud ?? 0} · ${hostList.length} machines · freshness`}
@@ -488,8 +526,15 @@ export function FleetView() {
               ).length
             }{" "}
             workflow workers. Archived ({model.counts.archived}): State filter.
-            Not available here: {model.unavailableSources.join("; ")}.{" "}
-            Freshness: list live via realtime
+            Not available here:{" "}
+            {hideTitles
+              ? "some sources (names hidden)"
+              : model.unavailableSources.join("; ")}
+            . Freshness:{" "}
+            {model.source === "fixture" ? "sample timestamps; " : ""}
+            {connection === "connected"
+              ? "list updates via realtime (connected)"
+              : `realtime ${connection}, list may be stale`}
             {supplementAge
               ? ` · details fetched ${supplementAge}`
               : supplement.isError
@@ -594,7 +639,10 @@ export function FleetView() {
               label="Project"
               value={[...filters.projectIds][0] ?? ""}
               onChange={(value) => setSingle("projectIds", value)}
-              options={[...navigation.data!.projects].map((project) => [
+              options={[
+                ...navigation.data!.projects,
+                navigation.data!.personalProject,
+              ].map((project) => [
                 project.id,
                 `${redact.project(project.id, project.name)} (${model.counts.byProject[project.id] ?? 0})`,
               ])}
@@ -637,7 +685,6 @@ export function FleetView() {
 
         <div
           ref={bodyRef}
-          onKeyDown={onKeyDown}
           className={cn(
             "min-h-0 flex-1 pb-8",
             compact ? "px-3" : "overflow-y-auto px-5",
@@ -661,7 +708,10 @@ export function FleetView() {
                 {model.attention
                   .slice(0, attentionLimit)
                   .map((thread) =>
-                    card(thread, { lifted: thread.parentId !== null }),
+                    card(thread, {
+                      lifted: thread.parentId !== null,
+                      family: familyById.get(thread.id),
+                    }),
                   )}
               </div>
               {attentionLimit < model.attention.length ? (
@@ -735,9 +785,9 @@ export function FleetView() {
                       const counts = familyCounts(family);
                       const open = !collapsedFamilies.has(family.thread.id);
                       const members = flatten(family);
-                      const kinds = { child: 0, "side-chat": 0, workflow: 0 };
+                      const kinds: Record<string, number> = {};
                       for (const { thread } of members)
-                        if (thread.kind !== "thread") kinds[thread.kind] += 1;
+                        kinds[thread.kind] = (kinds[thread.kind] ?? 0) + 1;
                       const lifted = [
                         family.thread,
                         ...members.map(({ thread }) => thread),
@@ -752,13 +802,7 @@ export function FleetView() {
                           <div className="mb-2 truncate font-mono text-xs text-muted-foreground">
                             [ <b className="text-foreground">family</b>{" "}
                             {middleTruncate(redact.title(family.thread), 48)} ──{" "}
-                            {counts.total} children: {kinds.child} child threads
-                            {kinds["side-chat"]
-                              ? ` + ${kinds["side-chat"]} side chat${kinds["side-chat"] > 1 ? "s" : ""}`
-                              : ""}
-                            {kinds.workflow
-                              ? ` + ${kinds.workflow} workflow worker${kinds.workflow > 1 ? "s" : ""}`
-                              : ""}
+                            {counts.total} children: {kindSummary(kinds)}
                             {lifted.length
                               ? ` · ${lifted.length} shown above`
                               : ""}
@@ -809,6 +853,14 @@ export function FleetView() {
           </p>
         </div>
       </div>
+      {inspector && compact ? (
+        <button
+          type="button"
+          aria-label="Close details"
+          onClick={closeInspector}
+          className="fixed inset-0 z-30 bg-surface-scrim"
+        />
+      ) : null}
       {inspector ? (
         <FleetInspector
           thread={inspector}
@@ -823,6 +875,24 @@ export function FleetView() {
       ) : null}
     </div>
   );
+}
+
+const KIND_PLURALS: Record<string, [string, string]> = {
+  child: ["child thread", "child threads"],
+  "side-chat": ["side chat", "side chats"],
+  workflow: ["workflow worker", "workflow workers"],
+  fork: ["fork", "forks"],
+  plugin: ["plugin thread", "plugin threads"],
+};
+
+function kindSummary(kinds: Record<string, number>): string {
+  return Object.entries(KIND_PLURALS)
+    .filter(([kind]) => (kinds[kind] ?? 0) > 0)
+    .map(
+      ([kind, [one, many]]) =>
+        `${kinds[kind]} ${kinds[kind] === 1 ? one : many}`,
+    )
+    .join(" + ");
 }
 
 function CompactDisclosure({

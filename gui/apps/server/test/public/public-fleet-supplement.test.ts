@@ -1,4 +1,4 @@
-import { archiveThread } from "@cloudroom/db";
+import { archiveThread, setProjectHidden } from "@cloudroom/db";
 import {
   fleetSupplementResponseSchema,
   sidebarBootstrapResponseSchema,
@@ -77,6 +77,35 @@ describe("GET /api/v1/fleet-supplement", () => {
       expect(bootstrapIds).not.toContain(sideChat.id);
       expect(bootstrapIds).not.toContain(worker.id);
       expect(bootstrapIds).not.toContain(old.id);
+    });
+  });
+
+  it("includes visible threads of hidden projects, keeps default visibility for other callers", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/hidden-project",
+      });
+      const visibleInHidden = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "In hidden project",
+      });
+      setProjectHidden(harness.db, harness.deps.hub, project.id, true);
+
+      const body = fleetSupplementResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/fleet-supplement")),
+      );
+      expect(body.hiddenThreads.map((thread) => thread.id)).toContain(
+        visibleInHidden.id,
+      );
+
+      const bootstrap = sidebarBootstrapResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/sidebar-bootstrap")),
+      );
+      expect(
+        bootstrap.projects.flatMap((p) => p.threads.map((t) => t.id)),
+      ).not.toContain(visibleInHidden.id);
     });
   });
 });

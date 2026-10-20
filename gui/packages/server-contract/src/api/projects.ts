@@ -458,6 +458,7 @@ export type SidebarBootstrapResponse = z.infer<
 export const fleetPendingFieldValues = [
   "configuredExecution",
   "inputRequest",
+  "errorSummary",
   "activityLabel",
   "fallbackModel",
   "cloudSandboxState",

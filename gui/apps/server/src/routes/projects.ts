@@ -262,6 +262,7 @@ function buildProjectsWithThreadsResponseFromRows(
 const FLEET_SERVER_PENDING_FIELDS: FleetSupplementResponse["pendingFields"] = [
   "configuredExecution",
   "inputRequest",
+  "errorSummary",
   "activityLabel",
   "fallbackModel",
   "cloudSandboxState",

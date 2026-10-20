@@ -107,11 +107,15 @@ function reasonText(
       (pendingInput ? "Request details not reported" : null)
     );
   if (thread.runtime === "error")
-    return redact.text(fields?.lastErrorSummary ?? null);
+    return (
+      redact.text(fields?.lastErrorSummary ?? null) ??
+      (fields === null ? "Error details not reported" : null)
+    );
   if (thread.runtime === "offline")
     return `${redact.host(thread.location.hostId, thread.location.hostName) ?? "Host"} is offline`;
   if (thread.runtime === "reconnecting") return "Reconnecting to host";
-  if (thread.runtime === "starting") return "Starting sandbox";
+  if (thread.runtime === "starting")
+    return thread.location.kind === "cloud" ? "Starting sandbox" : "Starting";
   if (fields?.fallbackModel)
     return `Fallback to ${fields.fallbackModel} seen on last turn`;
   return redact.text(fields?.latestActivityLabel ?? null);
@@ -131,7 +135,7 @@ export function cardAccessibleName(
     stateWord(thread).word,
     reasonText(thread, redact, pending.has("inputRequest")),
     kind
-      ? `${kind}${thread.parentStatus === "known" && parent ? ` of ${redact.title(parent)}` : thread.parentStatus === "unknown" ? ", parent unknown" : ""}`
+      ? `${kind}${thread.parentStatus === "known" && parent ? ` of ${redact.title(parent)}` : thread.parentStatus === "unknown" ? ", parent unknown" : thread.parentStatus === "archived" ? ", parent archived" : ""}`
       : null,
     `${harnessName(thread.entry.providerId)}, configured ${configured.model}, ${configured.effort}`,
     locationLine(thread, redact, now, pending.has("cloudSandboxState")),
@@ -183,11 +187,10 @@ export function FleetCard({
       data-fleet-card={thread.id}
       data-attention={thread.attention ?? undefined}
       className={cn(
-        "relative flex h-[236px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-surface-raised px-3 pt-2.5 pb-2 text-left [&>*]:shrink-0",
-        contextOnly && "border-dotted bg-transparent opacity-70",
+        "relative flex min-h-[236px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-surface-raised px-3 pt-2.5 pb-2 text-left md:h-[236px] [&>*]:shrink-0",
+        contextOnly && "border-dotted bg-transparent",
         selected &&
-          "border-surface-selected-border bg-surface-selected shadow-[inset_0_3px_0_var(--color-foreground)]",
-        thread.archived && "opacity-80",
+          "border-foreground bg-accent shadow-[inset_0_3px_0_var(--color-foreground)]",
       )}
     >
       <span
@@ -206,16 +209,16 @@ export function FleetCard({
         type="button"
         data-fleet-primary
         aria-label={`Open details: ${cardAccessibleName(thread, redact, parent, now, pending)}`}
-        aria-pressed={selected}
+        aria-current={selected ? "true" : undefined}
         onClick={(event) =>
           event.metaKey || event.ctrlKey
             ? onOpen(thread, true)
             : onSelect(thread)
         }
-        className="absolute inset-0 z-[1] rounded-md focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-foreground"
+        className="absolute inset-0 z-[1] rounded-md focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-foreground"
       />
-      <div className="flex items-center justify-between gap-2">
-        <FleetStateLabel thread={thread} />
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
+        <FleetStateLabel thread={thread} className="whitespace-normal" />
         <span className="font-mono text-xs text-muted-foreground">
           {thread.entry.pinnedAt !== null ? (
             <span aria-label="Pinned">★ </span>
@@ -241,8 +244,13 @@ export function FleetCard({
         ) : (
           <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
             └ <b className="font-semibold text-foreground">{kind}</b>
-            {thread.parentStatus === "unknown" ? (
-              <span className="block font-sans">parent unknown</span>
+            {thread.parentStatus === "unknown" ||
+            thread.parentStatus === "archived" ? (
+              <span className="block font-sans">
+                {thread.parentStatus === "archived"
+                  ? "parent archived"
+                  : "parent unknown"}
+              </span>
             ) : null}
           </div>
         )
@@ -281,10 +289,12 @@ export function FleetCard({
         <button
           type="button"
           aria-expanded={familyOpen}
+          aria-label={`${familyOpen ? "Collapse" : "Expand"} family of ${redact.title(thread)}: ${counts.total} ${counts.total === 1 ? "child" : "children"}${counts.attention > 0 ? `, ${counts.attention} need attention` : ""}`}
           onClick={onToggleFamily}
-          className="relative z-[2] mb-1 rounded border border-border px-1.5 py-0.5 text-left text-xs text-foreground hover:bg-state-hover focus-visible:outline-2 focus-visible:outline-foreground"
+          className="relative z-[2] mb-1 min-h-11 rounded border border-border px-1.5 py-0.5 text-left text-xs text-foreground hover:bg-state-hover focus-visible:outline-2 focus-visible:outline-foreground md:min-h-0"
         >
-          {familyOpen ? "▾" : "▸"} {counts.total} children
+          {familyOpen ? "▾" : "▸"} {counts.total}{" "}
+          {counts.total === 1 ? "child" : "children"}
           {counts.attention > 0
             ? ` · ${counts.attention} attention`
             : counts.working > 0
@@ -299,7 +309,7 @@ export function FleetCard({
         configured
         <span className="flex-1 border-t border-dotted border-border" />
       </div>
-      <div className="truncate font-mono text-xs text-muted-foreground">
+      <div className="font-mono text-xs break-all text-muted-foreground md:truncate md:break-normal">
         <span aria-hidden="true">
           {HARNESS_GLYPH[thread.entry.providerId] ?? "·"}{" "}
         </span>
@@ -309,7 +319,7 @@ export function FleetCard({
         effort{" "}
         <b className="font-medium text-foreground">{configured.effort}</b>
       </div>
-      <div className="truncate text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground md:truncate">
         {locationLine(thread, redact, now, pending.has("cloudSandboxState"))}
       </div>
     </div>
@@ -329,7 +339,7 @@ export function FleetGhostCard({
     <div
       role="group"
       aria-label={`${threads.length} shown in Needs attention`}
-      className="flex h-[236px] min-w-0 flex-col rounded-md border border-border-seam px-3 pt-2.5 pb-2"
+      className="flex min-h-[236px] min-w-0 flex-col rounded-md border border-border-seam px-3 pt-2.5 pb-2 md:h-[236px]"
     >
       <span className="font-mono text-xs text-muted-foreground">
         ↑ SHOWN ABOVE · {threads.length}
@@ -343,7 +353,7 @@ export function FleetGhostCard({
             type="button"
             onClick={() => onGo(thread)}
             aria-label={`Go to ${redact.title(thread)} in Needs attention`}
-            className="mt-0.5 max-w-full truncate rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover focus-visible:outline-2 focus-visible:outline-foreground"
+            className="mt-0.5 min-h-11 max-w-full truncate rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-state-hover focus-visible:outline-2 focus-visible:outline-foreground md:min-h-0"
           >
             {KIND_LABELS[thread.kind] ?? "thread"} · {stateWord(thread).word} ·
             Go ↑

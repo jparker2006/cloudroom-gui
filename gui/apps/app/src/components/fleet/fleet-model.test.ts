@@ -338,3 +338,50 @@ describe("createRedactor", () => {
     expect(off.title(model.byId.get("x")!)).toBe("Thread x");
   });
 });
+
+describe("buildFleetModel truth edges", () => {
+  it("breaks parent cycles instead of dropping the threads", () => {
+    const model = build([thread("x", { parentThreadId: "y" }), thread("y", { parentThreadId: "x" })]);
+    expect(model.shown).toBe(2);
+    const rendered = model.projects.flatMap((group) => {
+      const ids: string[] = [];
+      const walk = (family: (typeof group.families)[number]) => {
+        ids.push(family.thread.id);
+        family.children.forEach(walk);
+      };
+      group.families.forEach(walk);
+      return ids;
+    });
+    expect(rendered.sort()).toEqual(["x", "y"]);
+  });
+
+  it("labels an active child of an archived parent instead of leaking the parent", () => {
+    const model = build([thread("c", { parentThreadId: "old" })], { archivedThreads: [thread("old", { archivedAt: NOW })] });
+    expect(model.byId.get("c")?.parentStatus).toBe("archived");
+    expect(model.projects[0]?.families.map((family) => family.thread.id)).toEqual(["c"]);
+  });
+
+  it("follows the host unread rule: child threads never count as new replies", () => {
+    const model = build([thread("p"), thread("c", { parentThreadId: "p", lastReadAt: NOW - 5000 })]);
+    expect(model.byId.get("c")?.attention).toBeNull();
+  });
+
+  it("labels forks and unknown plugin threads honestly", () => {
+    const model = build([thread("p"), thread("f", { originKind: "fork", sourceThreadId: "p" })], {
+      hiddenThreads: [thread("z", { visibility: "hidden", originPluginId: "some-plugin" })],
+    });
+    expect(model.byId.get("f")?.kind).toBe("fork");
+    expect(model.byId.get("z")?.kind).toBe("plugin");
+  });
+
+  it("does not match hidden names when search runs with privacy on", () => {
+    const model = buildFleetModel({ bootstrap: bootstrap([thread("x")]), supplement: supplement({}), hosts: [], filters: { ...EMPTY_FLEET_FILTERS, query: "Thread x" }, searchNames: false });
+    expect(model.shown).toBe(0);
+  });
+
+  it("never prints Machine 0 for an unknown machine under privacy", () => {
+    const on = createRedactor(true, [], ["host_1"]);
+    expect(on.host(null, "secret")).toBe("Machine (name hidden)");
+    expect(on.host("other", "secret")).toBe("Machine (name hidden)");
+  });
+});
