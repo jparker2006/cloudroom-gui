@@ -3298,6 +3298,12 @@ export function PromptBoxInternal({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [cancelVoiceInput, showVoiceActionGroup, voice]);
 
+  const attachmentErrorAlert = attachmentError ? (
+    <div role="alert" className="mx-3 mb-1 mt-1 text-xs text-destructive">
+      {attachmentError}
+    </div>
+  ) : null;
+
   return (
     <form
       ref={formRef}
@@ -3495,14 +3501,7 @@ export function PromptBoxInternal({
                   onRemoveAttachment={onRemoveAttachment}
                 />
 
-                {attachmentError ? (
-                  <div
-                    role="alert"
-                    className="mx-3 mb-1 mt-1 text-xs text-destructive"
-                  >
-                    {attachmentError}
-                  </div>
-                ) : null}
+                {attachmentErrorAlert}
               </div>
             </>
           ) : null}
@@ -3699,6 +3698,7 @@ export function PromptBoxInternal({
           </PluginComposerViewProvider>
         </div>
       </div>
+      {showCompactLayout ? attachmentErrorAlert : null}
     </form>
   );
 }

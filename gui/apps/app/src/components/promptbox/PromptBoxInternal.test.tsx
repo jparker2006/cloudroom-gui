@@ -2081,6 +2081,44 @@ describe("PromptBoxInternal compact layout", () => {
     expect(screen.getByRole("alert").textContent).toBe(message);
   });
 
+  it("shows and announces an attachment error in the compact layout too, once per layout", () => {
+    const message =
+      "photo.png can't be moved to another project. Remove it and attach again.";
+    const props = createPromptBoxProps({
+      attachments: {
+        items: [
+          { type: "localImage", name: "photo.png", path: "photo.png", sizeBytes: 1 },
+        ],
+        onRemove: vi.fn(),
+        error: message,
+      },
+      compact: { isCompact: true },
+    });
+    const { container, rerender } = render(<PromptBoxInternal {...props} />);
+    expect(
+      container.querySelector("form")?.hasAttribute("data-promptbox-compact"),
+    ).toBe(true);
+    const compactAlerts = screen.getAllByRole("alert");
+    expect(compactAlerts.map((alert) => alert.textContent)).toEqual([message]);
+    expect(compactAlerts[0]!.closest("[inert], [aria-hidden='true']")).toBeNull();
+
+    rerender(<PromptBoxInternal {...props} compact={{ isCompact: false }} />);
+    expect(
+      container.querySelector("form")?.hasAttribute("data-promptbox-compact"),
+    ).toBe(false);
+    expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual([
+      message,
+    ]);
+
+    rerender(
+      <PromptBoxInternal
+        {...props}
+        attachments={{ ...props.attachments, error: null }}
+      />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("shows only an attachment count when compact and removal controls when expanded", () => {
     const items: NonNullable<
       NonNullable<PromptBoxProps["attachments"]>["items"]
