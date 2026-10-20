@@ -1164,3 +1164,55 @@ describe("review fixes: discard", () => {
     ).toEqual([storedDraft("A")]);
   });
 });
+
+describe("review fixes: failed saves", () => {
+  function failNextWrites(run: () => void) {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      run();
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+  }
+
+  it("makes no conflict copy of this window's own text when a failed save is retried", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "one", mentions: [], attachments: [] });
+    failNextWrites(() => alpha.setDraft({ text: "one, two", mentions: [], attachments: [] }));
+
+    alpha.setDraft({ text: "one, two, three", mentions: [], attachments: [] });
+
+    expect(storedRecord(alphaKey()).text).toBe("one, two, three");
+    expect(listNewThreadDraftsNotShown([alphaId()])).toEqual([]);
+  });
+
+  it("brings back text whose save failed after a reload", async () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "saved", mentions: [], attachments: [] });
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === alphaKey()) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      alpha.setDraft({ text: "newest, not saved", mentions: [], attachments: [] });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    vi.resetModules();
+    const reloaded = await import("./usePromptDraftStorage");
+
+    expect(
+      reloaded.getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() }).getCurrent().text,
+    ).toBe("newest, not saved");
+  });
+});

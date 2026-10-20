@@ -218,6 +218,7 @@ function persistPromptDraftCacheNow(storageKey: string): void {
     return;
   }
 
+  const confirmedRev = newThreadDraftRevs.get(storageKey);
   const plainSerialized = serializePromptDraftStorage(cachedEntry.draft);
   const serialized =
     plainSerialized !== null && isNewThreadProjectDraftKey(storageKey)
@@ -241,6 +242,8 @@ function persistPromptDraftCacheNow(storageKey: string): void {
       window.localStorage.removeItem(promotedKey);
     }
   } catch (error) {
+    if (confirmedRev === undefined) newThreadDraftRevs.delete(storageKey);
+    else newThreadDraftRevs.set(storageKey, confirmedRev);
     unsavedPromptDraftKeys.add(storageKey);
     cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
     console.warn(
