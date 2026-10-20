@@ -4,6 +4,7 @@ import {
   arrangePluginNavPanels,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
+  seedFleetNavigationPreference,
   seedSkillsNavigationPreference,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
@@ -60,6 +61,45 @@ describe("seedSkillsNavigationPreference", () => {
       ],
       visibleKeys: [],
     });
+  });
+});
+
+describe("seedFleetNavigationPreference", () => {
+  const { newThread, searchThreads, fleet, extensions, skills } =
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS;
+
+  it("places Fleet after New thread for a stored order saved before Fleet existed, and keeps it visible", () => {
+    expect(
+      seedFleetNavigationPreference(
+        [newThread, extensions, skills],
+        [newThread, extensions, skills],
+      ),
+    ).toEqual({
+      order: [newThread, fleet, extensions, skills],
+      visibleKeys: [newThread, fleet, extensions, skills],
+    });
+  });
+
+  it("places Fleet after Search threads when that row is stored, even if hidden", () => {
+    expect(
+      seedFleetNavigationPreference(
+        [extensions, newThread, searchThreads],
+        [extensions, newThread],
+      ),
+    ).toEqual({
+      order: [extensions, newThread, searchThreads, fleet],
+      visibleKeys: [extensions, newThread, fleet],
+    });
+  });
+
+  it("leaves default (empty) and already-seeded preferences unchanged", () => {
+    expect(seedFleetNavigationPreference([], null)).toEqual({
+      order: [],
+      visibleKeys: null,
+    });
+    expect(
+      seedFleetNavigationPreference([fleet, newThread], [newThread]),
+    ).toEqual({ order: [fleet, newThread], visibleKeys: [newThread] });
   });
 });
 

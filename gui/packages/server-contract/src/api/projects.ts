@@ -455,6 +455,67 @@ export type SidebarBootstrapResponse = z.infer<
   typeof sidebarBootstrapResponseSchema
 >;
 
+export const fleetPendingFieldValues = [
+  "configuredExecution",
+  "inputRequest",
+  "errorSummary",
+  "activityLabel",
+  "fallbackModel",
+  "cloudSandboxState",
+  "workflowLineage",
+] as const;
+export const fleetPendingFieldSchema = z.enum(fleetPendingFieldValues);
+export type FleetPendingField = z.infer<typeof fleetPendingFieldSchema>;
+
+export const fleetCloudSandboxStateSchema = z.object({
+  state: z.enum(["awake", "not-awake", "unknown"]),
+  lastSuccessfulCheckAt: z.number().nullable(),
+  lastCheckError: z.string().nullable(),
+});
+export type FleetCloudSandboxState = z.infer<
+  typeof fleetCloudSandboxStateSchema
+>;
+
+export const fleetThreadFieldsSchema = z.object({
+  configuredModel: z.string().nullable(),
+  configuredReasoning: z.string().nullable(),
+  inputKind: z.enum(["approval", "question"]).nullable(),
+  inputSummary: z.string().max(120).nullable(),
+  lastErrorSummary: z.string().max(120).nullable(),
+  latestActivityLabel: z.string().max(80).nullable(),
+  fallbackModel: z.string().nullable(),
+  cloudSandbox: fleetCloudSandboxStateSchema.nullable(),
+  workflowParentThreadId: z.string().nullable(),
+});
+export type FleetThreadFields = z.infer<typeof fleetThreadFieldsSchema>;
+
+export const fleetSupplementResponseSchema = z.object({
+  source: z.enum(["server", "fixture"]),
+  generatedAt: z.number(),
+  hiddenThreads: z.array(threadListEntrySchema),
+  archivedThreads: z.array(threadListEntrySchema),
+  archivedCount: z.number().int().nonnegative(),
+  archivedTruncated: z.boolean(),
+  /** Archived threads still named as parent or source by an open thread (ids only). */
+  archivedParentIds: z.array(z.string()),
+  extraProjects: z.array(
+    z.object({ id: z.string(), name: z.string(), hidden: z.boolean() }),
+  ),
+  threadFields: z.record(z.string(), fleetThreadFieldsSchema),
+  pendingFields: z.array(fleetPendingFieldSchema),
+  unavailableSources: z.array(z.string()),
+});
+export const FLEET_ARCHIVED_THREAD_LIMIT = 200;
+
+export const fleetSupplementQuerySchema = z.object({
+  archived: z.enum(["include"]).optional(),
+});
+export type FleetSupplementQuery = z.infer<typeof fleetSupplementQuerySchema>;
+
+export type FleetSupplementResponse = z.infer<
+  typeof fleetSupplementResponseSchema
+>;
+
 export const uploadedPromptAttachmentSchema = z.object({
   type: z.enum(["localImage", "localFile"]),
   path: z.string(),

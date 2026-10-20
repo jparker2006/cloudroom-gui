@@ -47,6 +47,15 @@ import {
   threadResponse,
   type DemoThreadView,
 } from "./fixtures/world.js";
+import {
+  fleetBootstrap,
+  fleetHosts,
+  fleetPullRequest,
+  fleetSupplement,
+  fleetThread,
+  fleetTimeline,
+  isFleetThreadId,
+} from "./__fixtures__/fleet.js";
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
@@ -99,7 +108,11 @@ interface ThreadState {
 interface DemoWorldOptions {
   now?: () => number;
   schedule?: (fn: () => void, ms: number) => void;
+  fleetFixture?: boolean;
 }
+
+const ENVIRONMENT_PULL_REQUEST_PATH =
+  /^\/environments\/([a-z0-9_]+)\/pull-request$/u;
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -163,6 +176,72 @@ export class DemoWorld {
   constructor(options: DemoWorldOptions = {}) {
     this.now = options.now ?? (() => Date.now());
     this.schedule = options.schedule ?? ((fn, ms) => setTimeout(fn, ms));
+    this.fleetFixture = options.fleetFixture ?? false;
+  }
+
+  private readonly fleetFixture: boolean;
+
+  private handleFleetGet(api: string, now: number, url: URL): Response | null {
+    switch (api) {
+      case "/sidebar-bootstrap":
+        return json(fleetBootstrap(now));
+      case "/hosts":
+        return json(fleetHosts(now));
+      case "/fleet-supplement":
+        return json(
+          fleetSupplement(now, url.searchParams.get("archived") === "include"),
+        );
+      default:
+        break;
+    }
+    const pullRequest = ENVIRONMENT_PULL_REQUEST_PATH.exec(api);
+    if (pullRequest) return json(fleetPullRequest(pullRequest[1]));
+    const match = THREAD_PATH.exec(api);
+    if (!match || !isFleetThreadId(match[1])) return null;
+    const [, threadId, sub = ""] = match;
+    const entry = fleetThread(threadId, now);
+    if (!entry) return null;
+    switch (sub) {
+      case "": {
+        const {
+          activity,
+          pinSortKey: _pinSortKey,
+          hasPendingInteraction: _hasPendingInteraction,
+          environmentHostId: _environmentHostId,
+          environmentName: _environmentName,
+          environmentBranchName: _environmentBranchName,
+          environmentPath: _environmentPath,
+          environmentProviderId: _environmentProviderId,
+          environmentIsWorktree: _environmentIsWorktree,
+          environmentWorkspaceDisplayKind: _environmentWorkspaceDisplayKind,
+          queuedWork: _queuedWork,
+          ...thread
+        } = entry;
+        return json({
+          ...thread,
+          activeBackgroundAgentCount: activity.activeBackgroundAgentCount,
+          canSpawnChild: false,
+          queuedMessageCount: 0,
+        });
+      }
+      case "timeline":
+        return json(fleetTimeline(threadId, now));
+      case "interactions":
+        return json([] satisfies ThreadPendingInteractionsResponse);
+      case "queued-messages":
+        return json([] satisfies ThreadQueuedMessageListResponse);
+      case "tabs":
+        return json(EMPTY_TABS);
+      case "default-execution-options":
+        return json(THREAD_DEFAULT_EXECUTION_OPTIONS);
+      case "child-summary":
+        return json({
+          nonDeletedChildCount: 0,
+          runningThreadCount: 0,
+        } satisfies ThreadChildSummaryResponse);
+      default:
+        return null;
+    }
   }
 
   onChanged(listener: (message: ThreadChangedMessage) => void): void {
@@ -199,6 +278,10 @@ export class DemoWorld {
     origin: string,
   ): Promise<Response | null> {
     const now = this.now();
+    if (request.method === "GET" && this.fleetFixture) {
+      const fleet = this.handleFleetGet(api, now, new URL(request.url));
+      if (fleet) return fleet;
+    }
     if (request.method === "GET") {
       switch (api) {
         case "/system/config":

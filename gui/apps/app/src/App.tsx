@@ -44,6 +44,7 @@ import {
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
   PLUGIN_DETAIL_ROUTE_PATH,
+  FLEET_ROUTE_PATH,
   PLUGINS_ROUTE_PATH,
   REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   REGISTRY_SKILLS_ROUTE_PATH,
@@ -87,6 +88,11 @@ const PluginsView = lazy(() =>
 const SkillsView = lazy(() =>
   import("./views/ToolsView").then((m) => ({
     default: m.SkillsView,
+  })),
+);
+const FleetView = lazy(() =>
+  import("./views/FleetView").then((m) => ({
+    default: m.FleetView,
   })),
 );
 const ProjectDetailSettingsView = lazy(() =>
@@ -389,6 +395,7 @@ export function AppRoutes() {
             path={REGISTRY_SKILL_DETAIL_ROUTE_PATH}
             element={<SkillsView />}
           />
+          <Route path={FLEET_ROUTE_PATH} element={<FleetView />} />
           <Route path={PLUGINS_ROUTE_PATH} element={<PluginsRoute />} />
           <Route path={PLUGIN_DETAIL_ROUTE_PATH} element={<PluginsRoute />} />
           <Route

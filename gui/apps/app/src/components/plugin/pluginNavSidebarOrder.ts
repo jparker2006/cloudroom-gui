@@ -8,6 +8,7 @@ interface PluginNavPanelIdentity {
 export const BUILT_IN_SIDEBAR_NAVIGATION_KEYS = {
   newThread: "__bb__/new-thread",
   searchThreads: "__bb__/search-threads",
+  fleet: "__bb__/fleet",
   extensions: "__bb__/extensions",
   skills: "__bb__/skills",
   automations: "__bb__/automations",
@@ -20,6 +21,7 @@ export const DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS = [
 export const DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER = [
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.searchThreads,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.fleet,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
@@ -44,6 +46,38 @@ export function seedSkillsNavigationPreference(
         0,
         skills,
       );
+    }
+  }
+  return { order: nextOrder, visibleKeys: nextVisibleKeys };
+}
+
+export function seedFleetNavigationPreference(
+  order: readonly string[],
+  visibleKeys: readonly string[] | null,
+): { order: string[]; visibleKeys: string[] | null } {
+  const { newThread, searchThreads, fleet, extensions } =
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS;
+  if (order.length === 0 || order.includes(fleet)) {
+    return {
+      order: [...order],
+      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
+    };
+  }
+  const insertAfter = (list: string[]) => {
+    for (const anchor of [searchThreads, newThread]) {
+      const index = list.indexOf(anchor);
+      if (index !== -1) return index + 1;
+    }
+    const before = list.indexOf(extensions);
+    return before === -1 ? 0 : before;
+  };
+  const nextOrder = [...order];
+  nextOrder.splice(insertAfter(nextOrder), 0, fleet);
+  let nextVisibleKeys: string[] | null = null;
+  if (visibleKeys !== null) {
+    nextVisibleKeys = [...visibleKeys];
+    if (!nextVisibleKeys.includes(fleet)) {
+      nextVisibleKeys.splice(insertAfter(nextVisibleKeys), 0, fleet);
     }
   }
   return { order: nextOrder, visibleKeys: nextVisibleKeys };

@@ -178,6 +178,8 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
+  FleetSupplementQuery,
+  FleetSupplementResponse,
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
@@ -323,6 +325,7 @@ import {
   projectFileContentQuerySchema,
   projectFilesQuerySchema,
   projectListQuerySchema,
+  fleetSupplementQuerySchema,
   projectPathsQuerySchema,
   projectSkillsQuerySchema,
   deleteSkillRequestSchema,
@@ -411,6 +414,14 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SidebarBootstrapResponse>(),
+    }),
+    fleetSupplement: defineRoute({
+      path: "/fleet-supplement",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, FleetSupplementQuery>(
+        fleetSupplementQuerySchema,
+      ),
+      response: jsonResponse<FleetSupplementResponse>(),
     }),
     get: defineRoute({
       path: "/projects/:id",

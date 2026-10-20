@@ -155,3 +155,9 @@ export function resolveRouteHref({
     path: `${url.pathname}${url.search}${url.hash}`,
   };
 }
+
+export const FLEET_ROUTE_PATH = "/fleet";
+
+export function getFleetRoutePath(): string {
+  return FLEET_ROUTE_PATH;
+}

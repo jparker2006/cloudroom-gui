@@ -14,6 +14,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import type {
   JsonObject,
   ReasoningLevel,
@@ -406,6 +407,8 @@ type ThreadRow = typeof threads.$inferSelect;
 export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
+  visibility?: "visible" | "hidden" | "all";
+  limit?: number;
 }
 
 export interface PinThreadArgs {
@@ -690,7 +693,9 @@ function buildListThreadsForProjectsFilters(
 ) {
   return [
     inArray(threads.projectId, [...options.projectIds]),
-    eq(threads.visibility, "visible"),
+    options.visibility === "all"
+      ? undefined
+      : eq(threads.visibility, options.visibility ?? "visible"),
     nonDeletedThreads(),
     options.archived === true
       ? isNotNull(threads.archivedAt)
@@ -1376,12 +1381,61 @@ export function listThreadsWithPendingInteractionStateForProjects(
     return [];
   }
 
-  const rows = threadWithPendingInteractionBaseQuery(db)
+  const query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .orderBy(...buildListThreadsOrderBy(options))
-    .all();
+    .orderBy(...buildListThreadsOrderBy(options));
+  const rows =
+    options.limit === undefined ? query.all() : query.limit(options.limit).all();
 
   return rows.map(toThreadWithPendingInteractionState);
+}
+
+export function countThreadsForProjects(
+  db: DbConnection,
+  options: ListThreadsForProjectsOptions,
+): number {
+  if (options.projectIds.length === 0) {
+    return 0;
+  }
+  return countThreadsWhere(
+    db,
+    and(...buildListThreadsForProjectsFilters(options)),
+  );
+}
+
+/** Archived threads that a non-archived thread in these projects still names as its parent or source. */
+export function listArchivedThreadIdsReferencedByOpenThreads(
+  db: DbConnection,
+  projectIds: readonly string[],
+): string[] {
+  if (projectIds.length === 0) {
+    return [];
+  }
+  const children = alias(threads, "open_children");
+  return db
+    .selectDistinct({ id: threads.id })
+    .from(threads)
+    .innerJoin(
+      children,
+      or(
+        eq(children.parentThreadId, threads.id),
+        and(
+          eq(children.sourceThreadId, threads.id),
+          isNotNull(children.originKind),
+        ),
+      ),
+    )
+    .where(
+      and(
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        isNull(children.archivedAt),
+        isNull(children.deletedAt),
+        inArray(children.projectId, [...projectIds]),
+      ),
+    )
+    .all()
+    .map((row) => row.id);
 }
 
 export function countLiveThreadsInEnvironment(
