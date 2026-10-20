@@ -54,6 +54,7 @@ function promptDraftEditRevision(storageKey: string): string {
 }
 
 function isUnchangedSinceSend(storageKey: string, sentRevision: string): boolean {
+  if (typeof sentRevision !== "string") return false;
   const [editCount, sentRev] = sentRevision.split(":");
   if (editCount !== String(promptDraftEditCounts.get(storageKey) ?? 0)) return false;
   if (!isNewThreadProjectDraftKey(storageKey)) return true;

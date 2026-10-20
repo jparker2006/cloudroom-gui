@@ -1878,3 +1878,15 @@ describe("listing when storage can't be enumerated", () => {
     }
   });
 });
+
+describe("send clear without a revision", () => {
+  it("refuses instead of throwing when an untyped caller omits the revision", async () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "S", mentions: [], attachments: [] }));
+    const clear = result.current.clearAfterSend as (draft: unknown) => Promise<boolean>;
+
+    await expect(clear(result.current.getCurrent())).resolves.toBe(false);
+  });
+});
