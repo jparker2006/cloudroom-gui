@@ -9,8 +9,9 @@ names the existing surface to use instead.
 ## Topic links
 
 Each topic has a stable kebab-case `id`. `threadHelpHref(id)` returns
-`#thread-help/<id>`; the thread's header help button opens that topic. Never
-rename an id. To retire a topic, keep its id pointing at the closest topic.
+`#thread-help/<id>`. Only the focused pane's header help button opens it, and
+only while the route is that pane's thread (`views/thread-detail/ThreadHeaderHelp.tsx`).
+Never rename an id. To retire a topic, keep its id pointing at the closest topic.
 
 ## Maintenance contract
 

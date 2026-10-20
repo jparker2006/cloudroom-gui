@@ -46,6 +46,10 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
+import {
+  ThreadHeaderHelpButton,
+  threadHelpMenuAction,
+} from "./ThreadHeaderHelp";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
@@ -54,6 +58,7 @@ const threadStore = vi.hoisted(
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
 const viewportState = vi.hoisted(() => ({ compact: false }));
+const helpProbeState = vi.hoisted(() => ({ enabled: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
@@ -86,6 +91,22 @@ function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
         ? composerHost.scope.threadId
         : "missing"}
     </div>
+  );
+}
+
+function ThreadHeaderHelpProbe({ threadId }: { threadId: string }) {
+  const navigate = useNavigate();
+  const menuAction = threadHelpMenuAction(navigate, {
+    projectId: PERSONAL_PROJECT_ID,
+    threadId,
+  });
+  return (
+    <>
+      <ThreadHeaderHelpButton threadId={threadId} relevantTopicIds={[]} />
+      <button type="button" onClick={menuAction.onSelect}>
+        {`${menuAction.label} menu ${threadId}`}
+      </button>
+    </>
   );
 }
 
@@ -340,6 +361,9 @@ vi.mock("./ThreadDetailView", () => ({
         >
           <div style={{ height: 100 }} />
         </div>
+        {helpProbeState.enabled ? (
+          <ThreadHeaderHelpProbe threadId={threadId} />
+        ) : null}
         {pane?.onRequestClose ? (
           <button
             type="button"
@@ -541,7 +565,11 @@ function threadPath(threadId: string): string {
 
 function LocationProbe() {
   const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
+  return (
+    <div data-testid="location" data-hash={location.hash}>
+      {location.pathname}
+    </div>
+  );
 }
 
 function ExternalNav({ to }: { to: string }) {
@@ -632,6 +660,7 @@ function renderSplitArea(options: {
 
 beforeEach(() => {
   viewportState.compact = false;
+  helpProbeState.enabled = false;
   sidebarState.showing = true;
   panelFullScreenState.isMainCollapsed = false;
   panelGroupLayoutState.layout = [100, 0];
@@ -2271,5 +2300,83 @@ describe("SplitThreadArea", () => {
         threadPath("thr-a"),
       );
     });
+  });
+});
+
+describe("SplitThreadArea thread help", () => {
+  beforeEach(() => {
+    helpProbeState.enabled = true;
+  });
+
+  function helpTrigger(threadId: string) {
+    return within(screen.getByTestId(`pane-${threadId}`)).getByRole("button", {
+      name: "Thread help",
+    });
+  }
+
+  function expanded(threadId: string) {
+    return helpTrigger(threadId).getAttribute("aria-expanded");
+  }
+
+  it("opens a topic link only in the focused pane and not in the other pane after a focus change", async () => {
+    renderSplitArea({
+      path: `${threadPath("thr-a")}#thread-help/limits`,
+      layout: twoPaneLayout("pane-1"),
+    });
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Provider quota, context, and plan limits",
+      }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
+    expect(expanded("thr-a")).toBe("true");
+    expect(expanded("thr-b")).toBe("false");
+
+    fireEvent.pointerDown(screen.getByTestId("scroll-thr-b"));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      ),
+    );
+    expect(screen.getByTestId("location").getAttribute("data-hash")).toBe("");
+    expect(screen.getByTestId("pane-thr-b").getAttribute("data-focused")).toBe(
+      "true",
+    );
+    expect(expanded("thr-b")).toBe("false");
+  });
+
+  it("opens Help from a pane's menu in that pane", async () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const menuItem = await screen.findByRole("button", {
+      name: "Help menu thr-b",
+    });
+    fireEvent.pointerDown(menuItem);
+    fireEvent.click(menuItem);
+    await waitFor(() => expect(expanded("thr-b")).toBe("true"));
+    expect(expanded("thr-a")).toBe("false");
+    expect(
+      screen.getByRole("searchbox", { name: "Search thread help" }),
+    ).toBeTruthy();
+  });
+
+  it("opens Help chosen by keyboard from the unfocused pane's menu in that pane", async () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Help menu thr-b" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("searchbox", { name: "Search thread help" }),
+      ).toBeTruthy(),
+    );
+    expect(expanded("thr-b")).toBe("true");
+    expect(expanded("thr-a")).toBe("false");
   });
 });

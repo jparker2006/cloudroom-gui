@@ -991,6 +991,82 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
   });
 
+  it("makes no requests of its own while static help is opened, searched and browsed, and leaves clicked Retry and docs actions working", async () => {
+    const queryKey = ["cloudroom-thread", "thr_1"];
+    const statusUrl = "/api/v1/cloudroom/threads/thr_1";
+    const status = { sessionId: "cloud-session", paused: false, model: "gpt-6-astra", reasoning: "medium", error: null, pendingDelivery: 0, reconnecting: true };
+    testQueryClient.setQueryDefaults(queryKey, { staleTime: Infinity });
+    testQueryClient.setQueryData(queryKey, status);
+    const requests: { phase: string; url: string; body: string; stack: string }[] = [];
+    const other: string[] = [];
+    let phase = "render";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ phase, url: input instanceof Request ? input.url : String(input), body: typeof init?.body === "string" ? init.body : "", stack: new Error().stack ?? "" });
+      return new Response(JSON.stringify(status), { headers: { "content-type": "application/json" } });
+    }));
+    vi.stubGlobal("WebSocket", vi.fn(() => { other.push(`${phase}: WebSocket`); }));
+    vi.stubGlobal("EventSource", vi.fn(() => { other.push(`${phase}: EventSource`); }));
+    const xhrOpen = vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => { other.push(`${phase}: XMLHttpRequest`); });
+    const windowOpen = vi.spyOn(window, "open").mockImplementation(() => null);
+    Object.defineProperty(navigator, "sendBeacon", { configurable: true, value: () => { other.push(`${phase}: sendBeacon`); return true; } });
+    const queryFetches: { phase: string; key: string }[] = [];
+    const stopQueries = testQueryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "fetch") queryFetches.push({ phase, key: JSON.stringify(event.query.queryKey) });
+    });
+    const stopMutations = testQueryClient.getMutationCache().subscribe((event) => {
+      if (event.type === "added") other.push(`${phase}: mutation ${JSON.stringify(event.mutation.options.mutationKey)}`);
+    });
+    const backgroundOwner = (request: { stack: string; body: string }) =>
+      /\/hooks\/queries\//.test(request.stack) || (/useCloudThreadWake\.ts/.test(request.stack) && request.body === JSON.stringify({ reason: "view" }));
+    const expectNoRequestsOwnedBy = (current: string) => {
+      const inPhase = requests.filter((request) => request.phase === current);
+      expect(inPhase.filter((request) => /\/components\/thread-help\//.test(request.stack))).toEqual([]);
+      expect(inPhase.filter((request) => !backgroundOwner(request)).map((request) => request.url)).toEqual([]);
+      const renderKeys = new Set(queryFetches.filter((fetch) => fetch.phase === "render").map((fetch) => fetch.key));
+      renderKeys.add(JSON.stringify(queryKey));
+      expect(queryFetches.filter((fetch) => fetch.phase === current && !renderKeys.has(fetch.key))).toEqual([]);
+      expect(other).toEqual([]);
+    };
+    try {
+      renderPromptArea({ thread: makeThread({ executionTarget: "cloud", status: "idle" }) });
+      phase = "help";
+      fireEvent.click(screen.getByRole("button", { name: "About reconnecting" }));
+      await screen.findByRole("heading", { level: 3, name: "Reconnecting or offline" });
+      fireEvent.click(screen.getByRole("button", { name: "All help topics" }));
+      fireEvent.change(await screen.findByRole("searchbox", { name: "Search thread help" }), { target: { value: "context" } });
+      fireEvent.click(screen.getByRole("button", { name: /Context usage/ }));
+      await screen.findByRole("heading", { level: 3, name: "Context usage" });
+      fireEvent.click(screen.getByRole("button", { name: "All help topics" }));
+      fireEvent.change(await screen.findByRole("searchbox", { name: "Search thread help" }), { target: { value: "kubernetes" } });
+      fireEvent.click(await screen.findByRole("button", { name: "Show all topics" }));
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("searchbox", { name: "Search thread help" })).toBeNull());
+      expectNoRequestsOwnedBy("help");
+      expect(windowOpen).not.toHaveBeenCalled();
+      expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+
+      phase = "docs";
+      fireEvent.click(screen.getByRole("button", { name: "About reconnecting" }));
+      fireEvent.click(await screen.findByRole("link", { name: /^Docs:/ }));
+      expect(windowOpen).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/www\.cloudroom\.dev\/docs\//), "_blank", "noopener,noreferrer");
+      expectNoRequestsOwnedBy("docs");
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+      phase = "retry";
+      await waitFor(() => expect(testQueryClient.getQueryState(queryKey)?.fetchStatus).toBe("idle"));
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(testQueryClient.getQueryState(queryKey)?.fetchStatus).toBe("fetching");
+      await waitFor(() => expect(requests.some((request) => request.phase === "retry" && request.url.endsWith(statusUrl))).toBe(true));
+    } finally {
+      stopQueries();
+      stopMutations();
+      xhrOpen.mockRestore();
+      windowOpen.mockRestore();
+      Reflect.deleteProperty(navigator, "sendBeacon");
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([
     ["pi", "openai-codex/gpt-6-astra", "GPT-6 Astra"],
     ["codex", "openai-codex/gpt-6-astra", "GPT-6 Astra"],
