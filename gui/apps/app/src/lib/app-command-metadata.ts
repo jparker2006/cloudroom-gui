@@ -73,6 +73,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Last thread in project",
         "Open the bottom visible sidebar thread in the active project.",
       ),
+      command(
+        "sidebar.collapseAllSubthreads",
+        "Collapse all subthreads",
+        "Collapse every child-thread tree in the sidebar, keeping parent threads visible.",
+      ),
       ...THREAD_JUMP_APP_COMMAND_IDS.map((id, index) =>
         paletteHiddenCommand(
           id,

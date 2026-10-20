@@ -50,6 +50,7 @@ import {
   type ProjectThreadNode,
 } from "@cloudroom/client-core";
 import { useSectionThreadDnd } from "./useSectionThreadDnd";
+import { useCollapseAllSubthreadsCommand } from "./collapseAllSubthreads";
 import { useRenderedSectionThreadDnd } from "./useRenderedSectionThreadDnd";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -1567,6 +1568,7 @@ function ProjectListComponent({
   const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
     collapsedThreadIdsAtom,
   );
+  useCollapseAllSubthreadsCommand({ threads, selectedThreadId });
   const setCollapsedMachineKeyList = useSetAtom(sidebarCollapsedMachinesAtom);
   const setCollapsedHarnessKeyList = useSetAtom(sidebarCollapsedHarnessesAtom);
   const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =

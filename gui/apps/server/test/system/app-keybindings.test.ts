@@ -122,6 +122,36 @@ describe("app keybindings", () => {
     expect([...actualCollisions].sort()).toEqual(allowedCollisions.sort());
   });
 
+  it("binds Collapse all subthreads to Cmd+Option+C on Mac desktop only", () => {
+    const shortcutFor = (client: (typeof DEFAULT_KEYBINDING_CLIENTS)[number]) =>
+      DEFAULT_APP_KEYBINDINGS.filter(
+        (binding) =>
+          binding.command === "sidebar.collapseAllSubthreads" &&
+          isAppKeybindingAvailableForClient(binding, client),
+      ).at(-1)?.shortcut;
+
+    expect(shortcutFor(DEFAULT_KEYBINDING_CLIENTS[0])).toEqual({
+      key: "c",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: true,
+      shift: false,
+    });
+    for (const client of DEFAULT_KEYBINDING_CLIENTS.slice(1)) {
+      expect(shortcutFor(client)).toBeNull();
+    }
+    expect(
+      DEFAULT_APP_KEYBINDINGS.some(
+        (binding) =>
+          binding.command !== "sidebar.collapseAllSubthreads" &&
+          binding.shortcut?.key.toLowerCase() === "c" &&
+          binding.shortcut.alt &&
+          (binding.shortcut.mod || binding.shortcut.meta),
+      ),
+    ).toBe(false);
+  });
+
   it("serves validated explicit defaults from system config", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
@@ -434,6 +464,7 @@ describe("app keybindings", () => {
             shift: binding.shortcut.shift,
           })),
       ).toEqual([
+        { command: "sidebar.collapseAllSubthreads", shift: false },
         { command: "modelPicker.cycleModel", shift: false },
         { command: "modelPicker.cycleModelBackward", shift: true },
         { command: "modelPicker.cycleProvider", shift: false },
@@ -527,6 +558,7 @@ describe("app keybindings", () => {
         "history.forward",
         "thread.previous",
         "thread.next",
+        "sidebar.collapseAllSubthreads",
         ...THREAD_JUMP_APP_COMMAND_IDS,
         ...PANE_FOCUS_APP_COMMAND_IDS,
         "panel.reopenClosedTab",
