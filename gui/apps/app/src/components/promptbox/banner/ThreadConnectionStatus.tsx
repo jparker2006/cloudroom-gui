@@ -74,7 +74,7 @@ export function useRecoveredFlash(problemShown: boolean): boolean {
 
 const heldStaleLabels = new Map<string, string>();
 
-export function StaleConversationMarker({ threadId, hasRows }: { threadId: string; hasRows: boolean }) {
+export function useStaleConversationLabel(threadId: string, hasRows: boolean): string | null {
   const queryClient = useQueryClient();
   const liveLabel = getStaleConversationLabel({
     socket: useServerConnectionState(),
@@ -97,7 +97,10 @@ export function StaleConversationMarker({ threadId, hasRows }: { threadId: strin
     });
   }, [liveLabel, queryClient, threadId]);
   if (liveLabel && heldLabel !== liveLabel) setHeldLabel(liveLabel);
-  const label = liveLabel ?? heldLabel;
+  return liveLabel ?? heldLabel;
+}
+
+export function StaleConversationMarker({ label }: { label: string | null }) {
   if (!label) return null;
   return (
     <p className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-muted-foreground">

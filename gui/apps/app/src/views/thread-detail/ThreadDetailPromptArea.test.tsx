@@ -1134,6 +1134,45 @@ describe("ThreadDetailPromptArea", () => {
       }
     });
 
+    it("keeps a late lost reply on the thread that sent it after switching to another project's thread", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      const pending = createDeferredPromise<undefined>();
+      mocks.sendMessageMutateAsync.mockReturnValueOnce(pending.promise);
+      const view = renderPromptArea();
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+      expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith(expect.objectContaining({ text: TEXT }));
+
+      view.rerender(buildPromptAreaElement({ thread: makeThread({ id: "thr_other", projectId: "proj_2" }) }));
+      await act(async () => {
+        pending.reject(new TypeError("Failed to fetch"));
+      });
+      expect(screen.queryByText("Delivery unconfirmed")).toBeNull();
+      expect(mocks.promptDraft.restoreIfEmpty).toHaveBeenCalledWith(expect.objectContaining({ text: TEXT }));
+
+      view.rerender(buildPromptAreaElement());
+      expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed");
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows nothing and restores nothing when a send in flight later succeeds after switching threads", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      const pending = createDeferredPromise<undefined>();
+      mocks.sendMessageMutateAsync.mockReturnValueOnce(pending.promise);
+      const view = renderPromptArea();
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      view.rerender(buildPromptAreaElement({ thread: makeThread({ id: "thr_other" }) }));
+      await act(async () => {
+        pending.resolve(undefined);
+      });
+      view.rerender(buildPromptAreaElement());
+      expect(screen.queryByText("Delivery unconfirmed")).toBeNull();
+      expect(mocks.promptDraft.restoreIfEmpty).not.toHaveBeenCalled();
+      expect(mocks.toastError).not.toHaveBeenCalled();
+    });
+
     it("keeps structured server rejections on the existing toast", async () => {
       mocks.defaultExecutionOptions = localOptions;
       mocks.promptDraft.text = TEXT;

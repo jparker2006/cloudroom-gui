@@ -9,9 +9,7 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import { Button } from "@cloudroom/shared-ui/button";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
-import { StaleConversationMarker } from "@/components/promptbox/banner/ThreadConnectionStatus";
-import { useServerConnectionGracePeriodElapsed } from "@/hooks/queries/connection-aware-query-state";
-import { useServerConnectionState } from "@/hooks/useServerConnectionState";
+import { StaleConversationMarker, useStaleConversationLabel } from "@/components/promptbox/banner/ThreadConnectionStatus";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { Skeleton } from "@cloudroom/shared-ui/skeleton";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -183,10 +181,10 @@ export function ThreadTimelineSurface({
   workspaceRootPath,
 }: ThreadTimelineSurfaceProps) {
   const systemConfigQuery = useSystemConfig();
-  const serverConnectionState = useServerConnectionState();
-  const connectionGracePeriodElapsed = useServerConnectionGracePeriodElapsed();
-  const isConversationStale =
-    serverConnectionState !== "connected" && connectionGracePeriodElapsed;
+  const staleConversationLabel = useStaleConversationLabel(
+    threadId,
+    timelineRows.length > 0,
+  );
   const timelineWindowingEnabled =
     systemConfigQuery.data?.experiments.timelineWindowing ?? false;
   const showActiveThinking =
@@ -273,8 +271,10 @@ export function ThreadTimelineSurface({
             }
           />
         ) : null}
-        <StaleConversationMarker threadId={threadId} hasRows={timelineRows.length > 0} />
-        <HeightTransition visible={showOngoingIndicator && !isConversationStale}>
+        <StaleConversationMarker label={staleConversationLabel} />
+        <HeightTransition
+          visible={showOngoingIndicator && staleConversationLabel === null}
+        >
           <TimelineWorkingIndicator
             key={ongoingIndicatorKey}
             details={activeThinkingDetails}

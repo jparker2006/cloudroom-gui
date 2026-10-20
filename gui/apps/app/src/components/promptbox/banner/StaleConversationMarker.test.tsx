@@ -10,7 +10,11 @@ vi.mock("@/hooks/useServerConnectionState", () => ({ useServerConnectionState: (
 vi.mock("@/hooks/queries/connection-aware-query-state", () => ({ useServerConnectionGracePeriodElapsed: () => live.state !== "connected" }));
 vi.mock("@/lib/ws", () => ({ wsManager: { getDisconnectedAt: () => live.disconnectedAt, reconnectNow: vi.fn() } }));
 
-const { StaleConversationMarker } = await import("./ThreadConnectionStatus");
+const { StaleConversationMarker: Marker, useStaleConversationLabel } = await import("./ThreadConnectionStatus");
+
+function StaleConversationMarker({ threadId, hasRows }: { threadId: string; hasRows: boolean }) {
+  return <Marker label={useStaleConversationLabel(threadId, hasRows)} />;
+}
 
 let queryClient: QueryClient;
 
