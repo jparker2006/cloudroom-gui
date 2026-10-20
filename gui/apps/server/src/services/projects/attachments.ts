@@ -1,5 +1,7 @@
 // oxlint-disable-next-line no-restricted-imports
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+// oxlint-disable-next-line no-restricted-imports
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -119,12 +121,69 @@ async function ensureAttachmentReferenceExists(
   projectId: string,
   attachmentPath: string,
 ): Promise<void> {
-  const dir = projectAttachmentDir(dataDir, projectId);
-  const resolved = resolveAttachmentPath(dir, attachmentPath);
-  const fileStat = await stat(resolved).catch(() => null);
-  if (!fileStat || !fileStat.isFile()) {
+  if (!(await resolveStoredAttachment(dataDir, projectId, attachmentPath))) {
     throw missingAttachmentReferenceError(attachmentPath);
   }
+}
+
+export async function resolveProjectAttachmentFile(
+  dataDir: string,
+  projectId: string,
+  relativePath: string,
+): Promise<string | null> {
+  if (pathLooksRuntimeReadable(relativePath)) return null;
+  const stored = await resolveStoredAttachment(
+    dataDir,
+    projectId,
+    relativePath,
+  ).catch(() => null);
+  return stored?.resolved ?? null;
+}
+
+export async function withoutUnverifiedAttachments(
+  dataDir: string,
+  projectId: string,
+  input: PromptInput[],
+): Promise<PromptInput[]> {
+  const kept: PromptInput[] = [];
+  const dropped: string[] = [];
+  for (const part of input) {
+    if (
+      (part.type === "localImage" || part.type === "localFile") &&
+      !(await resolveProjectAttachmentFile(dataDir, projectId, part.path))
+    ) {
+      dropped.push(basename(part.path.replaceAll("\\", "/")));
+      continue;
+    }
+    kept.push(part);
+  }
+  if (dropped.length === 0) return input;
+  return [
+    ...kept,
+    {
+      type: "text",
+      text: `[Attachments not delivered (missing, or not an upload of this project; you have not seen them, so ask the user to attach them again if the task depends on them): ${[...new Set(dropped)].join(", ")}.]`,
+      mentions: [],
+    },
+  ];
+}
+
+async function resolveStoredAttachment(
+  dataDir: string,
+  projectId: string,
+  relativePath: string,
+): Promise<{ fileStat: Stats; resolved: string } | null> {
+  const dir = projectAttachmentDir(dataDir, projectId);
+  const [realDir, realFile] = await Promise.all([
+    realpath(dir).catch(() => null),
+    realpath(resolveAttachmentPath(dir, relativePath)).catch(() => null),
+  ]);
+  const resolved =
+    realDir && realFile
+      ? resolveContainedPath({ rootPath: realDir, candidatePath: realFile })
+      : null;
+  const fileStat = resolved ? await stat(resolved).catch(() => null) : null;
+  return resolved && fileStat?.isFile() ? { fileStat, resolved } : null;
 }
 
 export async function validatePromptAttachmentReferences(
@@ -197,13 +256,11 @@ export async function readAttachment(
   projectId: string,
   relativePath: string,
 ): Promise<StoredAttachmentContent> {
-  const dir = projectAttachmentDir(dataDir, projectId);
-  const resolved = resolveAttachmentPath(dir, relativePath);
-
-  const fileStat = await stat(resolved).catch(() => null);
-  if (!fileStat || !fileStat.isFile()) {
+  const stored = await resolveStoredAttachment(dataDir, projectId, relativePath);
+  if (!stored) {
     throw new ApiError(404, "invalid_request", "Attachment not found");
   }
+  const { fileStat, resolved } = stored;
 
   return {
     content: await readFile(resolved),

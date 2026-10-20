@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { basename, isAbsolute, join } from "node:path";
-import { resolveContainedPath } from "@cloudroom/process-utils";
+import { basename } from "node:path";
+import { resolveProjectAttachmentFile } from "../projects/attachments.js";
 import { and, asc, desc, eq, inArray, isNull, like } from "drizzle-orm";
 import {
   cloudroomThreads,
@@ -97,20 +97,48 @@ const services = new WeakMap<AppDeps["db"], Teleport>();
 export function undeliveredAttachmentsLine(names: readonly string[]): string {
   return names.length === 0
     ? ""
-    : `\nAttachments not delivered (unsafe stored paths; you have not seen them, so ask the user to attach them again if the task depends on them): ${names.join(", ")}.`;
+    : `\nAttachments not delivered (missing, or not an upload of this project; you have not seen them, so ask the user to attach them again if the task depends on them): ${names.join(", ")}.`;
 }
 
 export function teleportAttachmentPath(
   dataDir: string,
   projectId: string,
   path: string,
-): string | null {
-  if (isAbsolute(path)) return path;
-  const root = join(dataDir, "attachments", projectId);
-  return resolveContainedPath({
-    rootPath: root,
-    candidatePath: join(root, path.replaceAll("\\", "/")),
-  });
+): Promise<string | null> {
+  return resolveProjectAttachmentFile(
+    dataDir,
+    projectId,
+    path.replaceAll("\\", "/"),
+  );
+}
+
+export async function collectTeleportAttachments(args: {
+  dataDir: string;
+  inputs: readonly { projectId: string; input: unknown }[];
+}): Promise<{ attachments: string[]; undeliveredAttachments: string[] }> {
+  const attachments = new Set<string>();
+  const undeliveredAttachments = new Set<string>();
+  for (const { projectId, input } of args.inputs) {
+    if (!Array.isArray(input)) continue;
+    for (const part of input) {
+      if (
+        !["localImage", "localFile"].includes(part?.type) ||
+        typeof part.path !== "string"
+      )
+        continue;
+      const path = await teleportAttachmentPath(
+        args.dataDir,
+        projectId,
+        part.path,
+      );
+      if (path) attachments.add(path);
+      else undeliveredAttachments.add(basename(part.path.replaceAll("\\", "/")));
+    }
+  }
+  return {
+    attachments: [...attachments],
+    undeliveredAttachments: [...undeliveredAttachments],
+  };
 }
 
 export function teleports(deps: AppDeps): Teleport {
@@ -445,8 +473,7 @@ class Teleport {
         service_tier: row.serviceTier,
       };
     });
-    const attachments = new Set<string>();
-    const undeliveredAttachments = new Set<string>();
+    const inputs: { projectId: string; input: unknown }[] = [];
     for (const source of all) {
       const rows = this.deps.db
         .select({ data: events.data })
@@ -464,24 +491,14 @@ class Teleport {
         ...queuedRows
           .filter((row) => row.threadId === source.id)
           .map((row) => JSON.parse(row.content)),
-      ]) {
-        if (!Array.isArray(input)) continue;
-        for (const part of input) {
-          const path =
-            ["localImage", "localFile"].includes(part.type) &&
-            typeof part.path === "string"
-              ? teleportAttachmentPath(
-                  this.deps.config.dataDir,
-                  source.projectId,
-                  part.path,
-                )
-              : null;
-          if (path) attachments.add(path);
-          else if (typeof part.path === "string" && ["localImage", "localFile"].includes(part.type))
-            undeliveredAttachments.add(basename(part.path.replaceAll("\\", "/")));
-        }
-      }
+      ])
+        inputs.push({ projectId: source.projectId, input });
     }
+    const { attachments, undeliveredAttachments } =
+      await collectTeleportAttachments({
+        dataDir: this.deps.config.dataDir,
+        inputs,
+      });
     const state: State = {
       id,
       threadId,
@@ -489,8 +506,8 @@ class Teleport {
       environmentId: environment.id,
       workspacePath: environment.path,
       sessions,
-      attachments: [...attachments],
-      ...(undeliveredAttachments.size > 0 ? { undeliveredAttachments: [...undeliveredAttachments] } : {}),
+      attachments,
+      ...(undeliveredAttachments.length > 0 ? { undeliveredAttachments } : {}),
       queuedIds: queuedRows.map((row) => row.id),
       queued,
       ...execution,

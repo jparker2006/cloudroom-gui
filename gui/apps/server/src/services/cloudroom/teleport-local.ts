@@ -28,6 +28,7 @@ import { provisionUnmanagedEnvironmentForPath } from "../threads/thread-environm
 import { getLastProviderThreadId } from "../threads/thread-events.js";
 import { requestQueuedMessageDispatch } from "../threads/queued-message-dispatch.js";
 import { requireThreadStoragePath } from "../threads/thread-storage.js";
+import { withoutUnverifiedAttachments } from "../projects/attachments.js";
 import { cloudroom } from "./commands.js";
 import type { CloudroomClient } from "./client.js";
 import { SKIPPED } from "./project-copy.js";
@@ -106,7 +107,9 @@ async function run(deps: AppDeps, threadId: string, step: (value: TeleportLocalS
   const conflicts = await applyChanges(environment.path, changes.archive, randomUUID(), changes.base);
   step("switching");
 
-  const queued = cloudroom(deps).queue(threadId);
+  const queued = await Promise.all(cloudroom(deps).queue(threadId).map(async (message) => ({
+    ...message, content: await withoutUnverifiedAttachments(deps.config.dataDir, thread.projectId, message.content),
+  })));
   deps.db.transaction((tx) => {
     for (const message of queued)
       createQueuedThreadMessageInTransaction(tx, {

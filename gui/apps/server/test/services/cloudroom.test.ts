@@ -1,13 +1,14 @@
 import { createServer, type ServerResponse } from "node:http";
 import { once } from "node:events";
-import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import * as sync from "../../src/services/cloudroom/sync.js";
 import { listQueuedCommands } from "../helpers/commands.js";
 import { cloudroom } from "../../src/services/cloudroom/commands.js";
 import { command, saveTeleportProgress } from "../../src/services/cloudroom/store.js";
-import { teleportAttachmentPath, teleports, undeliveredAttachmentsLine } from "../../src/services/cloudroom/teleport.js";
+import { collectTeleportAttachments, teleportAttachmentPath, teleports, undeliveredAttachmentsLine } from "../../src/services/cloudroom/teleport.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import { seedEnvironment, seedHostSession, seedPrimaryHost, seedProjectWithSource, seedThread, seedThreadRuntimeState } from "../helpers/seed.js";
 import { createThread, getThread, setProjectGitRemoteUrlIfMissing, events, cloudroomThreads, cloudroomCommands } from "@cloudroom/db";
@@ -1262,13 +1263,39 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
   }
 });
 
-it("teleports only attachment paths contained in the thread's project", () => {
-  const dataDir = "/data";
-  const root = join(dataDir, "attachments", "proj_b");
-  expect(teleportAttachmentPath(dataDir, "proj_b", "shot.png")).toBe(join(root, "shot.png"));
-  expect(teleportAttachmentPath(dataDir, "proj_b", "/Users/me/Desktop/shot.png")).toBe("/Users/me/Desktop/shot.png");
-  for (const escaping of ["../proj_a/shot.png", "../../../outside-marker.txt", "..\\proj_a\\shot.png", "."]) {
-    expect(teleportAttachmentPath(dataDir, "proj_b", escaping)).toBeNull();
-  }  expect(undeliveredAttachmentsLine([])).toBe("");
-  expect(undeliveredAttachmentsLine(["outside-marker.txt"])).toBe("\nAttachments not delivered (unsafe stored paths; you have not seen them, so ask the user to attach them again if the task depends on them): outside-marker.txt.");
+it("teleports only attachments that resolve inside the thread project's uploads", async () => {
+  const base = await realpath(await mkdtemp(join(tmpdir(), "teleport-attachments-")));
+  try {
+    const dataDir = join(base, "data");
+    const uploadsB = join(dataDir, "attachments", "proj_b");
+    const uploadsA = join(dataDir, "attachments", "proj_a");
+    const workspace = join(base, "workspace");
+    await Promise.all([mkdir(uploadsB, { recursive: true }), mkdir(uploadsA, { recursive: true }), mkdir(workspace, { recursive: true })]);
+    await writeFile(join(uploadsB, "shot.png"), "b");
+    await writeFile(join(uploadsA, "a.png"), "a");
+    await writeFile(join(workspace, "ws.png"), "ws");
+    await writeFile(join(base, "outside-marker.txt"), "secret");
+    await symlink(join(base, "outside-marker.txt"), join(uploadsB, "link-out.png"));
+    await symlink(join(base, "outside-marker.txt"), join(workspace, "ws-link-out.png"));
+    await symlink(join(uploadsB, "shot.png"), join(uploadsB, "link-in.png"));
+    const image = (path: string) => ({ type: "localImage", path });
+    const collected = await collectTeleportAttachments({
+      dataDir,
+      inputs: [
+        { projectId: "proj_b", input: [{ type: "text", text: "kept from a Cloud era turn", mentions: [] }, image("shot.png"), image("link-in.png")] },
+        { projectId: "proj_b", input: [image(join(workspace, "ws.png"))] },
+        { projectId: "proj_b", input: [image("../proj_a/a.png"), image("..\\proj_a\\a.png"), image("../../outside-marker.txt"), image("gone.png")] },
+        { projectId: "proj_b", input: [image(join(base, "outside-marker.txt")), image(join(uploadsA, "a.png")), image("link-out.png"), image(join(workspace, "ws-link-out.png"))] },
+        { projectId: "proj_b", input: "not an input list" },
+      ],
+    });
+    expect(collected.attachments).toEqual([join(uploadsB, "shot.png")]);
+    expect(collected.undeliveredAttachments).toEqual(["ws.png", "a.png", "outside-marker.txt", "gone.png", "link-out.png", "ws-link-out.png"]);
+    expect(await teleportAttachmentPath(dataDir, "proj_b", join(uploadsB, "shot.png"))).toBeNull();
+    expect(await teleportAttachmentPath(dataDir, "proj_b", "C:\\Users\\me\\shot.png")).toBeNull();
+    expect(undeliveredAttachmentsLine([])).toBe("");
+    expect(undeliveredAttachmentsLine(["a.png"])).toContain("Attachments not delivered (missing, or not an upload of this project; you have not seen them");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
 });

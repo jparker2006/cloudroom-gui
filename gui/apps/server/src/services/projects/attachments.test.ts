@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import {
   copyProjectAttachments,
   readAttachment,
   validatePromptAttachmentReferences,
+  withoutUnverifiedAttachments,
 } from "./attachments.js";
 
 const tempDirs: string[] = [];
@@ -103,6 +104,64 @@ describe("project attachments", () => {
         copyProjectAttachments(dataDir, "proj_source", "proj_target", [path]),
       ).rejects.toMatchObject({ status: 400 });
     }
+  });
+
+  it("follows symlinks only when they stay inside the project's uploads", async () => {
+    const dataDir = await makeTempDir();
+    const dir = join(dataDir, "attachments", "proj_test");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dataDir, "outside.png"), "secret");
+    await writeFile(join(dir, "real.png"), "real");
+    await symlink(join(dataDir, "outside.png"), join(dir, "escape.png"));
+    await symlink(join(dir, "real.png"), join(dir, "alias.png"));
+
+    expect(
+      (await readAttachment(dataDir, "proj_test", "alias.png")).content.toString(),
+    ).toBe("real");
+    await expect(
+      readAttachment(dataDir, "proj_test", "escape.png"),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      validatePromptAttachmentReferences({
+        dataDir,
+        projectId: "proj_test",
+        input: [{ type: "localImage", path: "escape.png" }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      copyProjectAttachments(dataDir, "proj_test", "proj_other", ["escape.png"]),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("keeps only verified uploads when Cloud queued messages become Local", async () => {
+    const dataDir = await makeTempDir();
+    await mkdir(join(dataDir, "attachments", "proj_b"), { recursive: true });
+    await mkdir(join(dataDir, "attachments", "proj_a"), { recursive: true });
+    await writeFile(join(dataDir, "attachments", "proj_b", "b.png"), "b");
+    await writeFile(join(dataDir, "attachments", "proj_a", "a.png"), "a");
+    const text = { type: "text" as const, text: "look", mentions: [] };
+    const valid = [text, { type: "localImage" as const, path: "b.png" }];
+
+    expect(
+      await withoutUnverifiedAttachments(dataDir, "proj_b", valid),
+    ).toBe(valid);
+    expect(
+      await withoutUnverifiedAttachments(dataDir, "proj_b", [
+        text,
+        { type: "localImage", path: "b.png" },
+        { type: "localImage", path: "a.png" },
+        { type: "localImage", path: "../proj_a/a.png" },
+        { type: "localFile", path: "/etc/hosts", name: "hosts" },
+      ]),
+    ).toEqual([
+      text,
+      { type: "localImage", path: "b.png" },
+      {
+        type: "text",
+        text: "[Attachments not delivered (missing, or not an upload of this project; you have not seen them, so ask the user to attach them again if the task depends on them): a.png, hosts.]",
+        mentions: [],
+      },
+    ]);
   });
 
   it("does not partially copy when one source attachment is missing", async () => {
