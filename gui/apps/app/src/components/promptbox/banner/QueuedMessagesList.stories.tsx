@@ -20,10 +20,8 @@ import {
 import {
   QueuedMessagesList,
   type QueuedMessagePendingSend,
-  type QueuedMessagesSummaryVariant,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { isOptimisticQueuedMessageId } from "@cloudroom/client-core";
-import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -348,7 +346,6 @@ interface StaticQueuedMessagesListProps {
   processingMessageId?: string;
   processingAction?: "send" | "edit" | "delete";
   pendingSend?: QueuedMessagePendingSend | null;
-  summaryVariant?: QueuedMessagesSummaryVariant;
 }
 
 function StaticQueuedMessagesList({
@@ -358,7 +355,6 @@ function StaticQueuedMessagesList({
   processingMessageId,
   processingAction,
   pendingSend,
-  summaryVariant,
 }: StaticQueuedMessagesListProps) {
   return (
     <QueuedMessagesList
@@ -370,7 +366,6 @@ function StaticQueuedMessagesList({
       processingMessageId={processingMessageId ?? null}
       processingAction={processingAction ?? null}
       pendingSend={pendingSend ?? null}
-      summaryVariant={summaryVariant}
       onSend={noop}
       onReorder={noop}
       onEdit={noop}
@@ -773,11 +768,6 @@ export function SenderMetadata() {
   );
 }
 
-const SUMMARY_VARIANTS: readonly QueuedMessagesSummaryVariant[] = [
-  "strip",
-  "stack",
-];
-
 const SUMMARY_PENDING_AUTO: QueuedMessagePendingSend = {
   queuedMessageId: "q_a",
   mode: "auto",
@@ -872,12 +862,12 @@ const summaryScenarios: readonly SummaryScenario[] = [
   },
   {
     label: "failed head",
-    hint: "the failure replaces the head status and the pill counts it",
+    hint: "the failure replaces the head status and the summary counts it",
     queuedMessages: [...failed, ...oneBehind],
   },
   {
     label: "failed mid-queue",
-    hint: "the head stays calm; the pill still counts the failed row",
+    hint: "the head stays calm; the summary still counts the failed row",
     queuedMessages: [...multipleMessages.slice(0, 1), ...failed, ...oneBehind],
   },
   {
@@ -901,6 +891,23 @@ const summaryScenarios: readonly SummaryScenario[] = [
     label: "pending steer · 2 left",
     hint: "the steer request is in flight with the rest of the queue",
     queuedMessages: multipleMessages.slice(1),
+    pendingSend: SUMMARY_PENDING_STEER,
+  },
+  {
+    label: "everything at once",
+    hint: "pending steer, failed, unconfirmed, and attachments together on a long queue",
+    queuedMessages: [
+      makeQueuedMessage({
+        id: "sum_all_img",
+        text: "Three screenshots from the design review.",
+        attachments: 3,
+      }),
+      ...failed,
+      ...manyMessages,
+      makeQueuedMessage({ id: "optimistic-queued-all-1" }),
+      makeQueuedMessage({ id: "optimistic-queued-all-2" }),
+      makeQueuedMessage({ id: "optimistic-queued-all-3" }),
+    ],
     pendingSend: SUMMARY_PENDING_STEER,
   },
   {
@@ -937,11 +944,9 @@ function CollapsedOnMount({ children }: { children: ReactNode }) {
 }
 
 function SummaryScenarioRow({
-  summaryVariant,
   scenario,
   collapsed,
 }: {
-  summaryVariant: QueuedMessagesSummaryVariant;
   scenario: SummaryScenario;
   collapsed: boolean;
 }) {
@@ -949,12 +954,11 @@ function SummaryScenarioRow({
     <StaticQueuedMessagesList
       queuedMessages={scenario.queuedMessages}
       pendingSend={scenario.pendingSend ?? null}
-      summaryVariant={summaryVariant}
     />
   );
   return (
     <StoryRow
-      label={`${summaryVariant} · ${collapsed ? "collapsed" : "expanded"}`}
+      label={collapsed ? "collapsed" : "expanded"}
       hint={`${scenario.label}: ${scenario.hint}`}
     >
       <ResponsivePromptStage>
@@ -964,30 +968,18 @@ function SummaryScenarioRow({
   );
 }
 
-export function SummaryOptions() {
+export function Summary() {
   return (
-    <>
-      {SUMMARY_VARIANTS.map((summaryVariant) => (
-        <StoryCard key={summaryVariant}>
-          {summaryScenarios.map((scenario) => (
-            <Fragment key={scenario.label}>
-              <SummaryScenarioRow
-                summaryVariant={summaryVariant}
-                scenario={scenario}
-                collapsed={true}
-              />
-              {scenario.queuedMessages.length === 0 ? null : (
-                <SummaryScenarioRow
-                  summaryVariant={summaryVariant}
-                  scenario={scenario}
-                  collapsed={false}
-                />
-              )}
-            </Fragment>
-          ))}
-        </StoryCard>
+    <StoryCard>
+      {summaryScenarios.map((scenario) => (
+        <Fragment key={scenario.label}>
+          <SummaryScenarioRow scenario={scenario} collapsed={true} />
+          {scenario.queuedMessages.length === 0 ? null : (
+            <SummaryScenarioRow scenario={scenario} collapsed={false} />
+          )}
+        </Fragment>
       ))}
-    </>
+    </StoryCard>
   );
 }
 
@@ -1009,8 +1001,6 @@ const transitionButtonClass =
   "rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-state-hover disabled:pointer-events-none disabled:opacity-40";
 
 export function SummaryTransitions() {
-  const [summaryVariant, setSummaryVariant] =
-    useState<QueuedMessagesSummaryVariant>("strip");
   const [state, setState] = useState(initialSummaryTransitionState);
   const hasPendingSend = state.pendingSend !== null;
   const hasOptimistic = state.queuedMessages.some((queuedMessage) =>
@@ -1083,24 +1073,6 @@ export function SummaryTransitions() {
 
   return (
     <StoryCard>
-      <StoryRow label="variant" hint="the summary option under test">
-        <div className="flex gap-2">
-          {SUMMARY_VARIANTS.map((variant) => (
-            <button
-              key={variant}
-              type="button"
-              aria-pressed={summaryVariant === variant}
-              className={cn(
-                transitionButtonClass,
-                summaryVariant === variant && "bg-muted",
-              )}
-              onClick={() => setSummaryVariant(variant)}
-            >
-              {variant}
-            </button>
-          ))}
-        </div>
-      </StoryRow>
       <StoryRow label="client" hint="local actions that change the queue">
         <div className="flex flex-wrap gap-2">
           <button
@@ -1175,7 +1147,6 @@ export function SummaryTransitions() {
           <StaticQueuedMessagesList
             queuedMessages={state.queuedMessages}
             pendingSend={state.pendingSend}
-            summaryVariant={summaryVariant}
           />
         </ResponsivePromptStage>
       </StoryRow>

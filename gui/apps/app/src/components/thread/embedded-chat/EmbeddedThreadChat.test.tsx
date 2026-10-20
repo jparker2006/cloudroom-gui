@@ -27,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
   sendQueuedMessageMutateAsync: vi.fn(),
+  sendQueuedMessagePending: null as {
+    id: string;
+    mode: "auto" | "steer";
+    queuedMessageId: string;
+  } | null,
   sendThreadMessageMutateAsync: vi.fn(),
   threadRuntimeDisplayStatus: "idle" as string,
   timelineRows: [] as Array<{ text: string }>,
@@ -109,12 +114,14 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
   QueuedMessagesList: ({
     attachedToComposer,
     onSend,
+    pendingSend,
     queuedMessages,
     sendAction,
     sendDisabled,
   }: {
     attachedToComposer: boolean;
     onSend: (queuedMessageId: string) => void;
+    pendingSend?: { queuedMessageId: string; mode: string } | null;
     queuedMessages: readonly unknown[];
     sendAction: "send-now" | "steer-when-ready";
     sendDisabled: boolean;
@@ -124,6 +131,11 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
       data-attached-to-composer={String(attachedToComposer)}
       data-send-action={sendAction}
       data-send-disabled={sendDisabled ? "" : undefined}
+      data-pending-send={
+        pendingSend
+          ? `${pendingSend.mode}:${pendingSend.queuedMessageId}`
+          : undefined
+      }
     >
       <span data-testid="queued-count">{queuedMessages.length}</span>
       <button type="button" onClick={() => onSend("q1")}>
@@ -320,7 +332,8 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
   useSendThreadQueuedMessage: () => ({
     mutateAsync: mocks.sendQueuedMessageMutateAsync,
-    isPending: false,
+    isPending: mocks.sendQueuedMessagePending !== null,
+    variables: mocks.sendQueuedMessagePending ?? undefined,
   }),
   useUpdateThreadQueuedMessage: () => ({
     mutateAsync: vi.fn(),
@@ -404,6 +417,7 @@ describe("EmbeddedThreadChat", () => {
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
     mocks.sendQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
+    mocks.sendQueuedMessagePending = null;
     mocks.threadRuntimeDisplayStatus = "idle";
     mocks.timelineRows = [];
     mocks.injectedTimelineProps = [];
@@ -561,6 +575,30 @@ describe("EmbeddedThreadChat", () => {
         queuedMessageId: "q1",
       });
     });
+  });
+
+  it("keeps pending-send feedback after sending the last queued message", () => {
+    mocks.queuedMessages = [];
+    mocks.sendQueuedMessagePending = {
+      id: "thr_child",
+      mode: "auto",
+      queuedMessageId: "q1",
+    };
+    renderEmbeddedChat();
+
+    const queue = screen.getByTestId("embedded-chat-queued-messages");
+    expect(queue.dataset.pendingSend).toBe("auto:q1");
+    expect(screen.getByTestId("queued-count").textContent).toBe("0");
+    expect(queue.nextElementSibling).toBe(
+      screen.getByTestId("embedded-chat-composer"),
+    );
+  });
+
+  it("renders no queue once the queue is empty and nothing is sending", () => {
+    mocks.queuedMessages = [];
+    renderEmbeddedChat();
+
+    expect(screen.queryByTestId("embedded-chat-queued-messages")).toBeNull();
   });
 
   it("shows a pending approval in place of the composer", () => {

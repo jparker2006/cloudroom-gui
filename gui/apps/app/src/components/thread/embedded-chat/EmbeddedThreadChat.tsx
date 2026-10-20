@@ -1087,7 +1087,8 @@ function EmbeddedThreadChatWithComposer({
 
   const queuedMessagesStack = useMemo(
     () =>
-      queuedMessages.length > 0 && !pendingInteractionOccupiesComposer ? (
+      (queuedMessages.length > 0 || pendingQueuedMessageSend !== null) &&
+      !pendingInteractionOccupiesComposer ? (
         <QueuedMessagesList
           attachedToComposer
           queuedMessages={queuedMessages}

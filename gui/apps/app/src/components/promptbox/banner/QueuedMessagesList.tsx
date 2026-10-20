@@ -96,7 +96,6 @@ import {
 
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
 export type QueuedMessageSendAction = "send-now" | "steer-when-ready";
-export type QueuedMessagesSummaryVariant = "strip" | "stack";
 
 export interface QueuedMessagePendingSend {
   queuedMessageId: string;
@@ -127,7 +126,6 @@ export interface QueuedMessagesListProps {
   processingMessageId: string | null;
   processingAction: QueuedMessageProcessingAction | null;
   pendingSend?: QueuedMessagePendingSend | null;
-  summaryVariant?: QueuedMessagesSummaryVariant;
   inlineEditor?: QueuedMessageInlineEditor;
   onSend: (id: string) => void;
   onReorder: (request: QueuedMessageReorderRequest) => void;
@@ -140,7 +138,6 @@ interface QueuedMessagesPendingCardProps {
 }
 
 interface QueuedMessagesSummaryProps {
-  variant: QueuedMessagesSummaryVariant;
   headMessage: ThreadQueuedMessage;
   attachmentProjectId?: string;
   queuedMessageCount: number;
@@ -162,7 +159,6 @@ interface QueuedMessageRowProps {
   resolveMentionLink?: PromptMentionLinkResolver;
   attachmentProjectId?: string;
   index: number;
-  showOrdinal: boolean;
   isProcessing: boolean;
   processingLabel: string;
   dragDisabled: boolean;
@@ -179,9 +175,9 @@ interface QueuedMessageRowProps {
 }
 
 const COLLAPSED_HEIGHT = 36;
-const COLLAPSED_STRIP_HEIGHT = 54;
-const COLLAPSED_STACK_HEIGHT = 72;
-const DRAWER_STACK_HEADER_HEIGHT = 20;
+const COLLAPSED_PENDING_SEND_HEIGHT = 54;
+const COLLAPSED_SUMMARY_HEIGHT = 72;
+const QUEUE_ORDER_HEADER_HEIGHT = 20;
 const DRAWER_HEIGHT = 123;
 const DRAWER_MAX_VISIBLE_MESSAGES = 3;
 const DRAWER_CHROME_HEIGHT = 1 + 12 + 1;
@@ -214,11 +210,9 @@ function queuedMessageHasMetadataLine(
 function getDrawerHeight({
   queuedMessages,
   processingMessageId,
-  headerHeight,
 }: {
   queuedMessages: readonly ThreadQueuedMessage[];
   processingMessageId: string | null;
-  headerHeight: number;
 }): number {
   const rowsHeight =
     queuedMessages.length === 0
@@ -239,8 +233,11 @@ function getDrawerHeight({
           0,
         );
   return Math.min(
-    DRAWER_HEIGHT + headerHeight,
-    DRAWER_CHROME_HEIGHT + DRAWER_LIST_PADDING + headerHeight + rowsHeight,
+    DRAWER_HEIGHT + QUEUE_ORDER_HEADER_HEIGHT,
+    DRAWER_CHROME_HEIGHT +
+      DRAWER_LIST_PADDING +
+      QUEUE_ORDER_HEADER_HEIGHT +
+      rowsHeight,
   );
 }
 
@@ -609,11 +606,9 @@ function QueuedMessagePreview({
 }
 
 function QueuedMessageWaitLine({
-  labelClassName,
   pluginDisplayName,
   queuedMessage,
 }: {
-  labelClassName?: string;
   pluginDisplayName: string;
   queuedMessage: ThreadQueuedMessage;
 }) {
@@ -653,7 +648,7 @@ function QueuedMessageWaitLine({
           className="size-3"
         />
       ) : null}
-      <span className={cn("min-w-0 truncate", labelClassName)}>{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
       )}
@@ -663,11 +658,9 @@ function QueuedMessageWaitLine({
 
 function QueuedMessageProcessingLine({
   label,
-  labelClassName,
   unconfirmed = false,
 }: {
   label: string;
-  labelClassName?: string;
   unconfirmed?: boolean;
 }) {
   return (
@@ -681,7 +674,7 @@ function QueuedMessageProcessingLine({
         className="size-3 shrink-0 animate-spin"
         aria-hidden
       />
-      <span className={cn("min-w-0 truncate", labelClassName)}>{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
     </div>
   );
 }
@@ -734,7 +727,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   resolveMentionLink,
   attachmentProjectId,
   index,
-  showOrdinal,
   isProcessing,
   processingLabel,
   dragDisabled,
@@ -844,15 +836,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           )}
         >
           <div className="flex min-w-0 items-center gap-1">
-            {showOrdinal ? (
-              <span
-                data-queued-message-ordinal=""
-                aria-hidden
-                className="mr-0.5 min-w-3 shrink-0 text-right text-2xs tabular-nums text-subtle-foreground"
-              >
-                {index + 1}
-              </span>
-            ) : null}
             {queuedMessage.hardQueue === true ? (
               <span
                 data-queued-message-hard-queue=""
@@ -1157,11 +1140,13 @@ export function QueuedMessagesPendingCard({
 function QueuedMessagesStatus({
   failedCount,
   pendingSend,
+  queuedCountClassName,
   queuedMessageCount,
   unconfirmedCount,
 }: {
   failedCount: number;
   pendingSend: QueuedMessagePendingSend | null;
+  queuedCountClassName?: string;
   queuedMessageCount: number | null;
   unconfirmedCount: number;
 }) {
@@ -1195,7 +1180,10 @@ function QueuedMessagesStatus({
         </span>
       )}
       {queuedMessageCount === null || queuedMessageCount === 0 ? null : (
-        <span data-queued-messages-count="" className="shrink-0">
+        <span
+          data-queued-messages-count=""
+          className={cn("shrink-0", queuedCountClassName)}
+        >
           {queuedMessageCount} queued
         </span>
       )}
@@ -1214,11 +1202,9 @@ function QueuedMessagesStatus({
 
 function QueuedMessageHeadStatus({
   fallback,
-  labelClassName,
   queuedMessage,
 }: {
-  fallback: string | null;
-  labelClassName?: string;
+  fallback: string;
   queuedMessage: ThreadQueuedMessage;
 }) {
   const pluginDisplayName = usePluginDisplayName(
@@ -1230,7 +1216,6 @@ function QueuedMessageHeadStatus({
     return (
       <QueuedMessageProcessingLine
         label={UNCONFIRMED_QUEUED_MESSAGE_LABEL}
-        labelClassName={labelClassName}
         unconfirmed
       />
     );
@@ -1238,13 +1223,12 @@ function QueuedMessageHeadStatus({
   if (queuedMessageHasWaitLine(queuedMessage)) {
     return (
       <QueuedMessageWaitLine
-        labelClassName={labelClassName}
         pluginDisplayName={pluginDisplayName}
         queuedMessage={queuedMessage}
       />
     );
   }
-  return fallback === null ? null : (
+  return (
     <span className="min-w-0 truncate text-2xs text-subtle-foreground">
       {fallback}
     </span>
@@ -1252,7 +1236,6 @@ function QueuedMessageHeadStatus({
 }
 
 function QueuedMessagesSummary({
-  variant,
   headMessage,
   attachmentProjectId,
   queuedMessageCount,
@@ -1327,7 +1310,7 @@ function QueuedMessagesSummary({
 
   return (
     <div
-      data-queued-messages-summary={variant}
+      data-queued-messages-summary=""
       className="relative mx-1 mb-2 mt-1 flex min-h-0 min-w-0 flex-1 rounded-lg transition-colors has-[[data-queued-messages-summary-trigger]:hover]:bg-state-hover"
     >
       <button
@@ -1347,66 +1330,30 @@ function QueuedMessagesSummary({
       </span>
       <div
         inert
-        className={cn(
-          "pointer-events-none relative flex min-w-0 flex-1 px-2",
-          variant === "strip"
-            ? "items-center gap-1.5"
-            : "flex-col items-stretch justify-center gap-0.5",
-        )}
+        className="pointer-events-none relative flex min-w-0 flex-1 flex-col items-stretch justify-center gap-0.5 px-2"
       >
-        {variant === "strip" ? (
-          <>
-            <span
-              aria-hidden
-              className="min-w-3 shrink-0 text-right text-2xs tabular-nums text-subtle-foreground"
-            >
-              1
-            </span>
-            {thumbnail}
-            <QueuedMessagePreview compact queuedMessage={headMessage} />
-            {attachmentBadge}
-            <span className="flex min-w-0 max-w-[40%] shrink-0 empty:hidden">
-              <QueuedMessageHeadStatus
-                fallback={null}
-                labelClassName="@max-md/queue:sr-only"
-                queuedMessage={headMessage}
-              />
-            </span>
-            <span className="shrink-0 rounded-full bg-surface-recessed px-1.5 py-px">
-              <QueuedMessagesStatus
-                failedCount={failedCount}
-                pendingSend={pendingSend}
-                queuedMessageCount={queuedMessageCount - unconfirmedCount}
-                unconfirmedCount={unconfirmedCount}
-              />
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="flex min-w-0 items-center gap-1">
-              {thumbnail}
-              <QueuedMessagePreview compact queuedMessage={headMessage} />
-              {attachmentBadge}
-            </span>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="flex min-w-0 flex-1">
-                <QueuedMessageHeadStatus
-                  fallback="First in queue"
-                  queuedMessage={headMessage}
-                />
-              </span>
-              <QueuedMessagesStatus
-                failedCount={failedCount}
-                pendingSend={pendingSend}
-                queuedMessageCount={null}
-                unconfirmedCount={0}
-              />
-              <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
-                {laterCount > 0 ? `+${laterCount} more` : "Only message"}
-              </span>
-            </span>
-          </>
-        )}
+        <span className="flex min-w-0 items-center gap-1">
+          {thumbnail}
+          <QueuedMessagePreview compact queuedMessage={headMessage} />
+          {attachmentBadge}
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="flex min-w-0 flex-1">
+            <QueuedMessageHeadStatus
+              fallback="First in queue"
+              queuedMessage={headMessage}
+            />
+          </span>
+          <QueuedMessagesStatus
+            failedCount={failedCount}
+            pendingSend={pendingSend}
+            queuedMessageCount={null}
+            unconfirmedCount={0}
+          />
+          <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
+            {laterCount > 0 ? `+${laterCount} more` : "Only message"}
+          </span>
+        </span>
       </div>
     </div>
   );
@@ -1448,7 +1395,6 @@ export function QueuedMessagesList({
   processingMessageId,
   processingAction,
   pendingSend = null,
-  summaryVariant = "strip",
   inlineEditor,
   onSend,
   onReorder,
@@ -1829,25 +1775,17 @@ export function QueuedMessagesList({
     [collapseDrawer, dockWorkspace, mode, openWorkspace, showDrawer],
   );
 
-  const stackHeaderHeight =
-    summaryVariant === "stack" ? DRAWER_STACK_HEADER_HEIGHT : 0;
   const collapsedHeight =
     queuedMessages.length === 0
-      ? COLLAPSED_STRIP_HEIGHT
-      : summaryVariant === "stack"
-        ? COLLAPSED_STACK_HEIGHT
-        : COLLAPSED_STRIP_HEIGHT;
+      ? COLLAPSED_PENDING_SEND_HEIGHT
+      : COLLAPSED_SUMMARY_HEIGHT;
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
           messageCount: queuedMessages.length,
-        }) + stackHeaderHeight
+        }) + QUEUE_ORDER_HEADER_HEIGHT
       : mode === "drawer"
-        ? getDrawerHeight({
-            queuedMessages,
-            processingMessageId,
-            headerHeight: stackHeaderHeight,
-          })
+        ? getDrawerHeight({ queuedMessages, processingMessageId })
         : collapsedHeight;
   const unconstrainedSurfaceHeight = surfaceDragging
     ? clamp(
@@ -1908,7 +1846,6 @@ export function QueuedMessagesList({
           resolveMentionLink={resolveMentionLink}
           attachmentProjectId={attachmentProjectId}
           index={messageIndex}
-          showOrdinal={summaryVariant === "strip"}
           isProcessing={processingMessageId === queuedMessage.id}
           processingLabel={processingLabel}
           dragDisabled={sortingDisabled || inlineEditor !== undefined}
@@ -1953,9 +1890,7 @@ export function QueuedMessagesList({
     0,
   );
   const collapsed = mode === "collapsed" || showPendingSendOnly;
-  const showEdgeStatus =
-    !showPendingSendOnly &&
-    (summaryVariant === "strip" ? !collapsed : collapsed);
+  const showEdgeStatus = collapsed && !showPendingSendOnly;
 
   const queueFitsDrawer = queuedMessages.length <= DRAWER_MAX_VISIBLE_MESSAGES;
   const caretWillCollapse =
@@ -2029,8 +1964,9 @@ export function QueuedMessagesList({
           {showEdgeStatus ? (
             <span className="pl-2">
               <QueuedMessagesStatus
-                failedCount={summaryVariant === "strip" ? failedCount : 0}
-                pendingSend={summaryVariant === "strip" ? pendingSend : null}
+                failedCount={0}
+                pendingSend={null}
+                queuedCountClassName="@max-md/queue:sr-only"
                 queuedMessageCount={queuedMessages.length - unconfirmedCount}
                 unconfirmedCount={unconfirmedCount}
               />
@@ -2066,7 +2002,7 @@ export function QueuedMessagesList({
           </TooltipProvider>
         </div>
       </div>
-      {summaryVariant === "stack" && collapsed && !showPendingSendOnly ? (
+      {showEdgeStatus ? (
         <QueuedMessagesStackEdges queuedMessageCount={queuedMessages.length} />
       ) : null}
       {showPendingSendOnly ? (
@@ -2080,7 +2016,6 @@ export function QueuedMessagesList({
         </div>
       ) : collapsed && headMessage !== undefined && !inlineEditor ? (
         <QueuedMessagesSummary
-          variant={summaryVariant}
           headMessage={headMessage}
           attachmentProjectId={attachmentProjectId}
           queuedMessageCount={queuedMessages.length}
@@ -2091,13 +2026,13 @@ export function QueuedMessagesList({
           onExpand={handleSummaryExpand}
         />
       ) : null}
-      {summaryVariant === "stack" && !collapsed ? (
+      {collapsed ? null : (
         <div
           data-queued-messages-header=""
-          className="flex h-5 shrink-0 items-center gap-1.5 px-3 pt-1 text-2xs text-subtle-foreground"
+          className="flex h-5 shrink-0 items-center gap-1.5 overflow-hidden px-3 pt-1 text-2xs text-subtle-foreground"
         >
-          <span className="shrink-0">Queue order</span>
-          <span aria-hidden className="shrink-0">
+          <span className="shrink-0 @max-md/queue:sr-only">Queue order</span>
+          <span aria-hidden className="shrink-0 @max-md/queue:hidden">
             ·
           </span>
           <QueuedMessagesStatus
@@ -2107,7 +2042,7 @@ export function QueuedMessagesList({
             unconfirmedCount={unconfirmedCount}
           />
         </div>
-      ) : null}
+      )}
       <div
         className="relative min-h-0 flex-1 overflow-hidden rounded-t-[inherit]"
         data-queued-messages-scroll-frame=""
