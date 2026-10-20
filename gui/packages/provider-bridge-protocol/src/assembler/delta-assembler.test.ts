@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ClientTurnRequestId, ThreadEvent } from "@cloudroom/domain";
-import { threadScope, turnScope } from "@cloudroom/domain";
+import { threadEventSchema, threadScope, turnScope } from "@cloudroom/domain";
 import type { DeltaItemShape, ThreadDelta } from "../thread-delta.js";
 import {
   createDeltaAssembler,
@@ -607,6 +607,69 @@ describe("delta assembler", () => {
         scope: turnScope(turnId),
       }),
     ]);
+  });
+
+  it("stamps each thread/compacted with its own compaction item, even twice in one turn", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const compactionOpen = {
+      kind: "item.open",
+      key: { channel: "compaction" },
+      item: { type: "compaction" },
+    } as const;
+    const compactionClose = {
+      kind: "item.close",
+      key: { channel: "compaction" },
+      status: "completed",
+      item: { type: "compaction" },
+    } as const;
+    const first = assemble(assembler, compactionOpen);
+    const firstMarker = assemble(assembler, { kind: "context.compacted" });
+    assemble(assembler, compactionClose);
+    const second = assemble(assembler, compactionOpen);
+    const secondMarker = assemble(assembler, { kind: "context.compacted" });
+    const firstItemId =
+      first[0]?.type === "item/started" ? first[0].item.id : "";
+    const secondItemId =
+      second[0]?.type === "item/started" ? second[0].item.id : "";
+    expect(firstItemId).not.toBe("");
+    expect(secondItemId).not.toBe(firstItemId);
+    expect(firstMarker).toEqual([
+      expect.objectContaining({
+        type: "thread/compacted",
+        itemId: firstItemId,
+      }),
+    ]);
+    expect(secondMarker).toEqual([
+      expect.objectContaining({
+        type: "thread/compacted",
+        itemId: secondItemId,
+      }),
+    ]);
+    expect(assemble(assembler, { kind: "context.compacted" })).toEqual([
+      expect.not.objectContaining({ itemId: expect.anything() }),
+    ]);
+  });
+
+  it("keeps the stamped compaction item id through the daemon wire schema", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const [started] = assemble(assembler, {
+      kind: "item.open",
+      key: { channel: "compaction" },
+      item: { type: "compaction" },
+    });
+    const [marker] = assemble(assembler, { kind: "context.compacted" });
+    const wire = threadEventSchema.parse(
+      JSON.parse(
+        JSON.stringify({ ...marker, threadId: "thr_1", providerThreadId: "p" }),
+      ),
+    );
+    expect(started?.type === "item/started" && started.item.id).toBeTruthy();
+    expect(wire).toMatchObject({
+      type: "thread/compacted",
+      itemId: started?.type === "item/started" ? started.item.id : "",
+    });
   });
 
   it("a settling error fails the open turn after the error event", () => {

@@ -34,6 +34,7 @@ import {
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   threadPromptHistoryQueryKeyPrefix,
+  allThreadRecordedCompactionsQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
@@ -186,6 +187,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
     allThreadQueuedMessagesQueryKeyPrefix(),
     threadPromptHistoryQueryKeyPrefix(),
+    allThreadRecordedCompactionsQueryKeyPrefix(),
     allThreadPendingInteractionsQueryKeyPrefix(),
     allThreadDefaultExecutionOptionsQueryKeyPrefix(),
     allThreadStorageFilesQueryKeyPrefix(),
