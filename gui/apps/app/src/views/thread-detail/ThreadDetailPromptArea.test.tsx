@@ -49,6 +49,7 @@ import {
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { resetDeliveryAttemptsForTest } from "@/lib/send-delivery";
 
 const mocks = vi.hoisted(() => ({
   cancelThreadPlanMutate: vi.fn(),
@@ -928,6 +929,7 @@ afterEach(() => {
     .querySelectorAll("[data-sent-message-editor-test-host]")
     .forEach((element) => element.remove());
   resetPluginSlotStoreForTest();
+  resetDeliveryAttemptsForTest();
   vi.clearAllMocks();
 });
 
@@ -1052,6 +1054,72 @@ describe("ThreadDetailPromptArea", () => {
         pluginSubmission,
       }),
     );
+  });
+
+  describe("send outcome", () => {
+    const TEXT = "Please also add a CSV header row";
+    const localOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    } as const;
+
+    it("keeps an unanswered local send as Delivery unconfirmed instead of Failed to send, and does not resend", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      renderPromptArea();
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed"));
+      expect(mocks.toastError).not.toHaveBeenCalled();
+      expect(mocks.promptDraft.restoreIfEmpty).toHaveBeenCalledWith(expect.objectContaining({ text: TEXT }));
+      expect(screen.queryByRole("region", { name: "Connection status" })).toBeNull();
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an unanswered cloud send unconfirmed and remembers its request id for a deduplicated resend", async () => {
+      const queryKey = ["cloudroom-thread", "thr_1"];
+      testQueryClient.setQueryDefaults(queryKey, { staleTime: Infinity });
+      testQueryClient.setQueryData(queryKey, { sessionId: "cloud-session", paused: false, model: "gpt-6-astra", reasoning: "medium", error: null, pendingDelivery: 0 });
+      mocks.promptDraft.text = TEXT;
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(new BbHttpError({ status: 502, message: "Bad gateway", body: null, code: null }));
+      renderPromptArea({ thread: makeThread({ executionTarget: "cloud", status: "idle" }) });
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed"));
+      expect(mocks.toastError).not.toHaveBeenCalled();
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ requestId: expect.any(String) }));
+    });
+
+    it("says not sent when the browser was offline before sending", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      renderPromptArea();
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Not sent"));
+      onLine.mockRestore();
+    });
+
+    it("keeps structured server rejections on the existing toast", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(new BbHttpError({ status: 409, message: "Thread busy", body: null, code: "invalid_request" }));
+      renderPromptArea();
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Failed to send message", { description: "Thread busy" }));
+      expect(screen.queryByText("Delivery unconfirmed")).toBeNull();
+    });
   });
 
   it("shows queued work while its message details are loading", () => {

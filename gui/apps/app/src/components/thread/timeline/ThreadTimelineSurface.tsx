@@ -273,7 +273,7 @@ export function ThreadTimelineSurface({
             }
           />
         ) : null}
-        <StaleConversationMarker hasRows={timelineRows.length > 0} />
+        <StaleConversationMarker threadId={threadId} hasRows={timelineRows.length > 0} />
         <HeightTransition visible={showOngoingIndicator && !isConversationStale}>
           <TimelineWorkingIndicator
             key={ongoingIndicatorKey}

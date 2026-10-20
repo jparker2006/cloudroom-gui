@@ -49,7 +49,7 @@ function lastUpdateDetail(disconnectedAt: number | null) {
   };
 }
 
-const DRAFT_DETAIL = { label: "Your draft", text: "Still in the box below." };
+const DRAFT_DETAIL = { label: "Drafts", text: "Anything in the box below stays on this device." };
 
 export function getThreadConnectionStatus(
   evidence: ThreadConnectionEvidence,

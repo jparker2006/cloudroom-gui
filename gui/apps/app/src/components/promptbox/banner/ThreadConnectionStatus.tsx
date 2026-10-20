@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
+import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { useServerConnectionGracePeriodElapsed } from "@/hooks/queries/connection-aware-query-state";
 import { wsManager } from "@/lib/ws";
 import {
@@ -59,7 +61,6 @@ export function useRecoveredFlash(problemShown: boolean): boolean {
   useEffect(() => {
     if (problemShown) {
       hadProblem.current = true;
-      setRecovered(false);
       return;
     }
     if (!hadProblem.current) return;
@@ -71,13 +72,31 @@ export function useRecoveredFlash(problemShown: boolean): boolean {
   return recovered && !problemShown;
 }
 
-export function StaleConversationMarker({ hasRows }: { hasRows: boolean }) {
-  const label = getStaleConversationLabel({
+function useTimelineUpdatedAt(threadId: string): number {
+  const queryClient = useQueryClient();
+  return useSyncExternalStore(
+    (onChange) => queryClient.getQueryCache().subscribe(onChange),
+    () => queryClient.getQueryState(threadTimelineQueryKey(threadId))?.dataUpdatedAt ?? 0,
+  );
+}
+
+export function StaleConversationMarker({ threadId, hasRows }: { threadId: string; hasRows: boolean }) {
+  const disconnectedAt = wsManager.getDisconnectedAt();
+  const liveLabel = getStaleConversationLabel({
     socket: useServerConnectionState(),
     graceElapsed: useServerConnectionGracePeriodElapsed(),
-    disconnectedAt: wsManager.getDisconnectedAt(),
+    disconnectedAt,
     hasRows,
   });
+  const updatedAt = useTimelineUpdatedAt(threadId);
+  const [held, setHeld] = useState<{ label: string; staleSince: number } | null>(null);
+  if (liveLabel && held?.label !== liveLabel) {
+    setHeld({ label: liveLabel, staleSince: disconnectedAt ?? updatedAt });
+  }
+  if (!liveLabel && held && updatedAt > held.staleSince) {
+    setHeld(null);
+  }
+  const label = liveLabel ?? held?.label ?? null;
   if (!label) return null;
   return (
     <p className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-muted-foreground">

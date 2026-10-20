@@ -1,5 +1,8 @@
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
 import { ThreadConnectionStatus } from "@/components/promptbox/banner/ThreadConnectionStatus";
+import { DeliveryUnconfirmedCard } from "@/components/promptbox/banner/DeliveryUnconfirmedCard";
+import { captureDeliveryBaseline, classifySendFailure, promptInputText, recordDeliveryAttempt, settleDeliveryAttempt, useDeliveryAttempt } from "@/lib/send-delivery";
+import { isPhoneRelay } from "@/cloud/cloud-mode";
 import { TeleportLocalNotice, TeleportNotice } from "@/components/thread/TeleportNotice";
 import { TeleportCheckCard } from "@/components/thread/TeleportCheckCard";
 import { ProjectCopyNotice } from "@/components/thread/ProjectCopyNotice";
@@ -128,6 +131,7 @@ import {
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import {
+  arePromptDraftStatesEqual,
   emptyPromptDraftState,
   promptDraftToInput,
   type PromptDraftAttachment,
@@ -797,6 +801,7 @@ export function ThreadDetailPromptArea({
     [fallbackIdentity, setSelectedModel],
   );
   const queryClient = useQueryClient();
+  const deliveryAttempt = useDeliveryAttempt(thread.id);
   // Another harness, or any model change in Cloud, switches this thread in place (ADR 0211).
   const handleSelectModel = useCallback(
     (selection: { providerId: string; model: string } & Partial<ModelReasoningPickerSelection>) => {
@@ -986,6 +991,35 @@ export function ThreadDetailPromptArea({
     supportsServiceTier,
   ]);
 
+  const sendWithDeliveryTracking = useCallback(async ({ submittedDraft, submittedInput, send, requestId = null, dedupes = false, fallbackMessage, lifecycleOperation }: {
+    submittedDraft: PromptDraftState;
+    submittedInput: PromptInput[];
+    send: () => Promise<unknown>;
+    requestId?: string | null;
+    dedupes?: boolean;
+    fallbackMessage: string;
+    lifecycleOperation: "send_message" | "queue_message";
+  }): Promise<boolean> => {
+    const threadId = thread.id;
+    const baseline = captureDeliveryBaseline(queryClient, threadId);
+    const offlineAtSend = typeof navigator !== "undefined" && !navigator.onLine;
+    const text = promptInputText(submittedInput);
+    try {
+      await send();
+      settleDeliveryAttempt(threadId, text);
+      return true;
+    } catch (error) {
+      promptDraft.restoreIfEmpty(submittedDraft);
+      const kind = classifySendFailure(error, offlineAtSend);
+      if (kind === "unconfirmed" || kind === "not-sent") {
+        recordDeliveryAttempt({ threadId, phase: kind === "not-sent" ? "not-sent" : "checking", draft: submittedDraft, text, attachmentCount: submittedDraft.attachments.length, ...baseline, requestId, dedupes, resend: send });
+      } else {
+        showMutationErrorToast({ error, fallbackMessage, lifecycleOperation });
+      }
+      return false;
+    }
+  }, [promptDraft, queryClient, thread.id]);
+
   const sendCloudDraft = useCallback(async (steer: boolean) => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
@@ -1000,14 +1034,28 @@ export function ThreadDetailPromptArea({
       mode: steer && thread.status === "active" ? "steer-if-active" as const : "queue-if-active" as const,
     };
     promptDraft.clearIfCurrentMatches(submittedDraft);
+    const threadId = thread.id;
+    let requestId: string;
     try {
-      await sendMessage.mutateAsync({ ...request, requestId: await cloudroomRequestId(thread.id, request) });
-      clearCloudroomRequestId(thread.id);
+      requestId = await cloudroomRequestId(threadId, request);
     } catch (error) {
       promptDraft.restoreIfEmpty(submittedDraft);
       showMutationErrorToast({ error, fallbackMessage: "Cloud message was not confirmed", lifecycleOperation: "send_message" });
+      return;
     }
-  }, [cloudFastSupported, cloudReasoning, cloudState.data, currentPromptDraft, currentPromptDraftInput, movingToLocal, promptDraft, sendMessage, serviceTier, thread.id, thread.status]);
+    await sendWithDeliveryTracking({
+      submittedDraft,
+      submittedInput,
+      send: async () => {
+        await sendMessage.mutateAsync({ ...request, requestId });
+        clearCloudroomRequestId(threadId);
+      },
+      requestId,
+      dedupes: !isPhoneRelay() && !promptInputText(submittedInput).startsWith("/"),
+      fallbackMessage: "Cloud message was not confirmed",
+      lifecycleOperation: "send_message",
+    });
+  }, [cloudFastSupported, cloudReasoning, cloudState.data, currentPromptDraft, currentPromptDraftInput, movingToLocal, promptDraft, sendMessage, sendWithDeliveryTracking, serviceTier, thread.id, thread.status]);
 
   const handleSend = useCallback(async () => {
     if (isExecutionUpdatePending) return;
@@ -1028,36 +1076,32 @@ export function ThreadDetailPromptArea({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
 
-    try {
-      if (isQueuingMessage) {
-        const request = buildCreateQueuedFollowUpRequest({
+    const queuedRequest = isQueuingMessage
+      ? buildCreateQueuedFollowUpRequest({
+          threadId: thread.id,
+          input: submittedInput,
+          execution: followUpExecutionSelection,
+        })
+      : null;
+    const sendRequest = isQueuingMessage
+      ? null
+      : buildAutoFollowUpRequest({
           threadId: thread.id,
           input: submittedInput,
           execution: followUpExecutionSelection,
         });
-        if (request) {
-          await createQueuedMessage.mutateAsync(request);
-        }
-      } else {
-        const request = buildAutoFollowUpRequest({
-          threadId: thread.id,
-          input: submittedInput,
-          execution: followUpExecutionSelection,
-        });
-        if (request) {
-          await sendMessage.mutateAsync(request);
-        }
-      }
-    } catch (nextError) {
-      promptDraft.restoreIfEmpty(submittedDraft);
-      showMutationErrorToast({
-        error: nextError,
-        fallbackMessage: isQueuingMessage
-          ? "Failed to queue message"
-          : "Failed to send message",
-        lifecycleOperation: isQueuingMessage ? "queue_message" : "send_message",
-      });
-    }
+    await sendWithDeliveryTracking({
+      submittedDraft,
+      submittedInput,
+      send: async () => {
+        if (queuedRequest) await createQueuedMessage.mutateAsync(queuedRequest);
+        if (sendRequest) await sendMessage.mutateAsync(sendRequest);
+      },
+      fallbackMessage: isQueuingMessage
+        ? "Failed to queue message"
+        : "Failed to send message",
+      lifecycleOperation: isQueuingMessage ? "queue_message" : "send_message",
+    });
   }, [
     isExecutionUpdatePending,
     isCloud,
@@ -1069,6 +1113,7 @@ export function ThreadDetailPromptArea({
     isDefaultExecutionOptionsLoading,
     promptDraft,
     sendMessage,
+    sendWithDeliveryTracking,
     setBottomAttachmentError,
     thread.id,
     runtimeDisplayStatus,
@@ -1084,16 +1129,13 @@ export function ThreadDetailPromptArea({
     if (!request) return;
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
-    try {
-      await createQueuedMessage.mutateAsync({ ...request, hardQueue: true });
-    } catch (nextError) {
-      promptDraft.restoreIfEmpty(submittedDraft);
-      showMutationErrorToast({
-        error: nextError,
-        fallbackMessage: "Failed to queue message",
-        lifecycleOperation: "queue_message",
-      });
-    }
+    await sendWithDeliveryTracking({
+      submittedDraft,
+      submittedInput: currentPromptDraftInput,
+      send: () => createQueuedMessage.mutateAsync({ ...request, hardQueue: true }),
+      fallbackMessage: "Failed to queue message",
+      lifecycleOperation: "queue_message",
+    });
   }, [
     createQueuedMessage,
     currentPromptDraft,
@@ -1101,6 +1143,7 @@ export function ThreadDetailPromptArea({
     followUpExecutionSelection,
     isExecutionUpdatePending,
     promptDraft,
+    sendWithDeliveryTracking,
     setBottomAttachmentError,
     thread.id,
   ]);
@@ -1192,16 +1235,13 @@ export function ThreadDetailPromptArea({
       await runWhileFollowUpShortcutSending(
         setIsFollowUpShortcutSending,
         async () => {
-          try {
-            await sendMessage.mutateAsync(shortcutRequest.request);
-          } catch (nextError) {
-            promptDraft.restoreIfEmpty(submittedDraft);
-            showMutationErrorToast({
-              error: nextError,
-              fallbackMessage: "Failed to send message",
-              lifecycleOperation: "send_message",
-            });
-          }
+          await sendWithDeliveryTracking({
+            submittedDraft,
+            submittedInput,
+            send: () => sendMessage.mutateAsync(shortcutRequest.request),
+            fallbackMessage: "Failed to send message",
+            lifecycleOperation: "send_message",
+          });
         },
       );
       return;
@@ -1233,6 +1273,7 @@ export function ThreadDetailPromptArea({
     sendCloudDraft,
     sendMessage,
     sendQueuedMessageById,
+    sendWithDeliveryTracking,
     setBottomAttachmentError,
     thread.id,
   ]);
@@ -2166,7 +2207,7 @@ export function ThreadDetailPromptArea({
     <FollowUpPromptBox
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={bottomAttachmentsConfig}
-      stack={<>{!isCloud && !teleporting && <TeleportCheckCard error={teleport.error} models={[...modelOptions, ...moreModelOptions]} reasoning={reasoningLevel} usedTokens={contextWindowUsage?.usedTokens ?? null} levelsFor={(model) => cloudReasoningLevels(cloudConnection.data, thread.providerId, model)} onTeleport={(choice) => teleport.mutate(choice)} onDismiss={teleport.reset} />}{thread.teleport && !movingToLocal && <TeleportNotice thread={thread} pendingDelivery={cloudState.data?.pendingDelivery} paused={cloudState.data?.paused} sending={sendMessage.isPending} />}{movingToLocal && <TeleportLocalNotice step={thread.teleportLocalStep} />}{thread.projectCopy && <ProjectCopyNotice thread={thread} />}{!shouldHideComposer && <ThreadConnectionStatus cloud={isCloud ? { statusReadError: cloudState.error, reconnecting: Boolean(cloudState.data?.reconnecting) && !cloudError, isFetching: cloudState.isFetching, refetch: () => void cloudState.refetch() } : null} />}{cloudNotice}{isCloud && claudeThread && !shouldHideComposer && <CloudMcpSignInNotice />}{!isCloud && !shouldHideComposer && <LocalSignInNotice threadId={thread.id} providerId={thread.providerId} hostId={environmentHostId} environmentId={thread.environmentId} authFailed={providerAuthFailed} started={thread.status !== "pending"} />}{pendingInteractionNode ? pendingInteractionStack : promptStack}</>}
+      stack={<>{!isCloud && !teleporting && <TeleportCheckCard error={teleport.error} models={[...modelOptions, ...moreModelOptions]} reasoning={reasoningLevel} usedTokens={contextWindowUsage?.usedTokens ?? null} levelsFor={(model) => cloudReasoningLevels(cloudConnection.data, thread.providerId, model)} onTeleport={(choice) => teleport.mutate(choice)} onDismiss={teleport.reset} />}{thread.teleport && !movingToLocal && <TeleportNotice thread={thread} pendingDelivery={cloudState.data?.pendingDelivery} paused={cloudState.data?.paused} sending={sendMessage.isPending} />}{movingToLocal && <TeleportLocalNotice step={thread.teleportLocalStep} />}{thread.projectCopy && <ProjectCopyNotice thread={thread} />}{!shouldHideComposer && deliveryAttempt && <DeliveryUnconfirmedCard threadId={thread.id} draftInBox={arePromptDraftStatesEqual(currentPromptDraft, deliveryAttempt.draft)} clearDraftIfMatches={promptDraft.clearIfCurrentMatches} />}{!shouldHideComposer && !deliveryAttempt && <ThreadConnectionStatus cloud={isCloud ? { statusReadError: cloudState.error, reconnecting: Boolean(cloudState.data?.reconnecting) && !cloudError, isFetching: cloudState.isFetching, refetch: () => void cloudState.refetch() } : null} />}{cloudNotice}{isCloud && claudeThread && !shouldHideComposer && <CloudMcpSignInNotice />}{!isCloud && !shouldHideComposer && <LocalSignInNotice threadId={thread.id} providerId={thread.providerId} hostId={environmentHostId} environmentId={thread.environmentId} authFailed={providerAuthFailed} started={thread.status !== "pending"} />}{pendingInteractionNode ? pendingInteractionStack : promptStack}</>}
       pendingInteraction={pendingInteractionNode}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer || (teleporting && !movingToLocal) || transferredChild ? null : bottomComposerConfig}
