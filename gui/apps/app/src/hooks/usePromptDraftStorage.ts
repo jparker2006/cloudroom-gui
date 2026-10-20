@@ -695,7 +695,6 @@ function moveNewThreadDraftNow(
   });
   unsavedPromptDraftKeys.delete(targetKey);
   persistPromptDraftCacheNow(targetKey);
-  emitPromptDraftChange(targetKey);
   if (unsavedPromptDraftKeys.has(targetKey)) {
     promptDraftCache.set(targetKey, {
       rawValue: readStoredPromptDraftValue(targetKey),
@@ -712,10 +711,12 @@ function moveNewThreadDraftNow(
       ? JSON.stringify({ text: "", attachments: leftovers, rev })
       : JSON.stringify({ rev, moved: true });
   if (!writeTerminalRecord(sourceKey, sourceValue)) {
+    emitPromptDraftChange(targetKey);
     return { status: "source-not-updated" };
   }
   if (sourceKey === LEGACY_NEW_THREAD_DRAFT_KEY) rememberMovedLegacyText(source.draft.text);
   promptDraftCache.delete(sourceKey);
+  emitPromptDraftChange(targetKey);
   emitPromptDraftChange(sourceKey);
   return { status: "moved", leftoverAttachments: leftovers.map((attachment) => attachment.name) };
 }

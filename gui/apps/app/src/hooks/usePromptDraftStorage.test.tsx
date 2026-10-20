@@ -1426,3 +1426,24 @@ describe("re-review fixes: P3", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("re-review fixes: half-applied move", () => {
+  it("finishes the move before telling listeners, so a retry adds nothing", async () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    let throwOnce = true;
+    const stop = target.subscribe(() => {
+      if (throwOnce) {
+        throwOnce = false;
+        throw new Error("listener failed");
+      }
+    });
+
+    await moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId()).catch(() => null);
+    const retry = await moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId());
+    stop();
+
+    expect(retry.status).toBe("nothing-to-move");
+    expect(target.getCurrent().text).toBe("legacy");
+  });
+});
