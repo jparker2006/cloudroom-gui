@@ -329,6 +329,48 @@ describe("session PR panel freshness and truth", () => {
     slot.lifecycle.unmount();
   });
 
+  it("announces a match refresh that comes back as a lookup failure", async () => {
+    let calls = 0;
+    const slot = render({
+      pullForThread: () => {
+        calls += 1;
+        return calls === 1
+          ? association("thr-1", { kind: "none" })
+          : association(
+              "thr-1",
+              {
+                kind: "failed",
+                reason: "unavailable",
+                message: "Host is not connected",
+              },
+              {
+                failures: [
+                  {
+                    source: "workspace",
+                    runsOn: "workspace",
+                    reason: "unavailable",
+                    message: "Host is not connected",
+                  },
+                ],
+              },
+            );
+      },
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+
+    expect(slot.container.textContent).toContain(
+      "The workspace is unavailable",
+    );
+    expect(slot.getByRole("status").textContent).toBe(
+      "Couldn’t refresh this session’s pull request match.",
+    );
+    slot.lifecycle.unmount();
+  });
+
   it("announces a failed match refresh even before any match loaded", async () => {
     const slot = render({
       pullForThread: () => {

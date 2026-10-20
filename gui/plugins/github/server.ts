@@ -370,11 +370,22 @@ export function resolvePullAssociation(
 }
 
 export function latestCheckRuns<
-  T extends { name?: unknown; context?: unknown; startedAt?: unknown },
+  T extends {
+    __typename?: unknown;
+    name?: unknown;
+    context?: unknown;
+    workflowName?: unknown;
+    startedAt?: unknown;
+  },
 >(entries: T[]): T[] {
   const latest = new Map<string, T>();
   for (const entry of entries) {
-    const name = String(entry.name ?? entry.context ?? "check");
+    const name = JSON.stringify([
+      entry.__typename ??
+        (entry.context === undefined ? "CheckRun" : "StatusContext"),
+      entry.workflowName ?? "",
+      entry.name ?? entry.context ?? "check",
+    ]);
     const current = latest.get(name);
     const started = Date.parse(String(entry.startedAt ?? ""));
     const currentStarted = Date.parse(String(current?.startedAt ?? ""));
@@ -1288,7 +1299,8 @@ export default async function plugin(bb: BbPluginApi) {
             files: fetched.pull.files.map((file) => ({ ...file, patch: null })),
           },
         };
-        if (JSON.stringify(compact).length > MAX_CACHED_DETAIL_BYTES) return;
+        const bytes = new TextEncoder().encode(JSON.stringify(compact)).length;
+        if (bytes > MAX_CACHED_DETAIL_BYTES) return;
         await bb.storage.kv.set(key, compact);
       })
       .catch((error: unknown) => {

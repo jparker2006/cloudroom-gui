@@ -2545,13 +2545,13 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     if (wasLoading.current && !session.loading && userReload.current) {
       userReload.current = false;
       setAnnouncement(
-        session.error === null
+        session.error === null && association?.resolution.kind !== "failed"
           ? "Pull request match refreshed."
           : "Couldn’t refresh this session’s pull request match.",
       );
     }
     wasLoading.current = session.loading;
-  }, [session.loading, session.error]);
+  }, [session.loading, session.error, association]);
   const { reload } = session;
   const reloadFromHeading = useCallback(() => {
     userReload.current = true;

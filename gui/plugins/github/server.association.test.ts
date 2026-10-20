@@ -937,6 +937,16 @@ esac
     ).resolves.toEqual({ cached: null });
   });
 
+  it("measures the cache limit in bytes, not characters", async () => {
+    writeGh({ 43: pullView(43, { body: "\u{1F600}".repeat(60_000) }) });
+    const host = await loadPlugin(newWorld());
+
+    await host.harness.callRpc("getPull", { repo: "acme/widgets", number: 43 });
+    await expect(
+      host.harness.callRpc("cachedPull", { repo: "acme/widgets", number: 43 }),
+    ).resolves.toEqual({ cached: null });
+  });
+
   it("uses the latest run of each check and treats stale results as failing", async () => {
     writeGh({
       42: pullView(42, {
@@ -974,6 +984,55 @@ esac
         ],
       },
     });
+  });
+
+  it("keeps same-named checks from different sources and workflows apart", async () => {
+    writeGh({
+      42: pullView(42, {
+        statusCheckRollup: [
+          {
+            __typename: "StatusContext",
+            context: "build",
+            state: "FAILURE",
+            startedAt: "2026-10-01T00:00:00Z",
+          },
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "CI",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T01:00:00Z",
+          },
+          {
+            __typename: "CheckRun",
+            name: "test",
+            workflowName: "CI",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T01:00:00Z",
+          },
+          {
+            __typename: "CheckRun",
+            name: "test",
+            workflowName: "Nightly",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T00:30:00Z",
+          },
+        ],
+      }),
+    });
+    const { harness } = await loadPlugin(newWorld());
+
+    const { pull } = (await harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    })) as FetchedPull;
+    expect(pull.checks).toHaveLength(4);
+    expect(
+      pull.checks?.filter((check) => check.status === "failure"),
+    ).toHaveLength(2);
   });
 
   it("refuses detail that GitHub reports for a different number", async () => {
