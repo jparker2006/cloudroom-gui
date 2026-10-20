@@ -211,8 +211,8 @@ ticket removes the other's reviewed changes.
 
 ## Open choices
 
-1. Sign off the `handleProjectChange` split above (all three reviewers support
-   removing the switch copy).
+1. Sign off the `handleProjectChange` split above. The UX and attachment
+   reviewers support removing the switch copy, and no reviewer opposes it.
 2. Accept last-write-wins for the same project's draft across tabs (recommended,
    matches thread drafts), or merge attachments by path.
 3. Accept the project-list load window above (recommended), or block editing
