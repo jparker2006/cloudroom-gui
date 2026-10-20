@@ -1023,8 +1023,14 @@ describe("new-thread saves with Web Locks", () => {
       value: {
         request: (_name: string, optionsOrCallback: unknown, maybeCallback?: () => unknown) => {
           const callback = (maybeCallback ?? optionsOrCallback) as () => unknown;
-          return new Promise((resolve) => {
-            releases.push(() => resolve(callback()));
+          return new Promise((resolve, reject) => {
+            releases.push(() => {
+              try {
+                resolve(callback());
+              } catch (error) {
+                reject(error);
+              }
+            });
           });
         },
       },
@@ -1055,6 +1061,30 @@ describe("new-thread saves with Web Locks", () => {
     });
     expect(await moved).toEqual({ status: "moved", leftoverAttachments: [] });
     expect(storedRecord(alphaKey()).text).toBe("typed\n\nlegacy");
+  });
+
+  it("applies a locked move once even if a listener throws during it", async () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    let throwOnce = true;
+    const stop = target.subscribe(() => {
+      if (throwOnce) {
+        throwOnce = false;
+        throw new Error("listener failed");
+      }
+    });
+
+    const moved = moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId()).catch(() => null);
+    await act(async () => {
+      while (releases.length > 0) {
+        releases.shift()?.();
+        await Promise.resolve();
+      }
+    });
+    await moved;
+    stop();
+
+    expect(storedRecord(alphaKey()).text).toBe("legacy");
   });
 
   it("saves only once it holds the draft's lock, and keeps the draft readable meanwhile", async () => {
@@ -1317,5 +1347,43 @@ describe("review fixes: resolving an unreadable visible draft", () => {
     expect(result.current.notice).toBeNull();
     expect(result.current.isUnsaved).toBe(false);
     expect(storedRecord(alphaKey()).text).toBe("mine, edited");
+  });
+});
+
+describe("re-review fixes", () => {
+  it("leaves a moved draft moved when the user discards the copy this window held", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "hello", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), JSON.stringify({ rev: "1313131313131313", moved: true }));
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: alphaKey() }));
+    });
+
+    act(() => {
+      discardNewThreadDraft(alphaKey());
+    });
+
+    expect(storedRecord(alphaKey()).text).toBeUndefined();
+    expect(result.current.text).toBe("");
+    expect(result.current.notice).toBeNull();
+    expect(listNewThreadDraftsNotShown([])).toEqual([]);
+  });
+
+  it("clears a notice once the draft saves normally again", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), "{bad");
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+    window.localStorage.removeItem(alphaKey());
+
+    act(() => result.current.setDraft({ text: "mine, edited again", mentions: [], attachments: [] }));
+
+    expect(storedRecord(alphaKey()).text).toBe("mine, edited again");
+    expect(result.current.notice).toBeNull();
+    expect(result.current.isUnsaved).toBe(false);
   });
 });

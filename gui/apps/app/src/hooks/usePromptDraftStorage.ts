@@ -236,6 +236,9 @@ function persistPromptDraftCacheNow(storageKey: string): void {
     }
     window.localStorage.setItem(storageKey, serialized);
     unsavedPromptDraftKeys.delete(storageKey);
+    if (newThreadDraftNotices.get(storageKey) !== "sent-elsewhere") {
+      newThreadDraftNotices.delete(storageKey);
+    }
     const promotedKey = promotedRecoveryCopies.get(storageKey);
     if (promotedKey) {
       promotedRecoveryCopies.delete(storageKey);
@@ -644,18 +647,21 @@ export async function moveNewThreadDraft(
   const locks = webLocks();
   if (!locks) return moveNewThreadDraftNow(sourceKey, targetProjectId);
   const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
+  let started = false;
   try {
     return await locks.request(
       "bb.promptbox.move",
       { signal: AbortSignal.timeout(PROMPT_DRAFT_LOCK_TIMEOUT_MS) },
       () =>
         locks.request(`bb.promptbox.write.${targetKey}`, () =>
-          locks.request(`bb.promptbox.write.${sourceKey}`, () =>
-            moveNewThreadDraftNow(sourceKey, targetProjectId),
-          ),
+          locks.request(`bb.promptbox.write.${sourceKey}`, () => {
+            started = true;
+            return moveNewThreadDraftNow(sourceKey, targetProjectId);
+          }),
         ),
     );
-  } catch {
+  } catch (error) {
+    if (started) throw error;
     return moveNewThreadDraftNow(sourceKey, targetProjectId);
   }
 }
@@ -761,10 +767,11 @@ export function discardNewThreadDraft(
     return "failed";
   }
   const heldEntry = promptDraftCache.get(storageKey);
-  if (unsavedPromptDraftKeys.has(storageKey) && heldEntry && !isPromptDraftEmpty(heldEntry.draft)) {
+  const heldBecauseUnreadable = newThreadDraftNotices.get(storageKey) === "unreadable";
+  unsavedPromptDraftKeys.delete(storageKey);
+  newThreadDraftNotices.delete(storageKey);
+  if (heldBecauseUnreadable && heldEntry && !isPromptDraftEmpty(heldEntry.draft)) {
     newThreadDraftRevs.set(storageKey, String(readStoredRev(tombstone)));
-    unsavedPromptDraftKeys.delete(storageKey);
-    newThreadDraftNotices.delete(storageKey);
     persistPromptDraftCache(storageKey);
   } else {
     promptDraftCache.delete(storageKey);
