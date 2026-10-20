@@ -43,6 +43,7 @@ export type ThreadContextWindowUsage = z.infer<
 export const recordedCompactionGapSchema = z.enum([
   "ambiguous-legacy",
   "cloud-auto-not-reported",
+  "conflicting-notices",
   "forked",
   "imported-history",
   "provider-unverified",
@@ -60,6 +61,8 @@ export const RECORDED_COMPACTION_GAP_TEXT: Record<
   "ambiguous-legacy":
     "Some compactions were matched to their notices by turn, not by ID, so they may be off.",
   "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
+  "conflicting-notices":
+    "A compaction notice arrived after an error for the same compaction, so it isn't counted.",
   forked: "Records copied from the source thread may be incomplete.",
   "imported-history": "Imported history may be missing compaction records.",
   "provider-unverified":

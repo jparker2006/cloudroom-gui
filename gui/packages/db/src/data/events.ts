@@ -3275,6 +3275,36 @@ export function listRecordedCompactionEventRows(
     .all();
 }
 
+export function hasThreadEventsBetween(
+  db: DbQueryConnection,
+  args: {
+    threadId: string;
+    afterSequence: number;
+    beforeSequence: number;
+    exceptTurnId: string | null;
+  },
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gt(events.sequence, args.afterSequence),
+        lt(events.sequence, args.beforeSequence),
+        args.exceptTurnId === null
+          ? undefined
+          : or(
+              isNull(events.turnId),
+              sql`${events.turnId} != ${args.exceptTurnId}`,
+            ),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
 export function listContextWindowUsageHistory(
   db: DbConnection,
   args: ListContextWindowUsageRowsArgs,

@@ -3,6 +3,7 @@ import {
   getActiveStoredTurnId,
   getDatabaseDataVersion,
   getThreadEventRewriteGeneration,
+  hasThreadEventsBetween,
   listRecordedCompactionEventRows,
   type DbConnection,
   type StoredEventRow,
@@ -29,7 +30,9 @@ interface CompactionState {
   startedAt: number | null;
   completedAt: number | null;
   confirmed: boolean;
+  confirmedSequence: number | null;
   ended: boolean;
+  failed: boolean;
 }
 
 function parseData(row: StoredEventRow): Record<string, unknown> {
@@ -69,7 +72,13 @@ function pairLateItemsWithMarkers(
     gaps.add("ambiguous-legacy");
     const [marker] = markers;
     const [item] = items;
+    if (item.failed) {
+      gaps.add("conflicting-notices");
+      compactions.splice(compactions.indexOf(marker), 1);
+      continue;
+    }
     item.confirmed = true;
+    item.confirmedSequence = marker.confirmedSequence;
     item.completedAt = marker.completedAt;
     item.sequence = Math.min(item.sequence, marker.sequence);
     compactions.splice(compactions.indexOf(marker), 1);
@@ -135,17 +144,26 @@ export function buildRecordedCompactions(
   const compactions: CompactionState[] = [];
   const byItemId = new Map<string, CompactionState>();
   const clears: Array<{ id: string; at: number; sequence: number }> = [];
-  let lastClear: { source: "operation" | "provider"; at: number } | null = null;
+  let lastClear: {
+    row: StoredEventRow;
+    source: "operation" | "provider";
+  } | null = null;
   const pushClear = (row: StoredEventRow, source: "operation" | "provider") => {
     if (
       lastClear !== null &&
       lastClear.source !== source &&
-      row.createdAt - lastClear.at <= SAME_CLEAR_WINDOW_MS
+      row.createdAt - lastClear.row.createdAt <= SAME_CLEAR_WINDOW_MS &&
+      !hasThreadEventsBetween(db, {
+        threadId: thread.id,
+        afterSequence: lastClear.row.sequence,
+        beforeSequence: row.sequence,
+        exceptTurnId: (source === "provider" ? row : lastClear.row).turnId,
+      })
     ) {
       lastClear = null;
       return;
     }
-    lastClear = { source, at: row.createdAt };
+    lastClear = { row, source };
     clears.push({
       id: `clear:${row.sequence}`,
       at: row.createdAt,
@@ -163,7 +181,9 @@ export function buildRecordedCompactions(
       startedAt: null,
       completedAt: null,
       confirmed: false,
+      confirmedSequence: null,
       ended: false,
+      failed: false,
     };
     byItemId.set(itemId, created);
     compactions.push(created);
@@ -192,7 +212,10 @@ export function buildRecordedCompactions(
             !compaction.ended &&
             !compaction.confirmed,
         );
-      if (open) open.ended = true;
+      if (open) {
+        open.ended = true;
+        open.failed = true;
+      }
       continue;
     }
     if (row.type === "thread/compacted") {
@@ -223,13 +246,18 @@ export function buildRecordedCompactions(
             startedAt: null,
             completedAt: null,
             confirmed: false,
+            confirmedSequence: null,
             ended: true,
+            failed: false,
           };
           compactions.push(target);
         }
       }
-      if (!target.confirmed) {
+      if (target.failed) {
+        gaps.add("conflicting-notices");
+      } else if (!target.confirmed) {
         target.confirmed = true;
+        target.confirmedSequence = row.sequence;
         target.completedAt = row.createdAt;
       }
       continue;
@@ -257,10 +285,13 @@ export function buildRecordedCompactions(
 
   pairLateItemsWithMarkers(compactions, gaps);
   const firstConfirmedByTurn = new Map<string | null, CompactionState>();
-  for (const compaction of [...compactions].sort(
-    (left, right) => left.sequence - right.sequence,
-  )) {
-    if (!compaction.confirmed) continue;
+  for (const compaction of compactions
+    .filter((c) => c.confirmed)
+    .sort(
+      (left, right) =>
+        (left.confirmedSequence ?? left.sequence) -
+        (right.confirmedSequence ?? right.sequence),
+    )) {
     if (firstConfirmedByTurn.has(compaction.turnId)) {
       compaction.confirmed = false;
       compaction.ended = true;

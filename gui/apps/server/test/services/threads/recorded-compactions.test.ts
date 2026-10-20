@@ -279,8 +279,9 @@ describe("recorded compactions", () => {
     const { db, thread } = setup();
     compactionItem(db, thread, "item/started", "t1", "c1");
     marker(db, thread, "t1", "c1");
-    operation(db, thread, THREAD_CONTEXT_CLEAR_OPERATION);
     operation(db, thread, THREAD_CONTEXT_CLEAR_OPERATION, "pending");
+    operation(db, thread, THREAD_CONTEXT_CLEAR_OPERATION);
+    append(db, thread, "turn/started", "t2");
     append(db, thread, "thread/context/cleared", "t2");
     compactionItem(db, thread, "item/started", "t3", "c2");
     marker(db, thread, "t3", "c2");
@@ -490,6 +491,42 @@ describe("recorded compactions", () => {
       append(db, thread, "turn/started", `t${index}`);
     }
     append(db, thread, "thread/context/cleared", "t9");
+    expect(build(db, thread).entries.map((entry) => entry.kind)).toEqual([
+      "clear",
+      "clear",
+    ]);
+  });
+
+  it("keeps a failed compaction failed when a replayed notice is stamped onto it", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    append(db, thread, "turn/started", "t1");
+    compactionItem(db, thread, "item/started", "t1", "a");
+    append(db, thread, "provider/error", "t1", {
+      message: "Compaction failed",
+    });
+    compactionItem(db, thread, "item/started", "t1", "b");
+    marker(db, thread, "t1", "b");
+    compactionItem(db, thread, "item/completed", "t1", "b");
+    marker(db, thread, "t1", "a");
+
+    const list = build(db, thread);
+    expect(list.completedCount).toBe(1);
+    expect(compactions(list).map((entry) => [entry.id, entry.status])).toEqual([
+      ["b", "completed"],
+      ["a", "unconfirmed"],
+    ]);
+    expect(list.gaps).toContain("conflicting-notices");
+  });
+
+  it("keeps separate clears with conversation between them as two dividers, however close in time", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    operation(db, thread, THREAD_CONTEXT_CLEAR_OPERATION);
+    append(db, thread, "turn/started", "t1");
+    append(db, thread, "turn/completed", "t1", { status: "completed" });
+    append(db, thread, "turn/started", "t2");
+    append(db, thread, "thread/context/cleared", "t2");
     expect(build(db, thread).entries.map((entry) => entry.kind)).toEqual([
       "clear",
       "clear",
