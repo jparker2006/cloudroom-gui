@@ -3496,7 +3496,10 @@ export function PromptBoxInternal({
                 />
 
                 {attachmentError ? (
-                  <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
+                  <div
+                    role="alert"
+                    className="mx-3 mb-1 mt-1 text-xs text-destructive"
+                  >
                     {attachmentError}
                   </div>
                 ) : null}

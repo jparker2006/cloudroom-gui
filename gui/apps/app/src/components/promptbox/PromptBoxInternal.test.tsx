@@ -2062,6 +2062,25 @@ describe("PromptBoxInternal plugin composer actions", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("announces an attachment error to assistive technology", () => {
+    const message =
+      "photo.png can't be moved to another project. Remove it and attach again.";
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          attachments: {
+            items: [
+              { type: "localImage", name: "photo.png", path: "photo.png", sizeBytes: 1 },
+            ],
+            onRemove: vi.fn(),
+            error: message,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toBe(message);
+  });
+
   it("shows only an attachment count when compact and removal controls when expanded", () => {
     const items: NonNullable<
       NonNullable<PromptBoxProps["attachments"]>["items"]
