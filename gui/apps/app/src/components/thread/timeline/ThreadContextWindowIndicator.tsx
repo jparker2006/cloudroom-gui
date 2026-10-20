@@ -217,7 +217,7 @@ export function ThreadContextWindowCard({
           </div>
           <button
             type="button"
-            className="ml-auto mt-2 flex cursor-pointer items-center gap-1.5 rounded-xs text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:mt-3 max-md:py-1 max-md:text-sm"
+            className="ml-auto mt-2 flex cursor-pointer items-center gap-1.5 rounded-xs text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:mt-3 max-md:min-h-11 max-md:text-sm"
             aria-expanded={detailsExpanded}
             aria-controls={detailsId}
             onClick={() => setDetailsExpanded((value) => !value)}
