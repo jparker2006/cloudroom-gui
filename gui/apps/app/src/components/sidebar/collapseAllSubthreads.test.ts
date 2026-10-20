@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseUiPreferenceValue } from "@cloudroom/domain";
 import { collapseAllSubthreadIds } from "./collapseAllSubthreads";
 
 function thread(id: string, parentThreadId: string | null = null) {
@@ -62,6 +63,21 @@ describe("collapseAllSubthreadIds", () => {
       "a1x",
       "b",
     ]);
+  });
+
+  it("stays within the preference limit by dropping the oldest stale ids", () => {
+    const stale = Array.from(
+      { length: 10_000 },
+      (_, index) => `stale_${index}`,
+    );
+    const next = collapseAllSubthreadIds(stale, THREADS, null);
+    expect(next).toHaveLength(10_000);
+    expect(next).toEqual(expect.arrayContaining(["a", "a1", "a1x", "b"]));
+    expect(next).not.toContain("stale_0");
+    expect(next).toContain("stale_9999");
+    expect(
+      parseUiPreferenceValue("sidebar.collapsedThreads", next).success,
+    ).toBe(true);
   });
 
   it("does not loop on a parent cycle", () => {
