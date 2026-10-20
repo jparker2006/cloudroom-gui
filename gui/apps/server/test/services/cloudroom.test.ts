@@ -743,9 +743,11 @@ it("keeps each queued follow-up's reasoning and rejects locked or conflicting ch
     expect(service.threadStatus(thread.id)?.reasoning).toBe("xhigh");
     expect(harness.db.select().from(cloudroomThreads).get()?.reasoning).toBe("high");
     harness.deps.db.insert(cloudroomCommands).values({ id: "legacy-launch", threadId: thread.id, command: "prompt", input: JSON.stringify({ text: "queued", reasoning: "high" }), state: "sending", createdAt: Date.now() }).run();
-    expect((await send(thread.id, { requestId: "legacy-launch", mode: "auto", reasoningLevel: "high", input: text })).status).toBe(200);
-    await expect.poll(() => prompts.at(-1)).toMatchObject({ request_id: "legacy-launch", text: "queued", reasoning: "high" });
+    expect((await send(thread.id, { requestId: "legacy-launch", mode: "auto", reasoningLevel: "high", input: text })).status).toBe(409);
     expect((await send(thread.id, { requestId: "legacy-launch", mode: "auto", reasoningLevel: "max", input: text })).status).toBe(409);
+    expect(prompts.some((body) => (body as { request_id?: string }).request_id === "legacy-launch")).toBe(false);
+    expect((await send(thread.id, { requestId: "after-legacy", mode: "auto", reasoningLevel: "high", input: text })).status).toBe(200);
+    await expect.poll(() => prompts.find((body) => (body as { request_id?: string }).request_id === "legacy-launch")).toMatchObject({ text: "queued", reasoning: "high" });
     record("receipt", { request_id: "plain", command: "prompt", state: "failed", error: "Pi model does not support the selected thinking level" });
     await expect.poll(() => harness.db.select().from(events).all().some((event) => event.type === "system/error" && JSON.parse(event.data).message.includes("thinking level"))).toBe(true);
   } finally {
@@ -1155,7 +1157,7 @@ it("shows Teleport the moment it starts, and never leaves a failed or interrupte
   }
 });
 
-it("refuses a same-request retry that adds attachments the stored prompt cannot confirm", async () => {
+it("refuses same-request retries the stored prompt cannot confirm, with or without attachments", async () => {
   const harness = await createTestAppHarness();
   const { host } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, { hostId: host.id, name: "A", path: "/tmp/project-a" });
@@ -1194,22 +1196,39 @@ it("refuses a same-request retry that adds attachments the stored prompt cannot 
     const form = new FormData();
     form.set("file", new File([new Uint8Array([1, 2, 3])], "new.png", { type: "image/png" }));
     const { path } = (await (await harness.app.request(`/api/v1/projects/${project.id}/attachments`, { method: "POST", body: form })).json()) as { path: string };
+    const legacy = {
+      "retry-legacy": { text: "hello" },
+      "retry-legacy-image": { text: "hello3", attachments: [{ name: "original.png", kind: "image", localPath: path }] },
+      "retry-legacy-null": { text: "hello4", attachments: null },
+      "retry-legacy-unknown": { text: "hello5", attachments: "unknown" },
+    };
     harness.db.insert(cloudroomCommands).values([
-      { id: "retry-legacy", threadId: thread.id, command: "prompt", input: JSON.stringify({ text: "hello" }), state: "completed", createdAt: Date.now() },
+      ...Object.entries(legacy).map(([id, input]) => ({ id, threadId: thread.id, command: "prompt" as const, input: JSON.stringify(input), state: "completed" as const, createdAt: Date.now() })),
       { id: "retry-modern", threadId: thread.id, command: "prompt", input: JSON.stringify({ text: "hello2", content: [{ type: "text", text: "hello2", mentions: [] }], attachments: [] }), state: "completed", createdAt: Date.now() },
     ]).run();
-    const before = { uploads: uploads.length, prompts: prompts.length };
     const send = (requestId: string, text: string, withImage: boolean) => request(`/threads/${thread.id}/send`, { requestId, mode: "auto", input: [{ type: "text", text, mentions: [] }, ...(withImage ? [{ type: "localImage", path }] : [])] });
+    expect((await send("modern-image", "with image", true)).status).toBe(200);
+    await expect.poll(() => prompts.some((prompt) => prompt.text.includes("with image")), { timeout: 5000 }).toBe(true);
+    const before = { uploads: uploads.length, prompts: prompts.length };
+    const expectStatus = async (requestId: string, text: string, withImage: boolean, status: number) => {
+      const response = await send(requestId, text, withImage);
+      expect(response.status, `${requestId} ${text} image=${withImage}`).toBe(status);
+      if (status === 409) await expect(response.json()).resolves.toMatchObject({ code: "request_conflict" });
+    };
 
-    for (const [requestId, text] of [["retry-legacy", "hello"], ["retry-modern", "hello2"]] as const) {
-      const added = await send(requestId, text, true);
-      expect(added.status, requestId).toBe(409);
-      await expect(added.json()).resolves.toMatchObject({ code: "request_conflict" });
-      expect((await send(requestId, text, false)).status, requestId).toBe(200);
+    for (const [requestId, { text }] of Object.entries(legacy)) {
+      await expectStatus(requestId, text, false, 409);
+      await expectStatus(requestId, text, true, 409);
     }
+    await expectStatus("retry-modern", "hello2", false, 200);
+    await expectStatus("retry-modern", "hello2", true, 409);
+    await expectStatus("retry-modern", "changed", false, 409);
+    await expectStatus("modern-image", "with image", true, 200);
+    await expectStatus("modern-image", "with image", false, 409);
     expect(uploads.length - before.uploads).toBe(0);
     expect(prompts.length - before.prompts).toBe(0);
-    expect(command(harness.db, "retry-legacy")?.input).toBe(JSON.stringify({ text: "hello" }));
+    for (const [requestId, input] of Object.entries(legacy))
+      expect(command(harness.db, requestId)?.input).toBe(JSON.stringify(input));
   } finally {
     core.close();
     await harness.cleanup();

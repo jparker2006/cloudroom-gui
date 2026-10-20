@@ -285,11 +285,12 @@ function sameStoredPrompt(previous: Command, threadId: string, payload: object, 
   try {
     const stored = JSON.parse(previous.input);
     const storedReasoning = typeof stored.reasoning === "string" ? stored.reasoning : launch;
-    const next = payload as { text?: string; service_tier?: string; content?: unknown; attachments?: unknown[] };
+    const next = payload as { text?: string; service_tier?: string; content?: unknown };
     return stored.text === next.text
       && storedReasoning === requested
       && (stored.service_tier ?? "default") === (next.service_tier ?? "default")
-      && (stored.content === undefined ? !next.attachments?.length : JSON.stringify(stored.content) === JSON.stringify(next.content ?? null));
+      && Array.isArray(stored.content)
+      && JSON.stringify(stored.content) === JSON.stringify(next.content);
   } catch {
     return false;
   }
