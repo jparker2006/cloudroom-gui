@@ -485,3 +485,40 @@ describe("new-thread drafts edited in two windows", () => {
     ).toEqual([]);
   });
 });
+
+describe("new-thread draft save failures", () => {
+  it("leaves the other window's draft in place and reports unsaved when its conflict copy fails", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    const otherWindowRecord = JSON.stringify({
+      text: "theirs",
+      attachments: [],
+      rev: "cccccccccccccccc",
+    });
+    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key.startsWith("bb.promptbox.conflict-")) {
+          throw new DOMException("quota", "QuotaExceededError");
+        }
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() =>
+        result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }),
+      );
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(window.localStorage.getItem(ALPHA_KEY)).toBe(otherWindowRecord);
+    expect(result.current.text).toBe("mine, edited");
+    expect(result.current.isUnsaved).toBe(true);
+  });
+});

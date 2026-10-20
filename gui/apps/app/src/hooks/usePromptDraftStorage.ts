@@ -43,6 +43,7 @@ const pendingPromptDraftStorageKeys = new Set<string>();
 const promptDraftPersistTimers = new Map<string, number>();
 let promptDraftStorageObserverInitialized = false;
 const newThreadDraftRevs = new Map<string, string>();
+const unsavedPromptDraftKeys = new Set<string>();
 const NEW_THREAD_DRAFT_KEY_PREFIX = `${PROMPT_DRAFT_STORAGE_PREFIX}-new-thread-`;
 
 function isNewThreadProjectDraftKey(storageKey: string): boolean {
@@ -153,7 +154,9 @@ function persistPromptDraftCache(storageKey: string): void {
 
   try {
     window.localStorage.setItem(storageKey, serialized);
+    unsavedPromptDraftKeys.delete(storageKey);
   } catch (error) {
+    unsavedPromptDraftKeys.add(storageKey);
     cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
     console.warn(
       `[prompt-draft] could not persist draft for ${storageKey}; keeping it in memory only`,
@@ -190,7 +193,17 @@ function reconcileWithStoredNewThreadDraft(
   if (!isPromptDraftEmpty(storedDraft)) {
     const conflictKey = newThreadConflictKey(storageKey, storedRev);
     if (readStoredPromptDraftValue(conflictKey) === null) {
-      window.localStorage.setItem(conflictKey, rawValue);
+      try {
+        window.localStorage.setItem(conflictKey, rawValue);
+      } catch (error) {
+        unsavedPromptDraftKeys.add(storageKey);
+        cachedEntry.rawValue = rawValue;
+        console.warn(
+          `[prompt-draft] could not keep the other window's draft for ${storageKey}; keeping this one in memory only`,
+          error,
+        );
+        return false;
+      }
     }
   }
   newThreadDraftRevs.set(storageKey, storedRev);
@@ -502,6 +515,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       storageKey,
       getCurrent,
       subscribe,
+      isUnsaved: unsavedPromptDraftKeys.has(storageKey),
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
