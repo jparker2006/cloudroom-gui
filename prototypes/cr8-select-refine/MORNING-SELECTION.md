@@ -1,6 +1,6 @@
 # CR8 selected prototype: morning resume
 
-Selection is approved; implementation, review and shipping are separate states. This candidate corrects the existing isolated prototype only. `gui/` remains unchanged. Real device, signed-in access, performance, privacy, source-anchor and exact-final-head independent review gates persist.
+Selection is approved; implementation, review and shipping are separate states. The subsequent independent review requested changes on morning head `bc517215403a47b7b5fc1d4ca2e8d68e52d12a1e`; its bounded follow-up is recorded in [REVIEWS.md](REVIEWS.md). This morning packet remains historical evidence. This candidate corrects the existing isolated prototype only. `gui/` remains unchanged. Real device, signed-in access, performance, privacy, source-anchor and exact-final-head independent review gates persist.
 
 ## Human direction and source anchors
 

@@ -26,9 +26,12 @@ Open `http://localhost:4302/` (desktop layout) or the same URL in a phone-sized 
 node server.mjs
 CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/run.mjs            # current counts in REVIEWS.md; chromium-phone, webkit-phone, chromium-desktop
 CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/selected-layout.mjs # selected-layout and reading-position regressions
+CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/review-regressions.mjs # canceled sends, late acknowledgments and composed privacy
 CR8_PLAYWRIGHT=/path/to/playwright/index.mjs CR8_DESIGNS=desktop-A-docked-in-preview,mobile-A-half-sheet,mobile-A-sensitive-form node tests/render-designs.mjs # selected renders only
-electron --no-sandbox desktop/electron-select.cjs                          # native desktop path, needs a display (Xvfb)
+electron desktop/electron-select.cjs                                     # native path; needs a display and correctly configured sandbox
 ```
+
+The current Cloud sandbox rejects native Electron startup because its sandbox helper is not configured for sandboxed execution. This bounded resume does not change its permissions or bypass the sandbox; native validation remains open.
 
 ## Files
 

@@ -75,7 +75,12 @@
   }
 
   function up(node) {
-    return node.parentElement || node.getRootNode().host || null;
+    return node.assignedSlot || node.parentElement || node.getRootNode().host || null;
+  }
+
+  function closestComposed(el, selector) {
+    for (let node = el; node; node = up(node)) if (node.matches(selector)) return node;
+    return null;
   }
 
   function clipRect(el, rect) {
@@ -127,7 +132,7 @@
 
   function visibleText(el) {
     if (isField(el)) return "";
-    const runs = textRuns(el, el.ownerDocument, (parent) => !parent.closest(EXCLUDED_TEXT) && (parent === el || !parent.closest("[data-private],[data-cloudroom-redact]")));
+    const runs = textRuns(el, el.ownerDocument, (parent) => !closestComposed(parent, EXCLUDED_TEXT));
     return runs.map((run) => run.text).join(" ").slice(0, 4000);
   }
 
@@ -267,7 +272,7 @@
   }
 
   function isPrivate(el) {
-    return Boolean(el.closest("[data-private],[data-cloudroom-redact],input[type=password]"));
+    return Boolean(closestComposed(el, "[data-private],[data-cloudroom-redact],input[type=password]"));
   }
 
   function describe(el) {
@@ -351,6 +356,10 @@
           }
         }
       }
+    }
+    if (target && isPrivate(target)) {
+      const box = round(target.getBoundingClientRect());
+      if (!out.some((mask) => mask.x <= box.x && mask.y <= box.y && mask.x + mask.width >= box.x + box.width && mask.y + mask.height >= box.y + box.height)) add(target, target.getBoundingClientRect(), "marked private");
     }
     return out;
   }
