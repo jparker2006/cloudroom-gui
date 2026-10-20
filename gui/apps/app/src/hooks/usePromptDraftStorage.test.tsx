@@ -521,4 +521,32 @@ describe("new-thread draft save failures", () => {
     expect(result.current.text).toBe("mine, edited");
     expect(result.current.isUnsaved).toBe(true);
   });
+
+  it("never replaces an unsaved draft when another window's change arrives", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("quota", "QuotaExceededError");
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => result.current.setDraft({ text: "unsaved", mentions: [], attachments: [] }));
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+    window.localStorage.setItem(
+      ALPHA_KEY,
+      JSON.stringify({ text: "from another window", attachments: [], rev: "dddddddddddddddd" }),
+    );
+
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: ALPHA_KEY }));
+    });
+
+    expect(result.current.text).toBe("unsaved");
+  });
 });

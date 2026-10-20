@@ -83,7 +83,10 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     return EMPTY_PROMPT_DRAFT;
   }
 
-  if (pendingPromptDraftStorageKeys.has(storageKey)) {
+  if (
+    pendingPromptDraftStorageKeys.has(storageKey) ||
+    unsavedPromptDraftKeys.has(storageKey)
+  ) {
     return promptDraftCache.get(storageKey)?.draft ?? EMPTY_PROMPT_DRAFT;
   }
 
@@ -243,7 +246,12 @@ function ensurePromptDraftStorageObserver(): void {
   promptDraftStorageObserverInitialized = true;
   window.addEventListener("storage", (event) => {
     if (!event.key) return;
-    if (pendingPromptDraftStorageKeys.has(event.key)) return;
+    if (
+      pendingPromptDraftStorageKeys.has(event.key) ||
+      unsavedPromptDraftKeys.has(event.key)
+    ) {
+      return;
+    }
     promptDraftCache.delete(event.key);
     emitPromptDraftChange(event.key);
   });
