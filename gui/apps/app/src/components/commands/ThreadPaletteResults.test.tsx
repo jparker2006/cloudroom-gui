@@ -33,6 +33,7 @@ import roomLogoUrl from "../../../../../assets/room-logo.png";
 const navigation = vi.hoisted(() => ({
   data: undefined as SidebarBootstrapResponse | undefined,
   isLoading: false,
+  isFetching: false,
   isPlaceholderData: false,
   isSuccess: false,
 }));
@@ -113,6 +114,7 @@ function renderResults({
 afterEach(() => {
   cleanup();
   navigation.data = undefined;
+  navigation.isFetching = false;
   navigation.isPlaceholderData = false;
   navigation.isSuccess = false;
   window.localStorage.clear();
@@ -153,6 +155,29 @@ describe("ThreadPaletteResults", () => {
     navigation.data = makeSidebarBootstrapResponse();
     navigation.isSuccess = true;
     navigation.isPlaceholderData = true;
+    mockThreadSearch(noHits);
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
+  it("keeps plain no-match copy while search results refetch", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    mockThreadSearch({ ...noHits, isFetching: true });
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
+  it("keeps plain no-match copy while projects refetch", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    navigation.isFetching = true;
     mockThreadSearch(noHits);
 
     renderResults({ query: "kubernetes" });

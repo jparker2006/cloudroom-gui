@@ -244,6 +244,34 @@ describe("GitDiffTabContent empty states", () => {
     expect(screen.queryByText("No changes")).toBeNull();
   });
 
+  it("does not show a cached empty diff while reopening refetches it", async () => {
+    vi.mocked(sdk.environments.diffFiles)
+      .mockResolvedValueOnce(emptyDiff)
+      .mockReturnValue(new Promise(() => {}));
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const tab = (
+      <Wrapper>
+        <GitDiffTabContent
+          environmentId={ENVIRONMENT_ID}
+          target={TARGET}
+          isPanelOpen
+          gitDiffPresentation={presentation}
+        />
+      </Wrapper>
+    );
+    const first = render(tab);
+    expect(await screen.findByText("No changes")).not.toBeNull();
+    first.unmount();
+
+    render(tab);
+
+    await waitFor(() => {
+      expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText("No changes")).toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
   it("keeps plain copy when there is no comparison target", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     render(

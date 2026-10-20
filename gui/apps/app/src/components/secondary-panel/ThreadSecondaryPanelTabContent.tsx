@@ -191,6 +191,7 @@ export function GitDiffTabContent({
     dataUpdatedAt: diffFilesUpdatedAt,
     isLoading: isDiffFilesLoading,
     isPlaceholderData: isDiffFilesPlaceholder,
+    isFetching: isDiffFilesFetching,
     error: diffFilesError,
   } = useEnvironmentDiffFiles(environmentId ?? "", {
     enabled: isQueryEnabled,
@@ -284,7 +285,10 @@ export function GitDiffTabContent({
     );
   }
 
-  if (diffFilesResponse.files.length === 0 && isDiffFilesPlaceholder) {
+  if (
+    diffFilesResponse.files.length === 0 &&
+    (isDiffFilesPlaceholder || isDiffFilesFetching)
+  ) {
     return (
       <GitDiffMessageSlot>
         <ThreadDiffSkeleton />

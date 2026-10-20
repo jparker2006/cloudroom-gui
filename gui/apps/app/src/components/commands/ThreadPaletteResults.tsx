@@ -308,7 +308,10 @@ export function ThreadPaletteResults({
         <ThreadSearchMessage iconName="AlertCircle" text="Search failed." />
       ) : null}
       {showNoSearchResults ? (
-        navigationQuery.isSuccess && !navigationQuery.isPlaceholderData ? (
+        navigationQuery.isSuccess &&
+        !navigationQuery.isPlaceholderData &&
+        !navigationQuery.isFetching &&
+        !threadSearch.isFetching ? (
           <EmptyStateScene
             scene="search"
             logoSrc={roomLogoUrl}

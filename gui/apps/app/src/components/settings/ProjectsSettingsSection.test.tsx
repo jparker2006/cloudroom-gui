@@ -12,7 +12,10 @@ import { makeHost } from "@cloudroom/test-helpers/domain-fixtures";
 import { MemoryRouter } from "react-router-dom";
 import roomLogoUrl from "../../../../../assets/room-logo.png";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hiddenProjectsQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hiddenProjectsQueryKey,
+  sidebarNavigationQueryKey,
+} from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
@@ -430,6 +433,27 @@ describe("ProjectsSettingsSection", () => {
     expect(await screen.findByText(/^No projects yet/u)).toBeDefined();
 
     void queryClient.invalidateQueries({ queryKey: hiddenProjectsQueryKey() });
+
+    expect(await screen.findByText("Loading…")).toBeDefined();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
+  it("waits for a project-list refetch before claiming first use", async () => {
+    stubSidebarBootstrapFetch([]);
+    vi.mocked(sdk.projects.list).mockResolvedValue([]);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <ProjectsSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    expect(await screen.findByText(/^No projects yet/u)).toBeDefined();
+
+    vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
+    void queryClient.invalidateQueries({
+      queryKey: sidebarNavigationQueryKey(),
+    });
 
     expect(await screen.findByText("Loading…")).toBeDefined();
     expect(document.querySelector("[data-empty-state-scene]")).toBeNull();

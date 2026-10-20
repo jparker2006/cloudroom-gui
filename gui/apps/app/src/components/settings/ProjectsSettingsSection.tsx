@@ -342,6 +342,7 @@ export function ProjectsSettingsSection() {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 &&
           (sidebarNavigationQuery.isPlaceholderData ||
+            sidebarNavigationQuery.isFetching ||
             hiddenProjectsQuery.isPending ||
             hiddenProjectsQuery.isFetching) ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
