@@ -967,6 +967,11 @@ function discardNewThreadDraftNow(
   ) {
     return "changed";
   }
+  const heldCopy =
+    newThreadDraftNotices.get(storageKey) === "moved-elsewhere" && heldDraft && !isPromptDraftEmpty(heldDraft)
+      ? serializePromptDraftStorage(heldDraft)
+      : null;
+  if (heldCopy && !backUpDiscardedDraft(storageKey, heldCopy, "discarded")) return "failed";
   const rawValue = readStoredPromptDraftValue(storageKey);
   if (rawValue === null) return "nothing-to-discard";
   const record = readNewThreadRecord(rawValue);

@@ -2296,3 +2296,21 @@ describe("discarding leftovers next to unsaved typing", () => {
     expect(held.getCurrent().text).toBe("saved, then more");
   });
 });
+
+describe("discarding a held copy", () => {
+  it("backs up the held typing before discarding it", async () => {
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+    act(() => result.current.setDraft({ text: "moved text", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), JSON.stringify({ rev: "b6b6b6b6b6b6b6b6", moved: true }));
+    act(() => result.current.setDraft({ text: "moved text, typed", mentions: [], attachments: [] }));
+
+    await act(async () => {
+      await discardNewThreadDraft(alphaKey());
+    });
+
+    const backups = Object.keys(window.localStorage)
+      .filter((key) => key.startsWith(`bb.promptbox.discarded-new-thread-${alphaId()}-`))
+      .map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null").text);
+    expect(backups).toContain("moved text, typed");
+  });
+});
