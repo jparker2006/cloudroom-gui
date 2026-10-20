@@ -16,10 +16,11 @@ out of scope.
 - Other new-thread keys use the same project segment:
   `bb.promptbox.conflict-new-thread-<projectId>-<rev>-3`,
   `bb.promptbox.recovery-new-thread-<projectId>-<windowId>-3`, and
-  `bb.promptbox.unreadable-new-thread-<projectId>-<rev>-3`. Project IDs contain
+  `bb.promptbox.unreadable-new-thread-<projectId>-<backupId>-3` (legacy:
+  `bb.promptbox.unreadable-draft-<backupId>-3`). Project IDs contain
   no `-`, so keys parse by exact prefix and suffix:
   `^<prefix>([^-]+)-3$`, or `^<prefix>([^-]+)-([0-9a-f]{16})-3$`.
-- `rev`, `base`, and `windowId` are 16 lowercase hex characters. `windowId` is
+- `rev`, `base`, `windowId`, and `backupId` are 16 lowercase hex characters. `windowId` is
   per tab, kept in `sessionStorage`.
 - Identity is the browser origin plus the project ID. Each Cloudroom server has
   its own origin (`127.0.0.1:<port>`, or `<mac-handle>.cloudroom.run` on the
@@ -150,9 +151,12 @@ silently overwritten. A newer write never authorizes discarding other content.
   `base` isn't this window's `rev` and content differs, it first saves its own
   content as a conflict copy. An incoming `moved`, `discarded`, or `sent` shows
   the matching notice above and never creates a conflict copy.
-- **Send clear.** A successful send writes `sent` only if the stored record
-  still equals the captured sent draft. Otherwise (text typed or moved in during
-  the send) the stored content stays and nothing is cleared.
+- **Send clear.** The send captures `{ key, content, rev }`. On success, under
+  the key's lock, it writes `sent` only if both the in-memory draft and the
+  stored record still equal the captured content and `rev`. If either differs
+  (typing not yet flushed, text typed or moved in, another window's write),
+  nothing is cleared and the newer content stays. A pending debounced write is
+  never cancelled by a send.
 - **Unlocked writes** (pagehide flush, a lock timeout, or no Web Locks, as in
   Safari before 15.4) first write `{ rev, base, content }` to this tab's
   recovery key, which no other tab writes. Without Web Locks, the tab then
@@ -166,6 +170,19 @@ silently overwritten. A newer write never authorizes discarding other content.
   - Otherwise: no other window saw it. It shows as a conflict copy.
 - A pre-upgrade window writes the legacy global key with no `rev` and no check.
   See Legacy reappearing.
+
+What this protects, and what it can't:
+
+- Web Locks serialize only cooperating windows on this build. Among them, every
+  check-and-write is one step, so no write silently replaces another.
+- `localStorage` has no compare-and-swap. Pre-upgrade windows write the legacy
+  draft key and the legacy request record with no lock and no check, and can
+  replace or remove either at any moment. Nothing here prevents that. The only
+  mitigations are re-reading immediately before each write, Legacy reappearing,
+  and never removing on their behalf.
+- Without Web Locks, recovery keys keep every tab's own content, but nothing
+  serializes Move, Discard, request records, or backups. The limits are named
+  in each section and under Decisions.
 - Thread drafts keep today's behavior.
 
 ## Drafts not shown in the composer
@@ -183,10 +200,20 @@ and removes nothing. Rows are matched in this order, first match wins:
 | Project not in your list | Lookup returned 200 (for example, hidden) | Every project | Not now. Copy: "Unsent draft in <project>, which isn't in your project list." |
 | Couldn't check | Lookup failed or returned anything else | Every project | Retry, Not now |
 
-- Discard on an unreadable record first copies the raw string unchanged to
-  `bb.promptbox.unreadable-new-thread-…` (or `bb.promptbox.unreadable-draft-3`),
-  then writes `discarded`. The copy says "Kept a backup on this device." Backups
-  are never scanned or shown again (design-held).
+- Discard on an unreadable record, under the key's lock, in one synchronous
+  callback:
+  1. Pick a fresh `backupId`. If that backup key exists, pick another. A backup
+     key is written once and never overwritten or removed.
+  2. Write the raw string unchanged to it, then read it back. If the write
+     fails or the bytes differ, stop: no tombstone, show "Draft not saved on
+     this device".
+  3. Re-read the source raw. Only if it still equals the backed-up bytes, write
+     `discarded`. Otherwise stop and leave it.
+- This mechanism is fixed. How backups are shown or offered back is a held
+  design decision. Until then backups are not scanned or shown.
+- A pre-upgrade window can still replace the legacy key between step 3's
+  re-read and the tombstone write. That value is lost from the legacy key. No
+  cooperating window can prevent it.
 - Lookup candidates are computed only after the sidebar list settles
   (successful, non-placeholder). A key is a candidate when it is non-empty, its
   project is not `proj_personal`, and it is not in that list. The scan covers
@@ -243,22 +270,38 @@ Residual: an edited version of moved text isn't recognized.
 
 ## Cloud request evidence
 
-A Cloud send stores `cloudroom-request:<draft key>` = `<fingerprint>:<id>`, now
-with `:<createdAt>` appended (old builds read the first two fields). The
+A Cloud send stores `cloudroom-request:<draft key>` = `<fingerprint>:<id>`. The
 fingerprint is a SHA-256 of the whole request, including the project, so a
-match on any key is the same request.
+match on any key is the same request. Old builds write and clear only the
+legacy record `cloudroom-request:bb.promptbox.contents-draft-3`, unlocked: they
+overwrite it on a mismatch and remove it on success (`cloudroom-queries.ts`
+at `0e249aad`).
 
 - `cloudroomRequestId` branches by key prefix. Thread sends
   (`ThreadDetailPromptArea.tsx`) keep today's behavior.
-- For new-thread keys, before issuing an ID it checks by fingerprint the
-  draft's own record, the legacy record, and every
-  `cloudroom-request:bb.promptbox.contents-new-thread-*` record, including
-  `:<id>` ones. On a match it reuses that ID. It returns `{ id, recordKey }`.
-- A new ID never overwrites an unmatched record. If the own key holds another
-  fingerprint, the new record goes under `cloudroom-request:<draft key>:<id>`.
-- A successful send removes only `recordKey`. Unmatched new-thread records
-  older than 24 hours are ignored and removed (pending decision, see
-  Decisions). Discard, Move, and migration never add, copy, or remove records.
+- For new-thread keys, scan and create run together under one origin lock
+  (`bb.promptbox.request`), in one synchronous callback:
+  1. Check by fingerprint the draft's own record, the legacy record, and every
+     `cloudroom-request:bb.promptbox.contents-new-thread-*` record, including
+     `:<id>` ones. On a match, reuse that ID.
+  2. Otherwise issue a new ID. Write it under the own key only if that key is
+     missing, else under `cloudroom-request:<draft key>:<id>`. Never overwrite
+     a record.
+  3. Return `{ id, fingerprint, recordKey }`.
+- Without Web Locks, step 2 always writes the `:<id>` key, which no other
+  window writes, so nothing is overwritten. Two windows may then each create a
+  record for the same request, with different IDs, and both send. That is the
+  same exposure as two windows sending today.
+- A successful send, under the same lock, removes `recordKey` only if it still
+  holds the used fingerprint and ID. If an old window replaced it, it stays.
+- Discard, Move, and migration never add, copy, or remove records.
+- Expiry, only if approved (see Decisions): new records append `:<createdAt>`
+  (old builds read the first two fields). Age is checked before matching:
+  records older than 24 hours are skipped and removed under the lock.
+  Timestamp-free records, including every pre-upgrade and legacy record, never
+  expire by age. They stay eligible for matching until a successful send
+  removes them by the conditional rule above. Without approval, no record has
+  an age and none expires.
 
 ## Banner UI
 
@@ -304,7 +347,9 @@ match on any key is the same request.
 - An old build's switch copy sends `{ sourceProjectId, paths }`. The fix's
   server accepts only `{ tokens }`, so it fails with a visible 400.
 - Old builds read request records by their first two fields and ignore `:<id>`
-  records.
+  records. A record kept only under a `:<id>` key isn't found by an old build,
+  so a retry after a downgrade can issue a new ID.
+- Backup keys stay in storage, ignored by old builds.
 
 ## Tests
 
@@ -328,6 +373,32 @@ lookup timing; the not-in-list row has no Move; untagged attachments never
 carried; send blocked for absolute, scheme, and foreign references; request
 lookup reuses a legacy or other-key match without overwriting, and returns its
 record key; legacy reappearing.
+
+## Contract scenarios
+
+Reasoned from the contract and the frozen source. Not executed. Each becomes a
+failing test before its code.
+
+1. Send captures S. The user types E; success arrives before the debounce
+   flushes E. Storage equals S, memory doesn't: no clear, E saves later.
+2. Send captures S. Another window writes F. Memory equals S, storage
+   doesn't: no clear, F stays.
+3. Two windows send the same request with the own key empty, with Web Locks:
+   the second finds the first's record in step 1 and reuses its ID.
+4. Same without Web Locks: each writes its own `:<id>` key. Neither record is
+   lost. Two IDs are issued.
+5. The send reuses the legacy record's ID. An old window then overwrites the
+   legacy record with its own request. The conditional clear sees another
+   fingerprint and leaves it.
+6. Discard of an unreadable legacy value V1 backs up V1 under a fresh key. An
+   old window writes V2. A second Discard backs up V2 under another fresh key.
+   V1's backup is untouched.
+7. The backup write fails (quota): no tombstone, the source stays, the storage
+   failure state shows.
+8. Between backup and tombstone the source changes: no tombstone.
+9. If expiry is approved: a 25-hour-old matching record is skipped and
+   removed, so the send gets a new ID. A timestamp-free legacy record still
+   matches.
 
 The tests in the held implementation were written after its code. They are
 retrospective and count only after each is shown to fail on the pre-change
@@ -375,23 +446,31 @@ Cloud commands. No head is an integration baseline yet. The table reflects
 
 Recorded:
 
-- Concurrent windows keep conflicting work recoverable (Jake). Unlocked writes
-  use recovery keys, so this holds without Web Locks.
+- Concurrent windows keep conflicting work recoverable (Jake). Unlocked edits
+  use recovery keys, so ordinary edits stay recoverable without Web Locks. The
+  limits for other paths are listed below.
 - Typing is allowed while projects load, and the draft keeps its original
   project (Jake).
 - Attachment product policy approved (2026-10-20 08:20 UTC). Untagged legacy
   attachments can't be assigned by assertion. Enforcement is unverified.
 - The switch path changes only after the contract gate.
 
-Pending, with the default this contract uses:
+Pending. Where the contract needs a working default, it says so:
 
 - Untagged folder-relative attachments at send: allowed, as today, under the
   server's folder check. Alternative: block every reference not tagged with the
   draft's project, which refuses sends that work today (for example, images
   recalled from prompt history).
-- Unmatched request records: expire after 24 hours. Alternative: keep them
-  forever, so an identical later send can return the earlier thread.
-- Unreadable Discard keeps a raw backup (design-held).
+- Request record expiry. Not approved, so not applied. Proposed: 24 hours,
+  checked before matching, timestamp-free records never expire. Without it, an
+  identical later send can return the earlier thread.
+- How unreadable backups are shown or offered back (design-held). The backup
+  mechanism itself is fixed.
+- Without Web Locks: duplicate request IDs from two windows sending at once,
+  and an unlocked Discard or Move racing another window.
+- Pre-upgrade windows can replace or remove the legacy draft and legacy request
+  record at any time. Accepting that residual, or forcing old windows to
+  reload, is open.
 - Coordinator sign-off on removing the switch copy path (product behavior
   already approved).
 - Product sign-off that, without Web Locks, two windows pressing Move at the
