@@ -34,7 +34,7 @@ describe("Claude Code provider maintenance", () => {
       __testing.normalizeUsage(
         {
           five_hour: { utilization: 12.4, resets_at: "2026-01-02T03:04:05Z" },
-          seven_day: { utilization: 55, resets_at: null },
+          seven_day: { utilization: 130, resets_at: null },
           limits: [
             {
               kind: "weekly_scoped",
@@ -58,11 +58,32 @@ describe("Claude Code provider maintenance", () => {
       accountEmail: "claude@example.com",
       planLabel: "Max (5x)",
       windows: [
-        { label: "Current session", usedPercent: 12 },
-        { label: "Weekly limit", usedPercent: 55 },
-        { label: "Sonnet", usedPercent: 30 },
+        {
+          label: "Current session",
+          usedPercent: 12,
+          reportedUsedPercent: 12.4,
+        },
+        { label: "Weekly limit", usedPercent: 100, reportedUsedPercent: 130 },
+        { label: "Sonnet", usedPercent: 30, reportedUsedPercent: 30 },
       ],
     });
+  });
+
+  it("omits raw usage that is not a valid nonnegative number", () => {
+    const usage = __testing.normalizeUsage(
+      { five_hour: { utilization: -3, resets_at: null } },
+      {
+        accessToken: "token",
+        expiresAt: null,
+        subscriptionType: "pro",
+        rateLimitTier: null,
+      },
+      null,
+    );
+    expect(usage).toMatchObject({ windows: [{ usedPercent: 0 }] });
+    expect(
+      usage.status === "ok" ? usage.windows[0] : undefined,
+    ).not.toHaveProperty("reportedUsedPercent");
   });
 
   it("keeps the native installer plan private behind the run method", () => {

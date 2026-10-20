@@ -36,11 +36,32 @@ afterEach(() => {
 });
 
 describe("cloudClaudeUsage", () => {
+  it("treats a blank utilization header as missing, not zero", async () => {
+    stubAnthropic(200, {
+      "anthropic-ratelimit-unified-5h-utilization": " ",
+      "anthropic-ratelimit-unified-7d-utilization": "0.4",
+    });
+
+    const usage = await cloudClaudeUsage(
+      tokenLogin.map((entry) => ({
+        ...entry,
+        source: { core: "machine-environment" as const },
+        reason: "Cloud Claude login",
+      })),
+    );
+
+    expect(usage).toMatchObject({
+      status: "ok",
+      windows: [{ label: "Weekly limit", usedPercent: 40 }],
+    });
+    expect(usage.status === "ok" && usage.windows).toHaveLength(1);
+  });
+
   it("reads the limits from a rate-limited reply's headers", async () => {
     const fetch = stubAnthropic(429, {
       "anthropic-ratelimit-unified-5h-utilization": "0.25",
       "anthropic-ratelimit-unified-5h-reset": "1791666000",
-      "anthropic-ratelimit-unified-7d-utilization": "0.6",
+      "anthropic-ratelimit-unified-7d-utilization": "1.3",
     });
 
     const usage = await cloudClaudeUsage(
@@ -60,12 +81,14 @@ describe("cloudClaudeUsage", () => {
           label: "Current session",
           kind: "five-hour",
           usedPercent: 25,
+          reportedUsedPercent: 25,
           resetsAt: new Date(1791666000 * 1000).toISOString(),
         },
         {
           label: "Weekly limit",
           kind: "weekly",
-          usedPercent: 60,
+          usedPercent: 100,
+          reportedUsedPercent: 130,
           resetsAt: null,
         },
       ],
@@ -134,6 +157,7 @@ describe("GET /api/v1/system/usage-limits with a cloud Claude login", () => {
               label: "Current session",
               kind: "five-hour",
               usedPercent: 10,
+              reportedUsedPercent: expect.closeTo(10),
               resetsAt: null,
             },
           ],
@@ -141,4 +165,49 @@ describe("GET /api/v1/system/usage-limits with a cloud Claude login", () => {
       });
     });
   });
+
+  it.each([
+    ["a current daemon", { reportedUsedPercent: 130 }, 130],
+    ["an older daemon without the raw field", {}, undefined],
+  ])(
+    "returns the daemon's usage windows unchanged from %s",
+    async (_name, raw, expected) => {
+      await withTestHarness(async (harness) => {
+        const primary = seedHostSession(harness.deps, { id: "host-primary" });
+        seedPrimaryHost(harness.deps, primary.host.id);
+        const usage: ProviderUsage = {
+          status: "ok",
+          accountEmail: null,
+          planLabel: null,
+          windows: [
+            { label: "Weekly limit", usedPercent: 100, resetsAt: null, ...raw },
+          ],
+        };
+        registerHostRpcResponder(harness, {
+          hostId: primary.host.id,
+          sessionId: primary.session.id,
+          handle: () => ({
+            ok: true as const,
+            result: { supported: true as const, usage },
+          }),
+        });
+
+        const response = await harness.app.request(
+          "/api/v1/system/usage-limits?providerId=claude-code",
+        );
+
+        expect(response.status).toBe(200);
+        const body = (await readJson(response)) as Record<
+          string,
+          { windows: Record<string, unknown>[] }
+        >;
+        expect(body["claude-code"]!.windows[0]).toMatchObject({
+          usedPercent: 100,
+        });
+        expect(body["claude-code"]!.windows[0]!.reportedUsedPercent).toBe(
+          expected,
+        );
+      });
+    },
+  );
 });

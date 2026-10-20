@@ -21,6 +21,7 @@ import {
   type UsageResource as Resource,
   ACCOUNTS_LIST_METHOD,
   accountViewsSchema,
+  type AccountViews,
 } from "./usage-source-contract.js";
 
 interface SourceResult {
@@ -44,6 +45,13 @@ export const providerUsageRpcContract = defineRpcContract({
     output: usageSnapshotSchema,
   },
 });
+
+function isoTime(ms: number | null): string | null {
+  const time = ms === null ? null : new Date(ms);
+  return time !== null && Number.isFinite(time.getTime())
+    ? time.toISOString()
+    : null;
+}
 
 type UsageRequest = z.infer<typeof providerUsageRpcContract.getUsage.input>;
 function normalizedTint(
@@ -70,8 +78,13 @@ function normalizedUsage(
         accountEmail: usage.accountEmail || null,
         planLabel: usage.planLabel || null,
         windows: usage.windows.map((window) => ({
+          id: window.id,
+          kind: window.kind,
           label: window.label,
           usedPercent: window.usedPercent,
+          ...(window.usedPercentCapped
+            ? { usedPercentCapped: true as const }
+            : {}),
           resetsAt: window.resetsAt || null,
           cost: window.cost ?? null,
         })),
@@ -118,6 +131,7 @@ function normalizedProvider(
         provider.displayName +
         " session expired. Sign in again, then reload usage.",
     usage: normalizedUsage(usage),
+    observedAt: null,
   };
 }
 
@@ -148,6 +162,7 @@ function resourceProvider(
         }
       : {}),
     id: `${pluginId}:${resource.id}`,
+    observedAt: measurement?.observedAt ?? null,
     accountLabel:
       resource.scope.kind === "shared"
         ? (measurement?.usage.accountEmail ?? resource.label)
@@ -156,6 +171,7 @@ function resourceProvider(
 }
 
 export default function providerUsagePlugin(bb: BbPluginApi): void {
+  const accountLists = new Map<string, AccountViews>();
   const mergeAccounts = async (
     machines: UsageMachine[],
     providers: Provider[],
@@ -175,11 +191,19 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
             outputSchema: accountViewsSchema,
             signal: AbortSignal.timeout(10_000),
           })
-          .catch(() => []);
+          .catch(() => undefined);
+        const listKey = JSON.stringify([source.pluginId, providerId]);
         const parsed = accountViewsSchema.safeParse(raw);
-        const accounts = (parsed.success ? parsed.data : []).filter(
-          (account) => !account.needsSignIn,
-        );
+        if (parsed.success) accountLists.set(listKey, parsed.data);
+        const accounts = (
+          parsed.success ? parsed.data : (accountLists.get(listKey) ?? [])
+        )
+          .filter((account) => !account.needsSignIn)
+          .map((account) =>
+            parsed.success
+              ? account
+              : { ...account, error: "Accounts could not be listed." },
+          );
         if (!accounts.some((account) => account.id !== "local")) continue;
         const metadata = providers.find(
           (provider) => provider.id === providerId,
@@ -194,31 +218,34 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
             local ??
             (metadata ? normalizedProvider(metadata, undefined) : null);
           if (base === null) continue;
+          const { refreshFailed: _, ...shared } = base;
           const entries = accounts.flatMap((account): UsageProvider[] => {
             if (account.id === "local")
               return local
                 ? [{ ...local, accountId: "local", inUse: account.inUse }]
                 : [];
-            // Accounts that report no usage still show when they hit a limit.
             const windows =
               account.windows.length > 0
                 ? account.windows
                 : account.limitedUntil
                   ? [
                       {
+                        kind: "custom" as const,
                         label: "Limit hit",
-                        usedPercent: 100,
+                        usedPercent: null,
                         resetsAt: account.limitedUntil,
                       },
                     ]
                   : [];
             return [
               {
-                ...base,
+                ...shared,
                 id: `accounts:${account.id}`,
                 accountLabel: account.name ?? account.email,
                 accountId: account.id,
                 inUse: account.inUse,
+                observedAt: account.observedAt ?? null,
+                ...(account.error ? { refreshFailed: true } : {}),
                 usage:
                   windows.length === 0
                     ? null
@@ -227,18 +254,19 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                         accountEmail: account.email,
                         planLabel: account.plan,
                         windows: windows.map((window) => ({
+                          id: null,
+                          kind: window.kind,
                           label: window.label,
                           usedPercent: window.usedPercent,
-                          resetsAt:
-                            window.resetsAt === null
-                              ? null
-                              : new Date(window.resetsAt).toISOString(),
+                          resetsAt: isoTime(window.resetsAt),
                           cost: null,
                         })),
                       },
               },
             ];
           });
+          if (entries.some((entry) => entry.refreshFailed))
+            machine.error ??= "Some usage could not be refreshed.";
           if (index < 0) machine.providers.push(...entries);
           else machine.providers.splice(index, 1, ...entries);
         }
@@ -446,9 +474,15 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       for (const { source, resource } of visible) {
         const key = keyOf(source.pluginId, resource.id);
         const cached = measurements.get(key);
-        machine.providers.push(
-          resourceProvider(resource, cached?.value, source.pluginId, providers),
-        );
+        machine.providers.push({
+          ...resourceProvider(
+            resource,
+            cached?.value,
+            source.pluginId,
+            providers,
+          ),
+          ...(failures.has(key) ? { refreshFailed: true } : {}),
+        });
         if (source.error !== null || failures.has(key))
           machine.error = "Some usage could not be refreshed.";
       }

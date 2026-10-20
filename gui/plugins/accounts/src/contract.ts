@@ -8,11 +8,32 @@ export const LOCAL = "local";
 export const ACCOUNTS_CHANGED = "accounts-changed";
 
 export const usageWindowSchema = z.object({
+  kind: z.enum(["five-hour", "weekly", "custom"]).default("custom"),
   label: z.string(),
   usedPercent: z.number(),
   resetsAt: z.number().nullable(),
 });
 export type UsageWindow = z.infer<typeof usageWindowSchema>;
+
+export function nextResetAt(
+  windows: readonly Pick<UsageWindow, "resetsAt">[],
+  now: number,
+): number | null {
+  const future = windows.flatMap((window) =>
+    window.resetsAt !== null && window.resetsAt > now ? [window.resetsAt] : [],
+  );
+  return future.length === 0 ? null : Math.min(...future);
+}
+
+export function resetPassedText(
+  window: Pick<UsageWindow, "resetsAt">,
+  observedAt: number | null,
+  now: number,
+): string | null {
+  if (window.resetsAt === null || window.resetsAt > now) return null;
+  if (observedAt === null) return "Reset passed, current usage unknown";
+  return window.resetsAt > observedAt ? "Reset since last update" : null;
+}
 
 export const accountViewSchema = z.object({
   id: z.string(),
@@ -22,6 +43,7 @@ export const accountViewSchema = z.object({
   inUse: z.boolean(),
   limitedUntil: z.number().nullable(),
   error: z.string().nullable(),
+  observedAt: z.number().nullable(),
   windows: z.array(usageWindowSchema),
   // The Mac's own Claude login, shown but not selectable until it is signed in again.
   needsSignIn: z.boolean(),

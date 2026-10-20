@@ -271,6 +271,7 @@ export function AppSidebar({
         <PluginSidebarFooterDisclosure
           item={pluginSidebarFooter.activeItem}
           onDismiss={pluginSidebarFooter.dismiss}
+          onNavigate={closeOnMobile}
         />
         <FreePlanCard />
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UsageProvider } from "./usage-schema.js";
+import type { UsageProvider, UsageWindow } from "./usage-schema.js";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
@@ -69,12 +69,15 @@ describe("provider usage footer disclosure", () => {
       strings: { iconTint: null },
       signInHint: "Sign in.",
       expiredHint: "Sign in again.",
+      observedAt: null,
       usage: {
         status: "ok",
         accountEmail: email,
         planLabel: "Pro",
         windows: [
           {
+            id: null,
+            kind: "weekly",
             label: "Weekly limit",
             usedPercent: usedPercent,
             resetsAt:
@@ -112,15 +115,20 @@ describe("provider usage footer disclosure", () => {
                       },
                       signInHint: "Sign in to Claude Code.",
                       expiredHint: "Sign in to Claude Code again.",
+                      observedAt: null,
                       usage: {
                         status: "ok",
                         accountEmail: "claude@example.com",
                         planLabel: "Max",
                         windows: [
                           {
+                            id: null,
+                            kind: "five-hour",
                             label: "Five-hour limit",
                             usedPercent: 82,
-                            resetsAt: "2026-09-02T18:42:00.000Z",
+                            resetsAt: new Date(
+                              Date.now() + 2 * 60 * 60_000,
+                            ).toISOString(),
                             cost: null,
                           },
                         ],
@@ -136,12 +144,15 @@ describe("provider usage footer disclosure", () => {
                       strings: { iconTint: null },
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
+                      observedAt: null,
                       usage: {
                         status: "ok",
                         accountEmail: "codex@example.com",
                         planLabel: "Plus",
                         windows: [
                           {
+                            id: null,
+                            kind: "weekly",
                             label: "Weekly limit",
                             usedPercent: 37,
                             resetsAt: null,
@@ -168,12 +179,15 @@ describe("provider usage footer disclosure", () => {
                       strings: { iconTint: null },
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
+                      observedAt: null,
                       usage: {
                         status: "ok",
                         accountEmail: "codex@example.com",
                         planLabel: "Plus",
                         windows: [
                           {
+                            id: null,
+                            kind: "weekly",
                             label: "Weekly limit",
                             usedPercent: 97,
                             resetsAt: null,
@@ -235,7 +249,7 @@ describe("provider usage footer disclosure", () => {
     const dismiss = vi.fn();
     const slot = renderSlot(
       item,
-      { dismiss },
+      { dismiss, openPluginDetails: vi.fn() },
       {
         context: { threadId: "thread-active" },
         sidebarThreads: {
@@ -260,7 +274,7 @@ describe("provider usage footer disclosure", () => {
     expect(
       slot.getByRole("heading", { name: "Codexcodex@example.com" }),
     ).toBeTruthy();
-    expect(slot.getByText("97%")).toBeTruthy();
+    expect(slot.getByText("3% left")).toBeTruthy();
 
     fireEvent.pointerDown(machinePicker, { button: 0 });
     fireEvent.click(slot.getByRole("menuitemradio", { name: "M4" }));
@@ -273,8 +287,8 @@ describe("provider usage footer disclosure", () => {
     expect(
       codexSection.querySelector("[data-provider-logo*='/codex/']"),
     ).not.toBeNull();
-    expect(slot.getByText("82%")).toBeTruthy();
-    expect(slot.getByText("37%")).toBeTruthy();
+    expect(slot.getByText("18% left")).toBeTruthy();
+    expect(slot.getByText("63% left")).toBeTruthy();
     expect(slot.getByText("claude@example.com")).toBeTruthy();
 
     fireEvent.pointerDown(
@@ -341,7 +355,7 @@ describe("provider usage footer disclosure", () => {
     expect(slot.getAllByRole("region")).toHaveLength(2);
     expect(slot.getAllByText("team@example.com")).toHaveLength(1);
     expect(slot.getAllByText("personal@example.com")).toHaveLength(1);
-    expect(slot.getByText("46%")).toBeTruthy();
+    expect(slot.getByText("54% left")).toBeTruthy();
     expect(slot.getByText("2d 3h")).toBeTruthy();
     expect(
       slot.getAllByRole("heading").map((heading) => heading.textContent),
@@ -352,12 +366,12 @@ describe("provider usage footer disclosure", () => {
       "Claude Codeclaude-team@example.com",
     ]);
     const windowButton = slot.getByRole("button", {
-      name: "Weekly limit: 46% used. Reset time not reported",
+      name: "Weekly limit: 54% left, 46% used. Reset time not reported. Pace unavailable: no successful measurement time. Last update unavailable.",
     });
     fireEvent.click(windowButton);
     expect(slot.getByText("Reset time not reported.")).toBeTruthy();
-    expect(slot.getByText("82%")).toBeTruthy();
-    expect(slot.getByText("97%")).toBeTruthy();
+    expect(slot.getByText("18% left")).toBeTruthy();
+    expect(slot.getByText("3% left")).toBeTruthy();
     const diagnostics = vi
       .spyOn(console, "warn")
       .mockImplementation(() => undefined);
@@ -384,9 +398,7 @@ describe("provider usage footer disclosure", () => {
           ),
         ).toBeTruthy(),
       );
-      expect(
-        slot.getByText("claude-team@example.com"),
-      ).toBeTruthy();
+      expect(slot.getByText("claude-team@example.com")).toBeTruthy();
       expect(
         slot.queryByText(/Unexpected token|bb connect|invalid JSON/i),
       ).toBeNull();
@@ -431,6 +443,8 @@ it.each([
               ? []
               : [
                   {
+                    id: null,
+                    kind: "weekly",
                     label: "Weekly limit",
                     usedPercent: 42,
                     resetsAt: null,
@@ -448,6 +462,7 @@ it.each([
     strings: { iconTint: null },
     signInHint: "Sign in to this account in the source plugin’s settings.",
     expiredHint: "Sign in again in the source plugin’s settings.",
+    observedAt: null,
     usage,
   };
   vi.stubGlobal(
@@ -475,16 +490,185 @@ it.each([
   });
   const item = app.experimentalSidebarFooterItems[0];
   if (item?.kind !== "disclosure") throw new Error("missing disclosure");
-  const slot = renderSlot(item, { dismiss: vi.fn() });
+  const slot = renderSlot(item, {
+    dismiss: vi.fn(),
+    openPluginDetails: vi.fn(),
+  });
   await waitFor(() =>
     expect(slot.getByText(expected, { exact: false })).toBeTruthy(),
   );
   if (state === "source-error") {
-    expect(slot.getByText("42%")).toBeTruthy();
+    expect(slot.getByText("58% left")).toBeTruthy();
     expect(slot.queryByText("private backend error")).toBeNull();
     expect(
       slot.queryByRole("button", { name: "Retry usage refresh" }),
     ).toBeNull();
   }
+  await mounted.lifecycle.dispose();
+});
+
+it("shows remaining-first windows with measurement freshness, over-limit, unavailable and reset states", async () => {
+  const hour = 3600_000;
+  const account = (
+    id: string,
+    observedAt: number | null,
+    windows: (Pick<UsageWindow, "label" | "usedPercent" | "resetsAt"> &
+      Partial<Pick<UsageWindow, "id" | "kind">>)[],
+    extra: Partial<UsageProvider> = {},
+  ): UsageProvider => ({
+    id,
+    providerId: "codex",
+    accountLabel: `${id}@example.com`,
+    displayName: "Codex",
+    logoUrl: null,
+    icon: null,
+    strings: { iconTint: null },
+    signInHint: "Sign in.",
+    expiredHint: "Sign in again.",
+    observedAt,
+    usage: {
+      status: "ok",
+      accountEmail: `${id}@example.com`,
+      planLabel: null,
+      windows: windows.map((window) => ({
+        id: null,
+        kind: "custom",
+        ...window,
+        cost: null,
+      })),
+    },
+    ...extra,
+  });
+  const inHours = (hours: number) =>
+    new Date(Date.now() + hours * hour).toISOString();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        ok: true,
+        result: {
+          machines: [
+            {
+              id: "source:pool",
+              displayName: "Pool",
+              status: "connected",
+              error: "Some usage could not be refreshed.",
+              providers: [
+                account("fresh", Date.now() - 4 * 60_000, [
+                  {
+                    id: null,
+                    kind: "five-hour",
+                    label: "Five-hour limit",
+                    usedPercent: 28,
+                    resetsAt: inHours(1),
+                  },
+                ]),
+                account(
+                  "stale",
+                  Date.now() - 2 * hour,
+                  [{ label: "Weekly limit", usedPercent: 125, resetsAt: null }],
+                  { refreshFailed: true },
+                ),
+                account("zero", Date.now() - 60_000, [
+                  {
+                    label: "Daily limit",
+                    usedPercent: 0,
+                    resetsAt: inHours(3),
+                  },
+                ]),
+                account("unknown", null, [
+                  {
+                    id: null,
+                    kind: "custom",
+                    label: "Limit hit",
+                    usedPercent: null,
+                    resetsAt: inHours(2),
+                  },
+                ]),
+                account("reset", Date.now() - 3 * hour, [
+                  {
+                    id: null,
+                    kind: "weekly",
+                    label: "Weekly limit",
+                    usedPercent: 90,
+                    resetsAt: inHours(-1),
+                  },
+                ]),
+              ],
+            },
+          ],
+        },
+      }),
+    ),
+  );
+  const app = await loadPluginApp(() => import("./app"));
+  const mounted = await mountPluginContentScripts(app, {
+    pluginId: "provider-usage",
+  });
+  const item = app.experimentalSidebarFooterItems[0];
+  if (item?.kind !== "disclosure") throw new Error("missing disclosure");
+  const openPluginDetails = vi.fn();
+  const slot = renderSlot(item, { dismiss: vi.fn(), openPluginDetails });
+  await slot.findByText("fresh@example.com");
+  expect(slot.getByText("72% left")).toBeTruthy();
+  expect(
+    slot.getByText(
+      "Pace in percentage points. Compared with even usage through this window.",
+    ),
+  ).toBeTruthy();
+  expect(slot.getByText("updated 4 min ago")).toBeTruthy();
+  expect(slot.getByText("updated 2 hr ago")).toBeTruthy();
+  expect(slot.getByText("Couldn’t refresh")).toBeTruthy();
+  expect(slot.getByText("0% left")).toBeTruthy();
+  expect(slot.getByText("Over limit · 125% used")).toBeTruthy();
+  expect(slot.getByText("Last update unavailable")).toBeTruthy();
+  expect(slot.getByText("usage not reported")).toBeTruthy();
+  expect(slot.getByText("100% left")).toBeTruthy();
+  expect(slot.getByText("reset since last update")).toBeTruthy();
+  expect(slot.queryByText("10% left")).toBeNull();
+  expect(slot.getAllByText("100% left")).toHaveLength(1);
+  expect(
+    slot.getByRole("button", {
+      name: "Weekly limit: Over limit · 0% left, 125% used. Reset time not reported. Pace unavailable: window length not reported. Updated 2 hr ago · Couldn’t refresh.",
+    }),
+  ).toBeTruthy();
+  const reset = slot.getByRole("button", {
+    name: "Weekly limit: Reset since last update. Updated 3 hr ago.",
+  });
+  fireEvent.click(reset);
+  expect(slot.getByText("Reset since last update.")).toBeTruthy();
+  expect(slot.queryByText("Resetting now")).toBeNull();
+  expect(slot.getByText(/Showing the last available update/)).toBeTruthy();
+  fireEvent.click(slot.getByRole("button", { name: "View usage details" }));
+  expect(openPluginDetails).toHaveBeenCalledOnce();
+  const settings = renderSlot(
+    app.settingsSections[0]!,
+    {},
+    {
+      rpc: {
+        getUsage: () => ({
+          machines: [
+            {
+              id: "source:other",
+              displayName: "Other",
+              status: "connected",
+              error: null,
+              providers: [],
+            },
+            {
+              id: "source:pool",
+              displayName: "Pool",
+              status: "connected",
+              error: null,
+              providers: [],
+            },
+          ],
+        }),
+      },
+    },
+  );
+  expect(
+    (await settings.findByRole("button", { name: "Usage source" })).textContent,
+  ).toContain("Pool");
   await mounted.lifecycle.dispose();
 });
