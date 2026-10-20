@@ -9,7 +9,12 @@ out of scope.
 
 - Drafts live in browser `localStorage`, in the existing prompt-draft store
   (`apps/app/src/hooks/usePromptDraftStorage.ts`) and its existing record format
-  (`PromptDraftState`), plus an optional `rev` (see Concurrent windows).
+  (`PromptDraftState`). New-thread records also carry `rev` and `base` (see
+  Concurrent windows). These live outside the shared draft format:
+  `promptDraftStorageSchema` strips unknown keys and
+  `serializePromptDraftStorage` writes only the four draft fields, so the store
+  reads `rev`/`base` from the raw parsed record and adds them back when writing.
+  A round-trip test covers this.
 - Key: `bb.promptbox.contents-new-thread-<projectId>-3`, built with the store's
   existing `normalizeStorageSegment` (trim, then `encodeURIComponent`).
 - `projectId` is the composer's project: a real project ID, or `proj_personal`
@@ -41,14 +46,26 @@ Every new-thread scope names its project:
 
 - The draft key decides which project's draft a record is. It never authorizes
   an attachment.
+- Approved policy (2026-10-20): verified uploads are owned by their project.
+  Explicitly attached, verified uploads from the same project are allowed. Nothing
+  is auto-injected into sibling threads. Cross-project copy uses only
+  server-issued upload tokens, never paths, and the server validates source and
+  destination, keeps explicit copy intent, and never overwrites or follows a
+  symlink out.
 - Attachment ownership comes only from the attachment fix's verified owner tag
-  (`attachment.projectId`, set at upload), enforced by the server on send and
-  copy. A draft key, a unique stored filename, or a successful GET is never
-  evidence of ownership.
+  (`attachment.projectId`, set at upload). A draft key, a unique stored
+  filename, a path, or a successful GET is never evidence of ownership.
 - Untagged, foreign-tagged, absolute, or otherwise unverifiable references are
-  never carried into another record. They stay where they are, recoverable,
-  until the attachment ticket's pending authorization policy says otherwise.
-- Switching projects does not copy attachment files.
+  never carried into another record, and the user can't assign one to a
+  project by assertion. They stay where they are, listed by file name, until
+  discarded. To use the file elsewhere, the user uploads it again.
+- This ticket never copies attachments across projects and never issues or
+  uses upload tokens. Switching projects does not copy attachment files.
+- New-thread drafts never write attachments into a thread draft or another
+  thread. Fork from message carries only its quoted text.
+- Send validation is unchanged by this ticket. The client never treats an
+  untagged reference as verified. If the server rejects one, the send fails with
+  its error and the draft is kept.
 - Uploads bind to the draft they started in. In-flight state, the "one upload at
   a time" guard, and upload errors are tracked per draft key. An upload that
   finishes after a switch is added to its original draft with the fix's owner
@@ -82,9 +99,12 @@ Every new-thread scope names its project:
 Two windows can edit the same project's draft. Neither window's work is
 silently overwritten. A newer write never authorizes discarding other content.
 
-- Each stored new-thread record carries a random `rev` (old builds ignore it).
-  Each window remembers, per key, the `rev` its content is based on: the one it
-  last read or wrote.
+- Each stored new-thread record carries a random `rev` and `base`, the `rev` it
+  was written over (old builds ignore both). Each window remembers, per key, the
+  `rev` its content is based on: the one it last read or wrote.
+- Writes run inside an exclusive per-key Web Lock
+  (`bb.promptbox.write.<key>`), so the check below and the write are one step
+  across windows. The pagehide flush can't wait for a lock and runs unlocked.
 - Before writing, a window re-reads the stored record:
   - Same `rev` as its base: write normally with a new `rev`.
   - Different `rev`, same content as this window's: adopt it, no copy.
@@ -94,19 +114,28 @@ silently overwritten. A newer write never authorizes discarding other content.
     unsent copy." Nothing sends by itself.
   - Different `rev`, different non-empty content: first save the stored record
     as a **conflict copy** under
-    `bb.promptbox.contents-new-thread-conflict-<projectId>-<rev>-3` (skipped if
-    it already exists), then write this window's content.
+    `bb.promptbox.conflict-new-thread-<projectId>-<rev>-3` (skipped if it
+    already exists), then write this window's content. This prefix is outside
+    `bb.promptbox.contents-new-thread-`, so the per-project scan never reads it
+    as a project.
+- After every write, the window re-reads the record. If the stored `rev` isn't
+  the one it wrote, another window wrote in between, so this window saves its
+  own content as a conflict copy. Move's target write uses the same check.
 - If the conflict copy can't be saved, the stored record is not overwritten.
   This window keeps its content in memory and shows "Draft not saved on this
   device".
 - A `storage` event replaces a window's draft only when that window has no
-  pending or unsaved write. That is safe because the other window's write ran
-  the check above against this window's last `rev`.
+  pending or unsaved write. If the incoming record's `base` isn't this window's
+  `rev` and its content differs, the other window wrote over content it never
+  saw, so this window first saves its own content as a conflict copy.
 - A successful send clears its draft by writing a sent marker
   (`{ "rev": "...", "sent": true }`, read as empty) instead of removing the key.
-- Residual: `localStorage` has no cross-window compare-and-swap, so two windows
-  writing the same key within the same instant can still race. The debounced
-  writes make this rare. It is named, not hidden.
+- Residual: without Web Locks (Safari before 15.4), and for the pagehide
+  flush, the write is unlocked. The post-write re-read and the `base` check on
+  `storage` events still save the losing content as a conflict copy, unless the
+  losing window closes before either runs. It is named, not hidden.
+- A window still running a pre-upgrade build writes the legacy global key with
+  no `rev` and no check. See Legacy reappearing below.
 - Thread drafts keep today's behavior. This rule covers new-thread drafts only.
 
 ## Drafts not shown in the composer
@@ -120,15 +149,18 @@ Upgrade writes, copies, and removes nothing.
 | Legacy | Old global key `bb.promptbox.contents-draft-3`. Owner unknown. | Every project | Move to, Discard, Not now |
 | Conflict copy | A conflict key for this project | That project only | Add to this draft, Discard, Not now |
 | Project no longer available | Lookup returned 404 `project_not_found` or `project_unavailable` | Every project | Move to, Discard, Not now |
-| Project not in your list | Lookup returned 200 (for example, a hidden project) | Every project | Move to, Not now |
+| Project not in your list | Lookup returned 200 (for example, a hidden project) | Every project | Not now only. Copy: "Unsent draft in <project>, which is hidden. Unhide it to keep writing." Nothing can move it. |
 | Couldn't check | Lookup failed or returned anything else | Every project | Retry, Not now |
 
 Lookup:
 
-- A per-project key is a candidate when its project is not `proj_personal` and
-  not in the settled sidebar list (successful, non-placeholder). Detection scans
-  this store's keys (cache plus `localStorage`).
-- Each candidate is checked with `GET /api/v1/projects/:id`, fresh every time.
+- A per-project key is a candidate when its record is non-empty (a sent marker
+  is empty), its project is not `proj_personal`, and it is not in the settled
+  sidebar list (successful, non-placeholder). Detection scans this store's keys
+  (cache plus `localStorage`) under `bb.promptbox.contents-new-thread-`.
+- Each candidate is checked with `GET /api/v1/projects/:id`, uncached. A lookup
+  runs when a key joins the candidate set, never on a keystroke or write, and
+  again only on **Retry** or right before an action. There is no automatic retry.
   Only the two 404 codes above count as no longer available, and the copy says
   "no longer available", never "deleted". Errors, timeouts, and other statuses
   are "couldn't check".
@@ -150,12 +182,16 @@ Typing while projects load:
    on this origin), re-read the source record and the target draft.
 3. Append the source's text, mentions, and contexts to the target (after a
    blank line if it has text). Carry only attachments whose verified owner tag
-   equals the target project. Everything else stays behind.
-4. Write the target. If that fails, restore the target in memory, change
-   nothing else, and show "Couldn't move the draft. Nothing changed."
+   equals the target project. Everything else stays behind, including every
+   untagged legacy attachment.
+4. Write the target with the Concurrent windows check. If that fails, restore
+   the target in memory, change nothing else, and show "Couldn't move the
+   draft. Nothing changed."
 5. Rewrite the source with only what stayed behind. Remove the key only when
-   nothing is left.
-6. Carry the source's Cloud request evidence (below).
+   nothing is left. Request records are not touched (see Cloud request
+   evidence).
+6. For a legacy source, record the moved content's hash in
+   `bb.promptbox.legacy-moved-3`.
 
 Without Web Locks (Safari before 15.4), the move runs unlocked, and two windows
 pressing Move in the same instant could put the text in both targets. Nothing is
@@ -164,8 +200,14 @@ lost.
 - **Discard** is two-step and inline (no modal). It removes that record only.
   Attachment files on the server are never deleted.
 - **Not now** hides that banner for this window only and writes nothing.
-- Leftover attachments show as "N attachments stayed behind". Discard there
-  removes only those references.
+- Leftover attachments show as "N attachments stayed behind", with their file
+  names. Discard there removes only those references.
+
+Legacy reappearing: if the legacy key holds content again after a Move, a
+pre-upgrade window wrote it. The legacy banner then says "Unsent draft from a
+window that hasn't updated. Reload your other Cloudroom windows." Move stays
+available, and if the text still matches the recorded hash, the banner says it
+was already moved. Residual: an old window can still write the legacy key.
 
 ## Cloud request evidence
 
@@ -176,17 +218,20 @@ it succeeds. The fingerprint covers the whole request, including the project.
   checks the legacy key's record. If the fingerprint matches, it reuses that ID
   instead of issuing a new one, so the server can de-duplicate an ambiguous
   pre-upgrade send.
-- **Move to** copies the source's request record to the target key when the
-  target has none. If the target has its own, both stay where they are.
-- A request record is removed only by a successful send that used it. Discard
-  and migration never remove request records.
+- **Move to** never copies a request record. A moved draft's request has a new
+  fingerprint (the project changed), so a copy could never match. The legacy
+  record stays where it is for the lookup above.
+- A request record is removed only by a successful send that used it. Discard,
+  Move, and migration never add, copy, or remove request records.
 
 ## Banner UI
 
 - Reviewed design: `apps/app/src/components/promptbox/banner/NewThreadDraftDesign.stories.tsx`
   (design only; built from the existing `ProviderRequirementBanner`,
   `PromptStackCard`, and `Button`). The new states (conflict copy, not in your
-  list, couldn't check, sent elsewhere) reuse the same banner and actions.
+  list, couldn't check, sent elsewhere, legacy reappearing, leftover file names)
+  reuse the same banner and actions. They are not in the reviewed renders yet
+  and need design review before production UI.
 - One slot above the composer shows one state, in priority order: storage
   failure, move result, sent elsewhere, leftover attachments, conflict copy,
   other drafts not shown, switch note. Other composer banners are unchanged.
@@ -219,8 +264,10 @@ it succeeds. The fingerprint covers the whole request, including the project.
   not show it. Nothing is deleted.
 - An old build's schema drops the owner tag. Its send uses the draft's project,
   and the server rejects a path from another project with a visible error.
-- Migration only adds or copies request records and never removes them, so an
-  old build still finds the legacy record.
+- Migration never adds, copies, or removes request records, so an old build
+  still finds the legacy record.
+- Conflict copies (`bb.promptbox.conflict-new-thread-…`) and the legacy-moved
+  hash stay in storage, ignored by old builds.
 
 ## Tests that change
 
@@ -230,6 +277,17 @@ it succeeds. The fingerprint covers the whole request, including the project.
 - `useForkThreadFromMessage.test.tsx` and `plugin-slot-mounts.test.tsx`: the
   new-thread scope now names a project.
 - `RootComposeView.test.ts`: the `isCopyingAttachments` field is removed.
+
+New tests: `rev`/`base` round-trip, every pre-write case, the post-write
+re-read, the `base` check on `storage` events, conflict-copy prefix excluded
+from the scan, sent markers as empty, lookup timing (once per new candidate, no
+retry loop), the hidden-project row having no Move, Move under the lock and
+without it, legacy reappearing, and untagged attachments never carried.
+
+The tests in the held implementation were written after its code. They are
+retrospective and count only after each is shown to fail on the pre-change
+code. Each new fix starts with a failing test, then the smallest change that
+passes it, then refactoring.
 
 ## Integration with the attachment fix
 
@@ -253,9 +311,14 @@ observed and is rechecked against its final reviewed head.
   copies, because drafts no longer cross projects. Nothing of the fix is removed
   wholesale. Until then, draft storage and migration stay isolated in
   `usePromptDraftStorage.ts`, the banner component, and `appendPromptDraft`.
-- The attachment authorization, project-upload, and copy policy is pending with
-  the attachment ticket. This contract assumes nothing about it beyond owner
-  tags and server enforcement.
+- The attachment product policy is approved (see Ownership). Its enforcement
+  is the fix's and is not verified yet. Blocking dependencies, each to be
+  checked on the fix's exact final candidate before integration:
+  - the server enforces verified owner tags on send;
+  - cross-project copy accepts only server-issued upload tokens, never paths,
+    and checks source and destination;
+  - absolute and scheme paths never reach the Cloud dispatch file read;
+  - who may call the copy route.
 - The recent-project picker (`room/project-picker-recents`) stays separate. This
   ticket does not touch picker files or project-list queries.
 
@@ -265,5 +328,12 @@ observed and is rechecked against its final reviewed head.
   windows.
 - Typing is allowed while projects load, and the draft keeps its original
   project (Jake). See Drafts not shown in the composer.
+- Attachment product policy approved (2026-10-20 08:20 UTC). It decides that
+  untagged legacy attachments can't be assigned by assertion. Enforcement is
+  still unverified.
 - The project-scoped switch coordination is adapted only after the contract
-  gate. The attachment authorization policy stays pending with that ticket.
+  gate.
+- Not yet recorded: coordinator sign-off on removing the copy-on-switch call
+  site, and product sign-off on the no-Web-Locks residuals (Move may put the
+  text in two projects; an unlocked write may lose content if its window
+  closes first).
