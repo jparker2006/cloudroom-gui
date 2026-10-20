@@ -1139,3 +1139,28 @@ describe("review fixes: terminal writes", () => {
     expect(listNewThreadDraftsNotShown([alphaId(), `${alphaId()}src`, `${alphaId()}gone`])).toEqual([]);
   });
 });
+
+describe("review fixes: discard", () => {
+  const LEGACY_KEY = "bb.promptbox.contents-draft-3";
+
+  it("stops when the draft changed after the user saw it", () => {
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("A"));
+    const seen = { text: "A", mentions: [], attachments: [] };
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("AB"));
+
+    expect(discardNewThreadDraft(LEGACY_KEY, seen)).toBe("changed");
+    expect(window.localStorage.getItem(LEGACY_KEY)).toBe(storedDraft("AB"));
+  });
+
+  it("keeps a backup of a readable draft it discards", () => {
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("A"));
+
+    discardNewThreadDraft(LEGACY_KEY, { text: "A", mentions: [], attachments: [] });
+
+    expect(
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("bb.promptbox.unreadable-draft-") || key.startsWith("bb.promptbox.discarded-draft-"))
+        .map((key) => window.localStorage.getItem(key)),
+    ).toEqual([storedDraft("A")]);
+  });
+});

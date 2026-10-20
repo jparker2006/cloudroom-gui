@@ -660,16 +660,20 @@ export function moveNewThreadDraft(
   return { status: "moved", leftoverAttachments: leftovers.map((attachment) => attachment.name) };
 }
 
-function unreadableBackupPrefix(storageKey: string): string {
+function discardBackupPrefix(storageKey: string, kind: "unreadable" | "discarded"): string {
   return isNewThreadProjectDraftKey(storageKey)
-    ? `bb.promptbox.unreadable-new-thread-${newThreadProjectSegment(storageKey)}-`
-    : "bb.promptbox.unreadable-draft-";
+    ? `bb.promptbox.${kind}-new-thread-${newThreadProjectSegment(storageKey)}-`
+    : `bb.promptbox.${kind}-draft-`;
 }
 
-function backUpUnreadableDraft(storageKey: string, rawValue: string): boolean {
+function backUpDiscardedDraft(
+  storageKey: string,
+  rawValue: string,
+  kind: "unreadable" | "discarded",
+): boolean {
   let backupKey: string;
   do {
-    backupKey = `${unreadableBackupPrefix(storageKey)}${createDraftRev()}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+    backupKey = `${discardBackupPrefix(storageKey, kind)}${createDraftRev()}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   } while (readStoredPromptDraftValue(backupKey) !== null);
   try {
     window.localStorage.setItem(backupKey, rawValue);
@@ -682,12 +686,21 @@ function backUpUnreadableDraft(storageKey: string, rawValue: string): boolean {
 
 export function discardNewThreadDraft(
   storageKey: string,
-): "discarded" | "failed" | "nothing-to-discard" {
+  confirmedDraft?: PromptDraftState,
+): "discarded" | "changed" | "failed" | "nothing-to-discard" {
   const rawValue = readStoredPromptDraftValue(storageKey);
   if (rawValue === null) return "nothing-to-discard";
+  const record = readNewThreadRecord(rawValue);
   if (
-    readNewThreadRecord(rawValue).kind === "unreadable" &&
-    (!backUpUnreadableDraft(storageKey, rawValue) ||
+    record.kind === "draft" &&
+    confirmedDraft &&
+    !arePromptDraftStatesEqual(record.draft, confirmedDraft)
+  ) {
+    return "changed";
+  }
+  if (
+    (record.kind === "unreadable" || record.kind === "draft") &&
+    (!backUpDiscardedDraft(storageKey, rawValue, record.kind === "draft" ? "discarded" : "unreadable") ||
       readStoredPromptDraftValue(storageKey) !== rawValue)
   ) {
     return "failed";
