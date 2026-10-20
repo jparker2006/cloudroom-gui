@@ -217,15 +217,16 @@ function buildTrayItems({
     ]
       .filter(Boolean)
       .join(" · ");
-    const thumbnailBroken = brokenThumbnails.has(attachment.path);
+    const thumbnailSrc = isImage
+      ? resolveAttachmentPreviewSrc(attachment.path, ownerProjectId)
+      : null;
+    const thumbnailBroken =
+      thumbnailSrc !== null && brokenThumbnails.has(thumbnailSrc);
     const item: TrayItem = {
       key: `attachment:${attachment.path}`,
       name: attachment.name,
       isImage,
-      thumbnailSrc:
-        isImage && !thumbnailBroken
-          ? resolveAttachmentPreviewSrc(attachment.path, ownerProjectId)
-          : null,
+      thumbnailSrc: thumbnailBroken ? null : thumbnailSrc,
       status: "ready",
       detail,
       inspect: isImage
@@ -394,8 +395,9 @@ export function AttachmentPreview({
   }
 
   const markThumbnailBroken = (item: TrayItem) => {
-    const path = item.key.slice("attachment:".length);
-    setBrokenThumbnails((current) => new Set(current).add(path));
+    const thumbnailSrc = item.thumbnailSrc;
+    if (thumbnailSrc === null) return;
+    setBrokenThumbnails((current) => new Set(current).add(thumbnailSrc));
   };
 
   const removeItem = (item: TrayItem, viaKeyboard: boolean) => {

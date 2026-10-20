@@ -385,6 +385,87 @@ describe("AttachmentPreview", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(["explicit owner", "current project"] as const)(
+    "tries the new resource after a same-filename project change (%s)",
+    (ownership) => {
+      const attachment = {
+        ...mixedAttachments[0]!,
+        path: "shared-shot.png",
+        name: "shared-shot.png",
+      };
+      const propsFor = (projectId: string) => ({
+        attachments: [
+          ownership === "explicit owner"
+            ? { ...attachment, projectId }
+            : { ...attachment },
+        ],
+        attachmentProjectId:
+          ownership === "explicit owner" ? "composer-project" : projectId,
+        expandedImageIndex: null,
+        onExpandedImageIndexChange: vi.fn(),
+      });
+      const { getByRole, queryByRole, rerender } = render(
+        <AttachmentPreview {...propsFor("project-a")} />,
+      );
+      const firstImage = getByRole("img", { name: "shared-shot.png" });
+      expect(firstImage.getAttribute("src")).toBe(
+        "/api/v1/projects/project-a/attachments/content?path=shared-shot.png",
+      );
+      fireEvent.error(firstImage);
+      expect(queryByRole("img", { name: "shared-shot.png" })).toBeNull();
+
+      rerender(<AttachmentPreview {...propsFor("project-a")} />);
+      expect(queryByRole("img", { name: "shared-shot.png" })).toBeNull();
+
+      rerender(<AttachmentPreview {...propsFor("project-b")} />);
+      expect(
+        queryByRole("img", { name: "shared-shot.png" })?.getAttribute("src"),
+      ).toBe(
+        "/api/v1/projects/project-b/attachments/content?path=shared-shot.png",
+      );
+
+      fireEvent.error(getByRole("img", { name: "shared-shot.png" }));
+      rerender(<AttachmentPreview {...propsFor("project-b")} />);
+      expect(queryByRole("img", { name: "shared-shot.png" })).toBeNull();
+      expect(
+        within(getByRole("button", { name: /^shared-shot\.png,/ })).getByText(
+          "No preview",
+        ),
+      ).toBeTruthy();
+    },
+  );
+
+  it("retains the honest fallback when the failed resource has not changed", () => {
+    const attachment = { ...mixedAttachments[0]!, projectId: "source-project" };
+    const onExpandedImageIndexChange = vi.fn();
+    const props = {
+      attachments: [attachment],
+      attachmentProjectId: "composer-project-a",
+      expandedImageIndex: null,
+      onExpandedImageIndexChange,
+    };
+    const { getByRole, queryByRole, getByText, rerender } = render(
+      <AttachmentPreview {...props} />,
+    );
+    fireEvent.error(getByRole("img", { name: "shot.png" }));
+    for (let sizeBytes = 1; sizeBytes <= 3; sizeBytes += 1) {
+      rerender(
+        <AttachmentPreview
+          {...props}
+          attachmentProjectId="composer-project-b"
+          attachments={[{ ...attachment, sizeBytes }]}
+        />,
+      );
+      expect(queryByRole("img", { name: "shot.png" })).toBeNull();
+      expect(getByText("No preview")).toBeTruthy();
+    }
+    fireEvent.click(getByRole("button", { name: /^shot\.png,/ }));
+    expect(
+      getByText("Couldn't load a preview of shot.png. It is still attached."),
+    ).toBeTruthy();
+    expect(onExpandedImageIndexChange).not.toHaveBeenCalled();
+  });
+
   it("falls back cleanly when a thumbnail cannot load", () => {
     const onExpandedImageIndexChange = vi.fn();
     const { getByRole, getAllByRole, getByText } = render(
