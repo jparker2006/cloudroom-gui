@@ -77,11 +77,12 @@ function holdInMemory(
   cachedEntry: PromptDraftCacheEntry,
   rawValue: string,
   notice: NewThreadDraftNotice,
+  keepRecoveryCopy = true,
 ): false {
   unsavedPromptDraftKeys.add(storageKey);
   newThreadDraftNotices.set(storageKey, notice);
   cachedEntry.rawValue = rawValue;
-  if (!isPromptDraftEmpty(cachedEntry.draft)) writeRecoveryCopyOnly(storageKey);
+  if (keepRecoveryCopy && !isPromptDraftEmpty(cachedEntry.draft)) writeRecoveryCopyOnly(storageKey);
   return false;
 }
 const NEW_THREAD_DRAFT_KEY_PREFIX = `${PROMPT_DRAFT_STORAGE_PREFIX}-new-thread-`;
@@ -158,7 +159,7 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
         newThreadDraftRevs.set(storageKey, record.rev);
         cachedEntry.rawValue = rawValue;
       } else {
-        holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
+        holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere", false);
       }
       return cachedEntry.draft;
     }
@@ -360,6 +361,17 @@ function reconcileWithStoredNewThreadDraft(
     record.rev !== newThreadDraftRevs.get(storageKey)
   ) {
     return holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
+  }
+  if (record.kind === "moved" && record.leftover && !isPromptDraftEmpty(record.leftover)) {
+    const leftoverKey = `bb.promptbox.leftover-new-thread-${newThreadProjectSegment(storageKey)}-${record.rev}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+    if (readStoredPromptDraftValue(leftoverKey) === null) {
+      try {
+        window.localStorage.setItem(leftoverKey, rawValue);
+      } catch (error) {
+        console.warn(`[prompt-draft] could not keep the leftovers of ${storageKey}`, error);
+        return holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
+      }
+    }
   }
   if (record.kind === "missing" || record.kind === "moved" || record.kind === "discarded") {
     return true;
@@ -992,7 +1004,8 @@ export interface NewThreadDraftNotShown {
     | "conflict"
     | "unlisted-project"
     | "moved-elsewhere"
-    | "sent-elsewhere";
+    | "sent-elsewhere"
+    | "leftover";
   key: string;
   projectId: string | null;
   draft?: PromptDraftState;
@@ -1077,14 +1090,22 @@ function collectNewThreadDraftsNotShown(
       const leftover = record.kind === "moved" ? record.leftover : undefined;
       if (record.kind === "unreadable") {
         rows.push({ kind: "unreadable", key, projectId });
-      } else if (leftover && !isPromptDraftEmpty(leftover) && !known.has(projectId)) {
-        rows.push({ kind: "unlisted-project", key, projectId, draft: leftover });
+      } else if (leftover && !isPromptDraftEmpty(leftover)) {
+        rows.push({ kind: "leftover", key, projectId, draft: leftover });
       } else if (
         record.kind === "draft" &&
         !isPromptDraftEmpty(record.draft) &&
         !known.has(projectId)
       ) {
         rows.push({ kind: "unlisted-project", key, projectId, draft: record.draft });
+      }
+      continue;
+    }
+    const leftoverProject = parseNewThreadSideKey(key, "bb.promptbox.leftover-new-thread-");
+    if (leftoverProject) {
+      const kept = readNewThreadRecord(readStoredPromptDraftValue(key));
+      if (kept.kind === "moved" && kept.leftover && !isPromptDraftEmpty(kept.leftover)) {
+        rows.push({ kind: "leftover", key, projectId: leftoverProject, draft: kept.leftover });
       }
       continue;
     }

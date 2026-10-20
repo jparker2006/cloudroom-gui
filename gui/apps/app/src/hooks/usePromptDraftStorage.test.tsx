@@ -2091,8 +2091,8 @@ describe("attachments left behind by a move", () => {
         .map(({ kind, draft }) => [kind, draft?.attachments.map((item) => item.name)])
         .sort(),
     ).toEqual([
+      ["leftover", ["old.png"]],
       ["legacy", ["old.png"]],
-      ["unlisted-project", ["old.png"]],
     ]);
   });
 });
@@ -2158,5 +2158,54 @@ describe("reading finished drafts in the composer", () => {
     window.localStorage.setItem(conflictKey, JSON.stringify({ text: "live conflict", attachments: [], rev: "c7c7c7c7c7c7c7c7" }));
 
     expect(await keepNewThreadDraftCopy(conflictKey)).toBe("nothing-to-keep");
+  });
+});
+
+describe("leftovers when a fresh draft replaces a moved record", () => {
+  it("keeps the leftover attachments listed after new typing replaces the moved record", () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({
+        text: "",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+        rev: "a5a5a5a5a5a5a5a5",
+        moved: true,
+      }),
+    );
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+
+    act(() => result.current.setDraft({ text: "new typing", mentions: [], attachments: [] }));
+
+    expect(storedRecord(alphaKey()).text).toBe("new typing");
+    expect(
+      listedNotShown([alphaId()]).map(({ kind, draft }) => [kind, draft?.attachments.map((item) => item.name)]),
+    ).toEqual([["leftover", ["old.png"]]]);
+  });
+
+  it("lists leftovers of a project that is still in the list", () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({
+        text: "",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+        rev: "a5a5a5a5a5a5a5a5",
+        moved: true,
+      }),
+    );
+
+    expect(listedNotShown([alphaId()]).map(({ kind }) => kind)).toEqual(["leftover"]);
+  });
+
+  it("doesn't write storage while reading a draft that another window moved", () => {
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+    act(() => result.current.setDraft({ text: "moved text", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), JSON.stringify({ rev: "b6b6b6b6b6b6b6b6", moved: true }));
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      result.current.getCurrent();
+      expect(setItem).not.toHaveBeenCalled();
+    } finally {
+      setItem.mockRestore();
+    }
   });
 });
