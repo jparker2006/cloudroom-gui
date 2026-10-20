@@ -1,0 +1,48 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app
+   • Running test in 1 packages
+   • Remote caching disabled
+
+//:ensure-native-modules: cache bypass, force executing a848c3ce1af161d7
+@cloudroom/templates:generate:templates: cache hit, replaying logs 9241f30b6558ce41
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:plugin-scaffold: cache hit, replaying logs 0022df914365b30a
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:plugin-scaffold: > @cloudroom/templates@0.0.1 generate:plugin-scaffold /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/plugin-build:generate: cache hit, replaying logs 499c630b7980abd7
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: > @cloudroom/plugin-build@0.0.1 generate /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build
+@cloudroom/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: plugin-theme.generated.ts up to date
+@cloudroom/plugin-build:generate: wrote /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+//:ensure-native-modules: 
+//:ensure-native-modules: > bb@ ensure-native-modules /code/CloudRoom-UI---design-evolution/gui
+//:ensure-native-modules: > node scripts/ensure-native-modules.mjs
+//:ensure-native-modules: 
+@cloudroom/app:test: cache miss, executing 7fcfc83b1b1dcfe3
+@cloudroom/app:test: 
+@cloudroom/app:test: > @cloudroom/app@0.0.1 test /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:test: > node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts "--maxWorkers=2" "src/components/thread/timeline/TimelineRowDetails.reader.test.tsx"
+@cloudroom/app:test: 
+@cloudroom/app:test: 
+@cloudroom/app:test:  RUN  v4.1.1 /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:test: 
+@cloudroom/app:test:  ✓ |@cloudroom/app:isolated| src/components/thread/timeline/TimelineRowDetails.reader.test.tsx (6 tests) 554ms
+@cloudroom/app:test: 
+@cloudroom/app:test:  Test Files  1 passed (1)
+@cloudroom/app:test:       Tests  6 passed (6)
+@cloudroom/app:test:    Start at  15:42:01
+@cloudroom/app:test:    Duration  4.86s (transform 2.48s, setup 224ms, import 3.43s, tests 554ms, environment 517ms)
+@cloudroom/app:test: 
+
+ Tasks:    5 successful, 5 total
+Cached:    3 cached, 5 total
+  Time:    7.027s 
+

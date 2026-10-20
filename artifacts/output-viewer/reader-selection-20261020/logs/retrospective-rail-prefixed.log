@@ -1,0 +1,106 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app
+   • Running test in 1 packages
+   • Remote caching disabled, using shared worktree cache
+
+//:ensure-native-modules: cache bypass, force executing 1321db2c0511cf77
+@cloudroom/templates:generate:templates: cache miss, executing 5f0954ec9d671db0
+//:ensure-native-modules: 
+//:ensure-native-modules: > bb@ ensure-native-modules /tmp/output-viewer-history-YVqK3D/gui
+//:ensure-native-modules: > node scripts/ensure-native-modules.mjs
+//:ensure-native-modules: 
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /tmp/output-viewer-history-YVqK3D/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/plugin-build:generate: cache miss, executing 00ec8a5213fa193a
+@cloudroom/templates:generate:plugin-scaffold: cache miss, executing e17d5da1f16b1ca2
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: > @cloudroom/plugin-build@0.0.1 generate /tmp/output-viewer-history-YVqK3D/gui/packages/plugin-build
+@cloudroom/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:plugin-scaffold: > @cloudroom/templates@0.0.1 generate:plugin-scaffold /tmp/output-viewer-history-YVqK3D/gui/packages/templates
+@cloudroom/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/plugin-build:generate: wrote packages/plugin-build/src/generated/plugin-theme.generated.ts
+@cloudroom/plugin-build:generate: wrote /tmp/output-viewer-history-YVqK3D/gui/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+@cloudroom/app:test: cache miss, executing aeb86137c9beb36d
+@cloudroom/app:test: 
+@cloudroom/app:test: > @cloudroom/app@0.0.1 test /tmp/output-viewer-history-YVqK3D/gui/apps/app
+@cloudroom/app:test: > node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts "--maxWorkers=2" "src/components/thread/timeline/OutputViewer.retrospective-sensitivity.test.tsx" "-t" "clamps the indexed rail"
+@cloudroom/app:test: 
+@cloudroom/app:test: 
+@cloudroom/app:test:  RUN  v4.1.1 /tmp/output-viewer-history-YVqK3D/gui/apps/app
+@cloudroom/app:test: 
+@cloudroom/app:test:  ❯ |@cloudroom/app:isolated| src/components/thread/timeline/OutputViewer.retrospective-sensitivity.test.tsx (13 tests | 1 failed | 12 skipped) 742ms
+@cloudroom/app:test:      ↓ maps repeated lines without jumping to the first occurrence during append or hydration
+@cloudroom/app:test:      ↓ renders terminal markup as escaped text and safely marks a literal match
+@cloudroom/app:test:      ↓ treats unsafe and regex-like queries as literal text
+@cloudroom/app:test:      ↓ matches text split across ANSI spans and supports Unicode literal search
+@cloudroom/app:test:      ↓ counts every dense match while rendering and navigating one safe highlight
+@cloudroom/app:test:      × clamps the indexed rail when hydration reduces matches on a later page 741ms
+@cloudroom/app:test:      ↓ handles completion while open and request resolution after close without another fetch
+@cloudroom/app:test:      ↓ searches loaded output only, excluding command, tool args, and preview omission text
+@cloudroom/app:test:      ↓ reports the loaded search scope for each availability state
+@cloudroom/app:test:      ↓ navigates matches with Enter and Shift+Enter, wrapping in either direction
+@cloudroom/app:test:      ↓ does not hydrate until the persistent drawer opens
+@cloudroom/app:test:      ↓ keeps the reading anchor through streamed and hydrated output changes
+@cloudroom/app:test:      ↓ pauses following on wheel or touch and follows again only on request
+@cloudroom/app:test: 
+@cloudroom/app:test: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+@cloudroom/app:test: 
+@cloudroom/app:test:  FAIL  |@cloudroom/app:isolated| src/components/thread/timeline/OutputViewer.retrospective-sensitivity.test.tsx > output viewer > clamps the indexed rail when hydration reduces matches on a later page
+@cloudroom/app:test: TestingLibraryElementError: Unable to find an accessible element with the role "button"
+@cloudroom/app:test: 
+@cloudroom/app:test: Here are the accessible roles:
+@cloudroom/app:test: 
+@cloudroom/app:test:   paragraph:
+@cloudroom/app:test: 
+@cloudroom/app:test:   Name "":
+@cloudroom/app:test:   [36m<p[39m
+@cloudroom/app:test:     [33mclass[39m=[32m"px-2 py-2 text-xs text-muted-foreground"[39m
+@cloudroom/app:test:   [36m/>[39m
+@cloudroom/app:test: 
+@cloudroom/app:test:   --------------------------------------------------
+@cloudroom/app:test: 
+@cloudroom/app:test: Ignored nodes: comments, script, style
+@cloudroom/app:test: [36m<aside[39m
+@cloudroom/app:test:   [33maria-label[39m=[32m"Matching lines"[39m
+@cloudroom/app:test:   [33mclass[39m=[32m"w-28 shrink-0 overflow-y-auto border-r bg-surface-recessed p-2 sm:w-60"[39m
+@cloudroom/app:test: [36m>[39m
+@cloudroom/app:test:   [36m<p[39m
+@cloudroom/app:test:     [33mclass[39m=[32m"px-2 py-2 text-xs text-muted-foreground"[39m
+@cloudroom/app:test:   [36m>[39m
+@cloudroom/app:test:     [0mMatching lines[0m
+@cloudroom/app:test:   [36m</p>[39m
+@cloudroom/app:test: [36m</aside>[39m
+@cloudroom/app:test:  ❯ Object.getElementError ../../../../../code/CloudRoom-UI---design-evolution/gui/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+@cloudroom/app:test:  ❯ ../../../../../code/CloudRoom-UI---design-evolution/gui/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+@cloudroom/app:test:  ❯ ../../../../../code/CloudRoom-UI---design-evolution/gui/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:109:15
+@cloudroom/app:test:  ❯ src/components/thread/timeline/OutputViewer.retrospective-sensitivity.test.tsx:204:9
+@cloudroom/app:test:     202|       within(
+@cloudroom/app:test:     203|         screen.getByRole("complementary", { name: "Matching lines" }),
+@cloudroom/app:test:     204|       ).getAllByRole("button"),
+@cloudroom/app:test:        |         ^
+@cloudroom/app:test:     205|     ).toHaveLength(3);
+@cloudroom/app:test:     206|     expect(outputCount().textContent).toContain("of 3 matches");
+@cloudroom/app:test: 
+@cloudroom/app:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+@cloudroom/app:test: 
+@cloudroom/app:test: 
+@cloudroom/app:test:  Test Files  1 failed (1)
+@cloudroom/app:test:       Tests  1 failed | 12 skipped (13)
+@cloudroom/app:test:    Start at  15:44:59
+@cloudroom/app:test:    Duration  4.03s (transform 1.68s, setup 118ms, import 2.50s, tests 742ms, environment 527ms)
+@cloudroom/app:test: 
+@cloudroom/app:test:  ELIFECYCLE  Test failed. See above for more details.
+@cloudroom/app#test:  ERROR  command (/tmp/output-viewer-history-YVqK3D/gui/apps/app) /home/cloudroom-agent/.local/share/pnpm/.tools/pnpm/9.15.0/bin/pnpm run test --maxWorkers=2 src/components/thread/timeline/OutputViewer.retrospective-sensitivity.test.tsx -t clamps the indexed rail exited (1)
+
+ Tasks:    4 successful, 5 total
+Cached:    0 cached, 5 total
+  Time:    7.101s 
+Failed:    @cloudroom/app#test
+
+ ERROR  run failed: command  exited (1)

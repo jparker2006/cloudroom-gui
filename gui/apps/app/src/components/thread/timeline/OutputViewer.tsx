@@ -18,6 +18,28 @@ import {
 
 export type OutputViewerDirection = "reader" | "indexed";
 
+function inlineOutputLabel(
+  row: TimelinePreviewableWorkRow,
+  full: TimelineWorkRowFullOutput,
+) {
+  switch (full.state) {
+    case "error":
+      return "Load failed · limited inline preview";
+    case "expired-preview":
+      return "Retention expired · retained preview";
+    case "limited-preview":
+      return "Limited preview · response limit";
+    case "unavailable-preview":
+      return "Output details unavailable · retained preview";
+    default:
+      return row.status === "pending"
+        ? "Streaming"
+        : row.outputPreview
+          ? "Limited inline preview"
+          : "Available output";
+  }
+}
+
 export function outputCoverage(
   row: TimelinePreviewableWorkRow,
   full: TimelineWorkRowFullOutput,
@@ -223,8 +245,8 @@ export function OutputViewer({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs text-muted-foreground">
-              {row.workKind === "command" ? "Command output" : "Tool output"} ·{" "}
-              {direction === "reader" ? "A / Reader" : "B / Match index"}
+              {row.workKind === "command" ? "Command output" : "Tool output"}
+              {direction === "indexed" ? " · Match index" : null}
             </p>
             <h2 id={titleId} className="text-lg font-semibold">
               Inspect output
@@ -470,6 +492,7 @@ export function PreviewableOutputBody({
   direction: OutputViewerDirection;
 }) {
   const [open, setOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
   const fullOutput = useTimelineWorkRowFullOutput(row, { enabled: open });
   return (
     <div className="space-y-1">
@@ -492,29 +515,33 @@ export function PreviewableOutputBody({
         )}
       </div>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground">
-          {row.status === "pending"
-            ? "Streaming"
-            : row.outputPreview
-              ? "Limited inline preview"
-              : "Available output"}
+        <span
+          className="text-xs text-muted-foreground"
+          role={fullOutput.state === "error" && !open ? "alert" : undefined}
+        >
+          {inlineOutputLabel(row, fullOutput)}
         </span>
         <Button
           variant="ghost"
           size="sm"
           aria-haspopup="dialog"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setHasOpened(true);
+            setOpen(true);
+          }}
         >
           Open output
         </Button>
       </div>
-      <OutputViewer
-        row={row}
-        direction={direction}
-        fullOutput={fullOutput}
-        open={open}
-        onOpenChange={setOpen}
-      />
+      {hasOpened ? (
+        <OutputViewer
+          row={row}
+          direction={direction}
+          fullOutput={fullOutput}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      ) : null}
     </div>
   );
 }

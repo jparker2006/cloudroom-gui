@@ -1,0 +1,225 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app
+   • Running test in 1 packages
+   • Remote caching disabled
+
+@cloudroom/plugin-build:generate: cache hit, replaying logs 499c630b7980abd7
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: > @cloudroom/plugin-build@0.0.1 generate /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build
+@cloudroom/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: plugin-theme.generated.ts up to date
+@cloudroom/plugin-build:generate: wrote /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+//:ensure-native-modules: cache bypass, force executing a848c3ce1af161d7
+@cloudroom/templates:generate:templates: cache hit, replaying logs 9241f30b6558ce41
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:plugin-scaffold: cache hit, replaying logs 0022df914365b30a
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:plugin-scaffold: > @cloudroom/templates@0.0.1 generate:plugin-scaffold /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@cloudroom/templates:generate:plugin-scaffold: 
+//:ensure-native-modules: 
+//:ensure-native-modules: > bb@ ensure-native-modules /code/CloudRoom-UI---design-evolution/gui
+//:ensure-native-modules: > node scripts/ensure-native-modules.mjs
+//:ensure-native-modules: 
+@cloudroom/app:test: cache miss, executing c73e2cfe98f54f65
+@cloudroom/app:test: 
+@cloudroom/app:test: > @cloudroom/app@0.0.1 test /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:test: > node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts "--maxWorkers=2" "src/components/thread/timeline/TimelineRowDetails.reader.test.tsx"
+@cloudroom/app:test: 
+@cloudroom/app:test: 
+@cloudroom/app:test:  RUN  v4.1.1 /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:test: 
+@cloudroom/app:test:  ❯ |@cloudroom/app:isolated| src/components/thread/timeline/TimelineRowDetails.reader.test.tsx (6 tests | 1 failed) 635ms
+@cloudroom/app:test:    ✓ opens the selected Reader from the actual command timeline only on output demand 263ms
+@cloudroom/app:test:    ✓ opens the selected Reader for tool output without searching arguments or fetching complete text 97ms
+@cloudroom/app:test:    ✓ does not construct a hidden full-output drawer before the first explicit open 5ms
+@cloudroom/app:test:    ✓ keeps a hydration failure visible in the inline preview after closing the drawer 84ms
+@cloudroom/app:test:    ✓ keeps correctly matched cached output when demand is disabled after hydration 54ms
+@cloudroom/app:test:    × keeps a mismatched detail response failure visible after closing 131ms
+@cloudroom/app:test: 
+@cloudroom/app:test: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+@cloudroom/app:test: 
+@cloudroom/app:test:  FAIL  |@cloudroom/app:isolated| src/components/thread/timeline/TimelineRowDetails.reader.test.tsx > keeps a mismatched detail response failure visible after closing
+@cloudroom/app:test: TestingLibraryElementError: Unable to find an accessible element with the role "alert"
+@cloudroom/app:test: 
+@cloudroom/app:test: Here are the accessible roles:
+@cloudroom/app:test: 
+@cloudroom/app:test:   button:
+@cloudroom/app:test: 
+@cloudroom/app:test:   Name "Open output":
+@cloudroom/app:test:   [36m<button[39m
+@cloudroom/app:test:     [33maria-haspopup[39m=[32m"dialog"[39m
+@cloudroom/app:test:     [33mclass[39m=[32m"inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 hover:duration-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0 hover:bg-state-hover hover:text-foreground aria-pressed:bg-state-active aria-pressed:text-foreground aria-pressed:hover:bg-state-active data-[state=open]:bg-state-active data-[state=open]:text-foreground data-[state=open]:hover:bg-state-active h-8 rounded-md px-3 text-xs"[39m
+@cloudroom/app:test:   [36m/>[39m
+@cloudroom/app:test: 
+@cloudroom/app:test:   --------------------------------------------------
+@cloudroom/app:test: 
+@cloudroom/app:test: Ignored nodes: comments, script, style
+@cloudroom/app:test: [36m<body>[39m
+@cloudroom/app:test:   [36m<div>[39m
+@cloudroom/app:test:     [36m<div[39m
+@cloudroom/app:test:       [33mclass[39m=[32m"space-y-1"[39m
+@cloudroom/app:test:     [36m>[39m
+@cloudroom/app:test:       [36m<div[39m
+@cloudroom/app:test:         [33mclass[39m=[32m"[&_[data-detail-scroll-area]]:max-h-24"[39m
+@cloudroom/app:test:       [36m>[39m
+@cloudroom/app:test:         [36m<div[39m
+@cloudroom/app:test:           [33mclass[39m=[32m"rounded-lg border border-border bg-card overflow-hidden"[39m
+@cloudroom/app:test:         [36m>[39m
+@cloudroom/app:test:           [36m<div[39m
+@cloudroom/app:test:             [33mclass[39m=[32m"px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70"[39m
+@cloudroom/app:test:           [36m>[39m
+@cloudroom/app:test:             [36m<div[39m
+@cloudroom/app:test:               [33mclass[39m=[32m"overflow-auto whitespace-pre-wrap break-words max-h-[288px]"[39m
+@cloudroom/app:test:             [36m>[39m
+@cloudroom/app:test:               [0m$ printf COMMAND_ONLY[0m
+@cloudroom/app:test:             [36m</div>[39m
+@cloudroom/app:test:             [36m<div[39m
+@cloudroom/app:test:               [33mclass[39m=[32m"mt-1 text-muted-foreground"[39m
+@cloudroom/app:test:             [36m>[39m
+@cloudroom/app:test:               [0msource: exec_command[0m
+@cloudroom/app:test:             [36m</div>[39m
+@cloudroom/app:test:             [36m<div[39m
+@cloudroom/app:test:               [33mclass[39m=[32m"relative isolate min-w-0 mt-1.5"[39m
+@cloudroom/app:test:               [33mdata-detail-scroll[39m=[32m"base"[39m
+@cloudroom/app:test:             [36m>[39m
+@cloudroom/app:test:               [36m<div[39m
+@cloudroom/app:test:                 [33mclass[39m=[32m"min-w-0 overflow-y-auto overflow-x-auto max-h-[288px] whitespace-pre leading-tight text-muted-foreground"[39m
+@cloudroom/app:test:                 [33mdata-detail-scroll-area[39m=[32m"base"[39m
+@cloudroom/app:test:               [36m>[39m
+@cloudroom/app:test:                 [36m<div[39m
+@cloudroom/app:test:                   [33maria-hidden[39m=[32m"true"[39m
+@cloudroom/app:test:                   [33mclass[39m=[32m"-mb-px h-px w-full"[39m
+@cloudroom/app:test:                 [36m/>[39m
+@cloudroom/app:test:                 [36m<div>[39m
+@cloudroom/app:test:                   [36m<div>[39m
+@cloudroom/app:test:                     [0mPASS
+@cloudroom/app:test: …[output omitted from preview]
+@cloudroom/app:test: TAIL[0m
+@cloudroom/app:test:                   [36m</div>[39m
+@cloudroom/app:test:                 [36m</div>[39m
+@cloudroom/app:test:                 [36m<div[39m
+@cloudroom/app:test:                   [33maria-hidden[39m=[32m"true"[39m
+@cloudroom/app:test:                   [33mclass[39m=[32m"h-px w-full"[39m
+@cloudroom/app:test:                 [36m/>[39m
+@cloudroom/app:test:               [36m</div>[39m
+@cloudroom/app:test:             [36m</div>[39m
+@cloudroom/app:test:             [36m<div[39m
+@cloudroom/app:test:               [33mclass[39m=[32m"mt-1.5 font-mono text-xs leading-tight text-muted-foreground"[39m
+@cloudroom/app:test:             [36m>[39m
+@cloudroom/app:test:               [0mexit code [0m
+@cloudroom/app:test:               [0m0[0m
+@cloudroom/app:test:             [36m</div>[39m
+@cloudroom/app:test:           [36m</div>[39m
+@cloudroom/app:test:         [36m</div>[39m
+@cloudroom/app:test:       [36m</div>[39m
+@cloudroom/app:test:       [36m<div[39m
+@cloudroom/app:test:         [33mclass[39m=[32m"flex items-center justify-between gap-3"[39m
+@cloudroom/app:test:       [36m>[39m
+@cloudroom/app:test:         [36m<span[39m
+@cloudroom/app:test:           [33mclass[39m=[32m"text-xs text-muted-foreground"[39m
+@cloudroom/app:test:         [36m>[39m
+@cloudroom/app:test:           [0mLimited inline preview[0m
+@cloudroom/app:test:         [36m</span>[39m
+@cloudroom/app:test:         [36m<button[39m
+@cloudroom/app:test:           [33maria-haspopup[39m=[32m"dialog"[39m
+@cloudroom/app:test:           [33mclass[39m=[32m"inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 hover:duration-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0 hover:bg-state-hover hover:text-foreground aria-pressed:bg-state-active aria-pressed:text-foreground aria-pressed:hover:bg-state-active data-[state=open]:bg-state-active data-[state=open]:text-foreground data-[state=open]:hover:bg-state-active h-8 rounded-md px-3 text-xs"[39m
+@cloudroom/app:test:         [36m>[39m
+@cloudroom/app:test:           [0mOpen output[0m
+@cloudroom/app:test:         [36m</button>[39m
+@cloudroom/app:test:       [36m</div>[39m
+@cloudroom/app:test:     [36m</div>[39m
+@cloudroom/app:test:   [36m</div>[39m
+@cloudroom/app:test:   [36m<div[39m
+@cloudroom/app:test:     [33maria-hidden[39m=[32m"true"[39m
+@cloudroom/app:test:     [33mclass[39m=[32m"fixed inset-0 z-50 bg-black/40"[39m
+@cloudroom/app:test:     [33mdata-bb-portaled-overlay[39m=[32m""[39m
+@cloudroom/app:test:     [33mdata-persistent-drawer-backdrop[39m=[32m""[39m
+@cloudroom/app:test:     [33mdata-state[39m=[32m"closed"[39m
+@cloudroom/app:test:     [33mstyle[39m=[32m"opacity: 0; pointer-events: none; transition: opacity 220ms cubic-bezier(0.32, 0.72, 0, 1);"[39m
+@cloudroom/app:test:   [36m/>[39m
+@cloudroom/app:test:   [36m<div[39m
+@cloudroom/app:test:     [33maria-describedby[39m=[32m"_r_c_"[39m
+@cloudroom/app:test:     [33maria-hidden[39m=[32m"true"[39m
+@cloudroom/app:test:     [33maria-labelledby[39m=[32m"_r_b_"[39m
+@cloudroom/app:test:     [33mclass[39m=[32m"fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[calc(92dvh-var(--bb-drawer-keyboard-inset,0px))] flex-col rounded-t-xl border bg-background outline-none h-[88dvh] overflow-hidden pb-[env(safe-area-inset-bottom)] sm:inset-x-auto sm:right-4 sm:bottom-4 sm:mt-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-xl sm:shadow-2xl sm:[--bb-drawer-closed-offset:2rem] sm:w-[min(820px,calc(100vw-2rem))]"[39m
+@cloudroom/app:test:     [33mdata-bb-portaled-overlay[39m=[32m""[39m
+@cloudroom/app:test:     [33mdata-persistent-drawer-content[39m=[32m""[39m
+@cloudroom/app:test:     [33mdata-state[39m=[32m"closed"[39m
+@cloudroom/app:test:     [33minert[39m=[32m""[39m
+@cloudroom/app:test:     [33mrole[39m=[32m"dialog"[39m
+@cloudroom/app:test:     [33mstyle[39m=[32m"transform: translate3d(0, calc(100% + var(--bb-drawer-closed-offset, 0px)), 0); transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);"[39m
+@cloudroom/app:test:     [33mtabindex[39m=[32m"-1"[39m
+@cloudroom/app:test:   [36m>[39m
+@cloudroom/app:test:     [36m<div[39m
+@cloudroom/app:test:       [33mclass[39m=[32m"mx-auto flex h-8 w-16 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"[39m
+@cloudroom/app:test:       [33mdata-persistent-drawer-handle[39m=[32m""[39m
+@cloudroom/app:test:     [36m>[39m
+@cloudroom/app:test:       [36m<div[39m
+@cloudroom/app:test:         [33mclass[39m=[32m"h-1 w-10 rounded-full bg-muted-foreground/20"[39m
+@cloudroom/app:test:       [36m/>[39m
+@cloudroom/app:test:     [36m</div>[39m
+@cloudroom/app:test:     [36m<header[39m
+@cloudroom/app:test:       [33mclass[39m=[32m"shrink-0 space-y-3 border-b px-4 pb-4 sm:px-6"[39m
+@cloudroom/app:test:     [36m>[39m
+@cloudroom/app:test:       [36m<div[39m
+@cloudroom/app:test:         [33mclass[39m=[32m"flex items-center justify-between gap-3"[39m
+@cloudroom/app:test:       [36m>[39m
+@cloudroom/app:test:         [36m<div>[39m
+@cloudroom/app:test:           [36m<p[39m
+@cloudroom/app:test:             [33mclass[39m=[32m"text-xs text-muted-foreground"[39m
+@cloudroom/app:test:           [36m>[39m
+@cloudroom/app:test:             [0mCommand output[0m
+@cloudroom/app:test:           [36m</p>[39m
+@cloudroom/app:test:           [36m<h2[39m
+@cloudroom/app:test:             [33mclass[39m=[32m"text-lg font-semibold"[39m
+@cloudroom/app:test:             [33mid[39m=[32m"_r_b_"[39m
+@cloudroom/app:test:           [36m>[39m
+@cloudroom/app:test:             [0mInspect output[0m
+@cloudroom/app:test:           [36m</h2>[39m
+@cloudroom/app:test:         [36m</div>[39m
+@cloudroom/app:test:         [36m<button[39m
+@cloudroom/app:test:           [33mclass[39m=[32m"inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors duration-150 hover:duration-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0 hover:bg-state-hover hover:text-foreground aria-pressed:bg-state-active aria-pressed:text-foreground aria-pressed:hover:bg-state-active data-[state=open]:bg-state-active data-[state=open]:text-foreground data-[state=open]:hover:bg-state-active h-9 px-4 py-2"[39m
+@cloudroom/app:test:         [36m>[39m
+@cloudroom/app:test:           [0mClose[0m
+@cloudroom/app:test:         [36m</button>[39m
+@cloudroom/app:test:       [36m</div>[39m
+@cloudroom/app:test:       [36m<p[39m
+@cloudroom/app:test:         [33mclass[39m=[32m"text-xs text-muted-foreground"[39m
+@cloudroom/app:test:         [33mid[39m=[32m"_r_c_"[39m
+@cloudroom/app:test:         [33mrole[39m=[32m"status"[39m
+@cloudroom/app:test:       [36m>[3...
+@cloudroom/app:test: 
+@cloudroom/app:test:  Test Files  1 failed (1)
+@cloudroom/app:test:  ❯ Object.getElementError ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+@cloudroom/app:test:       Tests  1 failed | 5 passed (6)
+@cloudroom/app:test:    Start at  15:41:25
+@cloudroom/app:test:    Duration  5.81s (transform 2.98s, setup 140ms, import 4.25s, tests 635ms, environment 568ms)
+@cloudroom/app:test: 
+@cloudroom/app:test:  ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+@cloudroom/app:test:  ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+@cloudroom/app:test:  ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+@cloudroom/app:test:  ❯ src/components/thread/timeline/TimelineRowDetails.reader.test.tsx:98:17
+@cloudroom/app:test:      96|   await screen.findByRole("button", {name:"Retry"});
+@cloudroom/app:test:      97|   fireEvent.click(screen.getByRole("button", {name:"Close"}));
+@cloudroom/app:test:      98|   expect(screen.getByRole("alert").textContent).toMatch(/load failed/i…
+@cloudroom/app:test:        |                 ^
+@cloudroom/app:test:      99|   expect(details).toHaveBeenCalledTimes(1);
+@cloudroom/app:test:     100| });
+@cloudroom/app:test: 
+@cloudroom/app:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+@cloudroom/app:test: 
+@cloudroom/app:test:  ELIFECYCLE  Test failed. See above for more details.
+@cloudroom/app#test:  ERROR  command (/code/CloudRoom-UI---design-evolution/gui/apps/app) /home/cloudroom-agent/.local/share/pnpm/.tools/pnpm/9.15.0/bin/pnpm run test --maxWorkers=2 src/components/thread/timeline/TimelineRowDetails.reader.test.tsx exited (1)
+
+ Tasks:    4 successful, 5 total
+Cached:    3 cached, 5 total
+  Time:    8.472s 
+Failed:    @cloudroom/app#test
+
+ ERROR  run failed: command  exited (1)

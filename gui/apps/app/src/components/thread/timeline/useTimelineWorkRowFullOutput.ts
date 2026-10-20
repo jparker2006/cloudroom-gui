@@ -104,7 +104,7 @@ export function useTimelineWorkRowFullOutput(
     output: string;
     outputPreview: TimelineOutputPreview | undefined;
   } | null => {
-    if (!shouldLoad || data === undefined) {
+    if (row.status === "pending" || data === undefined) {
       return null;
     }
     const match = findPreviewableWorkRow(
@@ -132,7 +132,7 @@ export function useTimelineWorkRowFullOutput(
     row.turnId,
     row.sourceSeqStart,
     row.sourceSeqEnd,
-    shouldLoad,
+    row.status,
   ]);
 
   if (!isPreview) {
@@ -150,9 +150,6 @@ export function useTimelineWorkRowFullOutput(
   ) {
     return { output: row.output, state: "unavailable-preview", retry };
   }
-  if (options.enabled === false && row.status !== "pending") {
-    return { output: row.output, state: "idle-preview", retry };
-  }
   if (loadedOutput !== null) {
     return {
       output: loadedOutput.output,
@@ -160,11 +157,14 @@ export function useTimelineWorkRowFullOutput(
       retry,
     };
   }
-  if (!shouldLoad) {
+  if (row.status === "pending") {
     return { output: row.output, state: "streaming-preview", retry };
   }
   if (isError || data !== undefined) {
     return { output: row.output, state: "error", retry };
+  }
+  if (options.enabled === false) {
+    return { output: row.output, state: "idle-preview", retry };
   }
   return { output: row.output, state: "loading", retry };
 }

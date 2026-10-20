@@ -1,0 +1,5 @@
+Fresh browser-harness: The virtual screen (Xvfb) did not start.
+Public xvfb.log: Server is already active for display 99. No locks removed or old processes stopped.
+Public browser-harness --doctor: no Chrome, daemon, or browser connections.
+Installed Chromium headless with a unique task profile and default sandbox, loopback9223: No usable sandbox.
+No no-sandbox/security flags, install, cleanup retry, or Mac fallback was used. Fresh screenshots/touch/device QA are not claimed.

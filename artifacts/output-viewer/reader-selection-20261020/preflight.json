@@ -1,0 +1,122 @@
+{
+  "recorded_utc": "2026-10-20T15:47:21.305272+00:00",
+  "selection_source": "morning-selection-20261020/Sentinel_2dd3dfeea4ac81919708ebba123bf6b7",
+  "selected": "1 / A Reader",
+  "base_head": "61e3e6ad61597ebfbf780a7429896257a716ecd6",
+  "base_tree": "ff1b236fe8fdcf6f08df502cc9247488e3c7a1e7",
+  "initial_dirty": [],
+  "history_reconciliation": "61e3e6a is the direct evidence-only child of a28e566; git diff a28e566 61e3e6a -- gui is empty. No new signoff inferred.",
+  "runtime": {
+    "observed_harness": "Codex",
+    "execution": "existing Cloud sandbox",
+    "effective_owner_model": "not exposed by public runtime/room-cli",
+    "effective_owner_reasoning": "not exposed by public inspection; self-update only affects next turn",
+    "effective_service_tier": "not exposed",
+    "protected_session_or_config_reads_this_resume": false
+  },
+  "frontend_skill_discovery": {
+    "evidence": "available tool metadata plus rg --files --hidden -g SKILL.md restricted to public .agents/skills, .codex/skills, and plugin skill cache; name filtering frontend/product/ui/design/taste/impeccable",
+    "applicable_public_frontend_skill_found": false,
+    "tasteskill_v2_verified": false,
+    "mac_impeccable_cloud_availability_claimed": false,
+    "installed_anything": false,
+    "reused_product_guidance": [
+      "gui/AGENTS.md",
+      "gui/apps/app/src/app.css",
+      "gui/apps/app/src/components/ui/theme.css",
+      "gui/packages/shared-ui/src/components/ui/responsive-overlay.tsx"
+    ],
+    "catalog_skill_list_read_tool_callable": false,
+    "cloud_environment_status_tool_callable": false
+  },
+  "skills_read": [
+    {
+      "path": "/home/cloudroom-agent/.agents/skills/room-cli/SKILL.md",
+      "declared_name": "room-cli",
+      "declared_heading": "Cloudroom from the cloud",
+      "declared_version": null,
+      "sha256": "58c9df36e2a51bb611a4a3da9c3647a3f59954109521597b5d7ea8753d21c5d2",
+      "read_via": "exec_command: cat public SKILL.md"
+    },
+    {
+      "path": "/home/cloudroom-agent/.agents/skills/browser-harness/SKILL.md",
+      "declared_name": "browser-harness",
+      "declared_heading": "browser-harness",
+      "declared_version": null,
+      "sha256": "b55949c6764cf0c9a072e8fd7b06443c08a395481f03b483f3da9a0b5d07e750",
+      "read_via": "exec_command: cat public SKILL.md"
+    },
+    {
+      "path": "/home/cloudroom-agent/.agents/skills/cloud-preview/SKILL.md",
+      "declared_name": "cloud-preview",
+      "declared_heading": "Cloud preview",
+      "declared_version": null,
+      "sha256": "44cc0451326ee9f73d01c24f2eaf40b63372dff3fe20c1d626f2b8723c28142b",
+      "read_via": "exec_command: cat public SKILL.md"
+    },
+    {
+      "path": "/home/cloudroom-agent/.codex/plugins/cache/openai-curated-remote/cloud-environment/0.1.2/skills/runtime/SKILL.md",
+      "declared_name": "cloud-environment-runtime",
+      "declared_heading": null,
+      "declared_version": null,
+      "sha256": "c23513e361a6f9dbe1c28e5c41de635f355469b4ec1740ae1cd2de1d38a91bd3",
+      "read_via": "exec_command: cat public SKILL.md"
+    },
+    {
+      "path": "/home/cloudroom-agent/.agents/skills/cloud-computer-use/SKILL.md",
+      "declared_name": "cloud-computer-use",
+      "declared_heading": "Computer use in a Cloud thread",
+      "declared_version": null,
+      "sha256": "f7340caf9b5703a7cd14e63675a4bc29fbd68f56b1b13654f41a3ddedd6ef2ec",
+      "read_via": "exec_command: cat public SKILL.md; browser startup diagnostics only; no GUI control used"
+    }
+  ],
+  "existing_children": [
+    {
+      "id": "cr_child_23eb184ce9d7875c352f6ce6",
+      "listed_model": "gpt-6-luna",
+      "state": "sleeping"
+    },
+    {
+      "id": "cr_child_7c424138c13b8b0a80995d16",
+      "listed_model": "gpt-6-luna",
+      "state": "sleeping"
+    },
+    {
+      "id": "cr_child_8d23f17e7c1bbe70b939ed82",
+      "listed_model": "gpt-6.1-sol",
+      "state": "sleeping"
+    },
+    {
+      "id": "cr_child_efca7d2e14f4df6a236a4455",
+      "listed_model": "gpt-6-luna",
+      "state": "sleeping"
+    }
+  ],
+  "children_woken_or_spawned": false,
+  "root_delivery": {
+    "target": "thr_fg6w93w5pu",
+    "tool": "room-cli thread tell",
+    "result": "Not a subagent of this thread.",
+    "alternate_control_attempted": false
+  },
+  "remote_verified": {
+    "url": "https://github.com/jparker2006/cloudroom-gui.git",
+    "gh_api_owner": "jparker2006",
+    "fork": true,
+    "parent": "davidondrej/cloudroom-gui",
+    "push_permission": true,
+    "scoped_branch": "design/output-viewer-directions",
+    "branch_at_initial_ls_remote": "absent"
+  },
+  "original_branch_base": "15cc574c8ff29788b7556f7d26bbddf670479b71",
+  "fresh_browser_validation": {
+    "default_harness_attempt": "failed: virtual screen (Xvfb) did not start",
+    "supported_diagnostics": "browser-harness --doctor; public computer-use logs show display99 already active",
+    "locks_or_existing_processes_changed": false,
+    "headless_default_security_attempt": "installed Chromium, unique profile, loopback9223; failed No usable sandbox",
+    "sandbox_flags_installs_or_other_bypass": false,
+    "fresh_visual_or_touch_validation_claimed": false,
+    "mac_used": false
+  }
+}

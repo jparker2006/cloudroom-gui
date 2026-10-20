@@ -1,0 +1,52 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app
+   • Running test in 1 packages
+   • Remote caching disabled
+
+@cloudroom/templates:generate:templates: cache miss, executing bd7a4bd0441dc20f
+@cloudroom/templates:generate:plugin-scaffold: cache miss, executing f78a11afa6ac1a49
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:plugin-scaffold: > @cloudroom/templates@0.0.1 generate:plugin-scaffold /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@cloudroom/templates:generate:plugin-scaffold: 
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/plugin-build:generate: cache miss, executing 65233c44b99d1d13
+//:ensure-native-modules: cache bypass, force executing 352d58a73af29140
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: > @cloudroom/plugin-build@0.0.1 generate /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build
+@cloudroom/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@cloudroom/plugin-build:generate: 
+@cloudroom/plugin-build:generate: plugin-theme.generated.ts up to date
+//:ensure-native-modules: 
+//:ensure-native-modules: > bb@ ensure-native-modules /code/CloudRoom-UI---design-evolution/gui
+//:ensure-native-modules: > node scripts/ensure-native-modules.mjs
+//:ensure-native-modules: 
+@cloudroom/plugin-build:generate: wrote /code/CloudRoom-UI---design-evolution/gui/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+@cloudroom/app:test: cache miss, executing 4e87aa972a533f77
+@cloudroom/app:test: 
+@cloudroom/app:test: > @cloudroom/app@0.0.1 test /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:test: > node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts "--maxWorkers=2" "src/components/thread/timeline/OutputViewer.test.tsx" "src/components/thread/timeline/TimelineRowDetails.output-preview.test.tsx" "src/components/thread/timeline/TerminalOutputBlock.test.tsx" "src/components/ui/responsive-overlay.test.tsx"
+@cloudroom/app:test: 
+@cloudroom/app:test: 
+@cloudroom/app:test:  RUN  v4.1.1 /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:test: 
+@cloudroom/app:test:  ✓ |@cloudroom/app:isolated| src/components/thread/timeline/OutputViewer.test.tsx (15 tests) 1142ms
+@cloudroom/app:test:      ✓ clamps the indexed rail when hydration reduces matches on a later page  451ms
+@cloudroom/app:test:  ✓ |@cloudroom/app:isolated| src/components/thread/timeline/TimelineRowDetails.output-preview.test.tsx (11 tests) 599ms
+@cloudroom/app:test:  ✓ |@cloudroom/app:isolated| src/components/ui/responsive-overlay.test.tsx (24 tests) 349ms
+@cloudroom/app:test:  ✓ |@cloudroom/app:isolated| src/components/thread/timeline/TerminalOutputBlock.test.tsx (1 test) 127ms
+@cloudroom/app:test: 
+@cloudroom/app:test:  Test Files  4 passed (4)
+@cloudroom/app:test:       Tests  51 passed (51)
+@cloudroom/app:test:    Start at  15:39:43
+@cloudroom/app:test:    Duration  8.12s (transform 3.88s, setup 495ms, import 7.41s, tests 2.22s, environment 4.59s)
+@cloudroom/app:test: 
+
+ Tasks:    5 successful, 5 total
+Cached:    0 cached, 5 total
+  Time:    12.37s 
+

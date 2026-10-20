@@ -1,0 +1,92 @@
+{
+  "prepared_utc": "2026-10-20T15:51:47.797885+00:00",
+  "implementation_base_head": "61e3e6ad61597ebfbf780a7429896257a716ecd6",
+  "implementation_base_tree": "ff1b236fe8fdcf6f08df502cc9247488e3c7a1e7",
+  "original_branch_base": "15cc574c8ff29788b7556f7d26bbddf670479b71",
+  "branch": "design/output-viewer-directions",
+  "final_commit_identity": "Read from git/owner final receipt after this evidence is committed; no earlier SHA review reused.",
+  "source_sha256": {
+    "gui/apps/app/src/components/thread/timeline/OutputViewer.stories.tsx": "d8d2be3059ec62ab0b232126d65d7e363b0181f847227fe69283adde9d584271",
+    "gui/apps/app/src/components/thread/timeline/OutputViewer.tsx": "136ecd6b8b5b3ff4e8e21e5d97dd74e980f6151ab3df022099727c9ab95e585b",
+    "gui/apps/app/src/components/thread/timeline/TimelineRowDetails.output-preview.test.tsx": "8e1578349a30b314e80acaebb40143cc069e79a603078aa2d4dda8b5fdb1c857",
+    "gui/apps/app/src/components/thread/timeline/TimelineRowDetails.reader.test.tsx": "a93c81234aba29cd06ecb70f8790cb75d59779a686a668b28459d8f9da8a372e",
+    "gui/apps/app/src/components/thread/timeline/TimelineRowDetails.tsx": "22bd05cefb47fca6ff8d1438a4543382ea9ed26983706402ce4b99f94d56de5a",
+    "gui/apps/app/src/components/thread/timeline/useTimelineWorkRowFullOutput.ts": "0274a518548d559ca2455a0bfab591b82aa61d4c5dd9b7b21d77f723f6b19647"
+  },
+  "red_green_refactor": [
+    {
+      "stage": "historical baseline",
+      "source": "61e3e6a",
+      "log": "logs/retrospective-baseline.log",
+      "result": "51 passed; retrospective tests, not tests-first evidence for prior implementation"
+    },
+    {
+      "stage": "new user path red, before production edits",
+      "log": "logs/red-user-path.log",
+      "result": "5 user-path tests failed on base. An additional cleanup exception came from beforeEach accidentally returning a mock function; test harness corrected afterward."
+    },
+    {
+      "stage": "initial green attempt",
+      "log": "logs/green-user-path.log",
+      "result": "4 passed, 1 failed due to that test-hook cleanup exception; not claimed green"
+    },
+    {
+      "stage": "new unmatched-response red before its fix",
+      "log": "logs/red-unmatched-response.log",
+      "result": "5 passed, 1 failed: closing unmatched details concealed failure"
+    },
+    {
+      "stage": "green user paths after fixes",
+      "log": "logs/green-user-path-final.log",
+      "result": "6 passed"
+    },
+    {
+      "stage": "refactor",
+      "log": "logs/refactor-focused.log",
+      "result": "57 passed after removing superseded legacy command/tool body path"
+    },
+    {
+      "stage": "final focused",
+      "log": "logs/final-focused.log",
+      "result": "57 passed after final story/label refactor"
+    },
+    {
+      "stage": "layout integration",
+      "log": "logs/timeline-layout-integration.log",
+      "result": "19 passed"
+    },
+    {
+      "stage": "sticky scroll integration",
+      "log": "logs/timeline-integration.log",
+      "result": "2 passed; other requested filenames in this command did not exist and are not claimed tested"
+    }
+  ],
+  "retrospective_sensitivity": {
+    "purpose": "Sensitivity of an already-existing regression; not a new tests-first chronology claim",
+    "historical_test_source": "c315617:gui/apps/app/src/components/thread/timeline/OutputViewer.test.tsx",
+    "historical_test_sha256": "db6973ab5ee25162386f5fa5dae767ad39e8644ca80c66d0b146e3349f9ba4f8",
+    "selected_test": "clamps the indexed rail when hydration reduces matches on a later page",
+    "pre_fix_source": "63b88bf084754262482ebb83c60931c7a781a4cc",
+    "pre_fix_result": "1 failed, 12 skipped; real blank-rail assertion, not an import/build error",
+    "control_source": "c31561776b1213b30fbc318090e8bface7992096",
+    "control_result": "1 passed, 12 skipped",
+    "method": "two retained detached test-only worktrees; identical historical test blob copied to a separate test filename; shared installed dependency links; no mutation/reset/discard of owner source or either historical commit",
+    "logs": [
+      "logs/retrospective-rail-prefixed.log",
+      "logs/retrospective-rail-control.log"
+    ]
+  },
+  "verification": {
+    "relevant_tests_passed": 78,
+    "app_server_desktop_build": "pass",
+    "server_desktop_typecheck": "pass",
+    "app_typecheck": "three errors: Automations onNewUrl, two Ladle typings; not claimed green",
+    "config_tests": "113 pass",
+    "scripts_tests": "128 pass, 5 workflow/ratchet failures; not claimed green",
+    "fresh_browser": "blocked; see logs/browser-blockers.log",
+    "native_ios_signed_in_device_accessibility_acceptance": "not validated; gates remain open",
+    "exact_final_head_independent_review": "pending root; no old helpers woken or old signoff reused"
+  },
+  "dirty_checkpoint_outside_commit": ".turbo/ generated untracked cache preserved; detached retrospective test worktrees retained; original evidence and unrelated/private artifacts preserved",
+  "root_delivery": "room-cli thread tell thr_fg6w93w5pu rejected: Not a subagent of this thread. Root handoff must be relayed through the existing authorized controller."
+}

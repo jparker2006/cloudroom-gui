@@ -209,7 +209,9 @@ function Fixture({
             <WorkRowBody
               row={row}
               workspaceRootPath={undefined}
-              outputViewerDirection={direction}
+              outputViewerDirection={
+                direction === "indexed" ? "indexed" : undefined
+              }
             />
           )}
         />
@@ -221,7 +223,13 @@ function Fixture({
   );
 }
 
-function Direction({ direction }: { direction: OutputViewerDirection }) {
+function Direction({
+  direction,
+  selected = false,
+}: {
+  direction: OutputViewerDirection;
+  selected?: boolean;
+}) {
   const [scenario, setScenario] = useState<Scenario>("ANSI + Unicode");
   return (
     <main className="min-h-screen bg-background p-4 text-foreground sm:p-10">
@@ -229,13 +237,17 @@ function Direction({ direction }: { direction: OutputViewerDirection }) {
         <div className="mb-2 flex items-center gap-3">
           <span className="rounded-md border px-2 py-1 text-xs">CloudRoom</span>
           <span className="text-xs text-muted-foreground">
-            Design review · no rollout
+            {selected
+              ? "Reader selected · implementation review"
+              : "Design review · no rollout"}
           </span>
         </div>
         <h1 className="text-2xl font-semibold">
-          {direction === "reader"
-            ? "A · Focused reader"
-            : "B · Indexed investigation"}
+          {selected
+            ? "Output reader"
+            : direction === "reader"
+              ? "A · Focused reader"
+              : "B · Indexed investigation"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {direction === "reader"
@@ -263,4 +275,7 @@ function Direction({ direction }: { direction: OutputViewerDirection }) {
 
 export const FocusedReader: Story = () => <Direction direction="reader" />;
 export const MatchIndex: Story = () => <Direction direction="indexed" />;
+export const SelectedReader: Story = () => (
+  <Direction direction="reader" selected />
+);
 export default { title: "Thread / Output viewer candidates" };

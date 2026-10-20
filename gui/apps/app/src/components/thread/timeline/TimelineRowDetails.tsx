@@ -4,31 +4,21 @@ import {
   fileNameFromPath,
   type TimelineViewWorkRow,
 } from "@cloudroom/thread-view";
-import { Button } from "@cloudroom/shared-ui/button";
-import { Icon } from "@cloudroom/shared-ui/icon";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
 import { ImageLightbox } from "../../ui/image-lightbox.js";
 import { EmptyStatePanel } from "@cloudroom/shared-ui/empty-state";
-import { TerminalOutputBlock } from "./TerminalOutputBlock.js";
 import {
   PreviewableOutputBody,
   type OutputViewerDirection,
 } from "./OutputViewer.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { LazyTimelineFileDiffBlock } from "./LazyTimelineFileDiffBlock.js";
-import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
 import { QuestionWorkRowBody } from "./QuestionWorkRowBody.js";
 import { WorkflowWorkRowBody } from "./WorkflowWorkRowBody.js";
 import {
   PlanStepsWorkRowBody,
   PresentationDetail,
 } from "./PresentationWorkRowBodies.js";
-import {
-  useTimelineWorkRowFullOutput,
-  type TimelinePreviewableWorkRow,
-  type TimelineWorkRowFullOutput,
-  type TimelineWorkRowFullOutputState,
-} from "./useTimelineWorkRowFullOutput.js";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
 
@@ -47,24 +37,6 @@ type ImageWorkRow = Extract<
 interface ImageWorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   row: ImageWorkRow;
-}
-
-interface CommandWorkRowBodyProps {
-  row: Extract<TimelineViewWorkRow, { workKind: "command" }>;
-}
-
-interface ToolWorkRowBodyProps {
-  row: Extract<TimelineViewWorkRow, { workKind: "tool" }>;
-}
-
-interface OutputPreviewNoteProps {
-  fullOutput: TimelineWorkRowFullOutput;
-  row: TimelinePreviewableWorkRow;
-}
-
-interface OutputPreviewNoteArgs {
-  state: TimelineWorkRowFullOutputState;
-  totalChars: number;
 }
 
 interface ResolveImageViewSourceArgs {
@@ -136,129 +108,32 @@ function ImageWorkRowBody({ resolveImageViewSrc, row }: ImageWorkRowBodyProps) {
   );
 }
 
-function outputPreviewNoteText({
-  state,
-  totalChars,
-}: OutputPreviewNoteArgs): string | null {
-  const total = `${totalChars.toLocaleString()} characters`;
-  switch (state) {
-    case "unavailable-preview":
-      return `Preview of ${total}. Output details are unavailable because no detail reference is available.`;
-    case "idle-preview":
-      return `Preview of ${total}. Open output to request available details.`;
-    case "streaming-preview":
-      return `Preview of ${total}. The full output loads when this finishes.`;
-    case "limited-preview":
-      return `Preview of ${total}. The full output exceeds the detail response limit.`;
-    case "expired-preview":
-      return `Preview of ${total}. The full output is no longer available because its retention period ended.`;
-    case "loading":
-      return `Loading the full output (${total})…`;
-    case "error":
-      return `Failed to load the full output (${total}).`;
-    case "complete":
-    case "loaded":
-      return null;
-    default:
-      return assertNever(state);
-  }
-}
-
-function OutputPreviewNote({ fullOutput, row }: OutputPreviewNoteProps) {
-  if (row.outputPreview === undefined) {
-    return null;
-  }
-  const text = outputPreviewNoteText({
-    state: fullOutput.state,
-    totalChars: row.outputPreview.totalChars,
-  });
-  if (text === null) {
-    return null;
-  }
-  return (
-    <div
-      className="flex items-center gap-2 text-xs text-muted-foreground"
-      data-testid="timeline-output-preview-note"
-    >
-      <span>{text}</span>
-      {fullOutput.state === "error" ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={fullOutput.retry}
-          className="h-6 cursor-pointer px-2"
-        >
-          <Icon name="RotateCcw" />
-          Retry
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-
-function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
-  const fullOutput = useTimelineWorkRowFullOutput(row);
-  return (
-    <div className="space-y-1">
-      <TerminalOutputBlock
-        commandLine={`$ ${row.command}`}
-        metadataLines={row.source ? [`source: ${row.source}`] : []}
-        output={fullOutput.output}
-        exitCode={row.exitCode}
-        streaming={row.status === "pending"}
-      />
-      <OutputPreviewNote fullOutput={fullOutput} row={row} />
-    </div>
-  );
-}
-
-function ToolWorkRowBody({ row }: ToolWorkRowBodyProps) {
-  const fullOutput = useTimelineWorkRowFullOutput(row);
-  return (
-    <div className="space-y-1">
-      <PresentationDetail presentation={row.presentation} />
-      <ToolCallDetailBlock
-        toolName={row.toolName}
-        args={row.toolArgs}
-        output={fullOutput.output}
-        streaming={row.status === "pending"}
-      />
-      <OutputPreviewNote fullOutput={fullOutput} row={row} />
-    </div>
-  );
-}
-
 export function WorkRowBody({
-  outputViewerDirection,
+  outputViewerDirection = "reader",
   resolveImageViewSrc,
   row,
   workspaceRootPath,
 }: WorkRowBodyProps) {
   switch (row.workKind) {
     case "command":
-      if (outputViewerDirection)
-        return (
+      return (
+        <PreviewableOutputBody
+          key={`${row.threadId}:${row.id}`}
+          row={row}
+          direction={outputViewerDirection}
+        />
+      );
+    case "tool":
+      return (
+        <>
+          <PresentationDetail presentation={row.presentation} />
           <PreviewableOutputBody
             key={`${row.threadId}:${row.id}`}
             row={row}
             direction={outputViewerDirection}
           />
-        );
-      return <CommandWorkRowBody row={row} />;
-    case "tool":
-      if (outputViewerDirection)
-        return (
-          <>
-            <PresentationDetail presentation={row.presentation} />
-            <PreviewableOutputBody
-              key={`${row.threadId}:${row.id}`}
-              row={row}
-              direction={outputViewerDirection}
-            />
-          </>
-        );
-      return <ToolWorkRowBody row={row} />;
+        </>
+      );
     case "file-change":
       return (
         <div className="space-y-2">

@@ -2,10 +2,12 @@
 
 import {
   cleanup,
+  fireEvent,
   render,
   renderHook,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,7 +83,7 @@ afterEach(() => {
 });
 
 describe("previewed command output", () => {
-  it("loads the full output for an expanded finished row through row-scoped turn details", async () => {
+  it("loads available output on explicit demand through row-scoped turn details", async () => {
     timelineTurnSummaryDetails.mockResolvedValue({
       rows: [
         commandRow({
@@ -96,6 +98,8 @@ describe("previewed command output", () => {
       ],
     });
     const view = renderExpandedRow(previewedCommandRow());
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
 
     await waitFor(() => {
       expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
@@ -107,10 +111,12 @@ describe("previewed command output", () => {
       sourceSeqEnd: "7",
     });
     await waitFor(() => {
-      expect(view.container.textContent).toContain(FULL_OUTPUT);
+      expect(screen.getByRole("dialog").textContent).toContain(FULL_OUTPUT);
     });
-    expect(view.container.textContent).not.toContain("characters omitted");
-    expect(screen.queryByTestId("timeline-output-preview-note")).toBeNull();
+    expect(view.container.textContent).toContain("characters omitted");
+    expect(
+      within(screen.getByRole("dialog")).getByRole("status").textContent,
+    ).toContain("Complete available output");
   });
 
   it("loads full output from nested delegated turn details", async () => {
@@ -307,9 +313,10 @@ describe("previewed command output", () => {
     const view = renderExpandedRow(previewedCommandRow({ status: "pending" }));
 
     expect(view.container.textContent).toContain("characters omitted");
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
     expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("full output loads when this finishes");
+      within(screen.getByRole("dialog")).getByRole("status").textContent,
+    ).toContain("Streaming · limited preview");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
   });
@@ -317,14 +324,16 @@ describe("previewed command output", () => {
   it("shows the preview with a retry when the full-output load fails", async () => {
     timelineTurnSummaryDetails.mockRejectedValue(new Error("boom"));
     const view = renderExpandedRow(previewedCommandRow());
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
     });
     expect(view.container.textContent).toContain("characters omitted");
     expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("Failed to load the full output");
+      within(screen.getByRole("dialog")).getByRole("status").textContent,
+    ).toContain("Load failed");
   });
 
   it("keeps a preview warning when row details cannot hydrate the full output", async () => {
@@ -350,13 +359,16 @@ describe("previewed command output", () => {
       ],
     });
     const view = renderExpandedRow(previewedCommandRow());
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
 
     await waitFor(() => {
-      expect(view.container.textContent).toContain(detailPreview);
+      expect(screen.getByRole("dialog").textContent).toContain(detailPreview);
     });
+    expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
     expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("exceeds the detail response limit");
+      within(screen.getByRole("dialog")).getByRole("status").textContent,
+    ).toContain("Detail response limit reached");
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
   });
 
@@ -367,11 +379,12 @@ describe("previewed command output", () => {
       totalChars: FULL_OUTPUT.length,
     };
     const view = renderExpandedRow(row);
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
 
     expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
     expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("retention period ended");
+      within(screen.getByRole("dialog")).getByRole("status").textContent,
+    ).toContain("Retention expired");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
   });
@@ -399,13 +412,16 @@ describe("previewed command output", () => {
       ],
     });
     const view = renderExpandedRow(previewedCommandRow());
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
 
     await waitFor(() => {
-      expect(view.container.textContent).toContain(expiredPreview);
+      expect(screen.getByRole("dialog").textContent).toContain(expiredPreview);
     });
+    expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
     expect(
-      screen.getByTestId("timeline-output-preview-note").textContent,
-    ).toContain("retention period ended");
+      within(screen.getByRole("dialog")).getByRole("status").textContent,
+    ).toContain("Retention expired");
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
   });
 });

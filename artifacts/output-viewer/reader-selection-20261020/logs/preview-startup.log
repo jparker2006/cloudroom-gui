@@ -1,0 +1,23 @@
+• turbo 2.10.12
+
+   • Packages in scope: @cloudroom/app
+   • Running storybook in 1 packages
+   • Remote caching disabled
+
+@cloudroom/templates:generate:templates: cache hit, replaying logs caff7868e878f0c7
+@cloudroom/templates:generate:templates: 
+@cloudroom/templates:generate:templates: > @cloudroom/templates@0.0.1 generate:templates /code/CloudRoom-UI---design-evolution/gui/packages/templates
+@cloudroom/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@cloudroom/templates:generate:templates: 
+@cloudroom/app:storybook: cache bypass, force executing 90196358f3ff1966
+@cloudroom/app:storybook: 
+@cloudroom/app:storybook: > @cloudroom/app@0.0.1 storybook /code/CloudRoom-UI---design-evolution/gui/apps/app
+@cloudroom/app:storybook: > ladle serve "--host" "127.0.0.1" "--port" "6100"
+@cloudroom/app:storybook: 
+@cloudroom/app:storybook: 
+@cloudroom/app:storybook:    ╭───────────────────────────────────────────────────╮
+@cloudroom/app:storybook:    │                                                   │
+@cloudroom/app:storybook:    │   🥄 Ladle.dev served at http://127.0.0.1:6100/   │
+@cloudroom/app:storybook:    │                                                   │
+@cloudroom/app:storybook:    ╰───────────────────────────────────────────────────╯
+@cloudroom/app:storybook: 
