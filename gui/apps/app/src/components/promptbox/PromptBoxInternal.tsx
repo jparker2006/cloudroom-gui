@@ -2697,11 +2697,19 @@ export function PromptBoxInternal({
     [scheduleRevealEditorSelection, syncTriggerState],
   );
 
-  const restoreEditorFocusAfterAttachmentRemoval = useCallback(() => {
-    const currentEditor = editorRef.current;
-    if (isPointerCoarse || !currentEditor || currentEditor.isDestroyed) return;
-    focusAfterPromptAction(currentEditor);
-  }, [focusAfterPromptAction, isPointerCoarse]);
+  const restoreEditorFocusAfterAttachmentRemoval = useCallback(
+    (viaKeyboard: boolean) => {
+      const currentEditor = editorRef.current;
+      if (
+        (isPointerCoarse && !viaKeyboard) ||
+        !currentEditor ||
+        currentEditor.isDestroyed
+      )
+        return;
+      focusAfterPromptAction(currentEditor);
+    },
+    [focusAfterPromptAction, isPointerCoarse],
+  );
 
   const applyPromptAction = useCallback(
     (action: PromptBoxAction) => {

@@ -162,7 +162,7 @@ describe("AttachmentPreview", () => {
     expect(queryByRole("region", { name: "Preview notes.md" })).toBeNull();
   });
 
-  it("explains a failed content preview without detaching the file", async () => {
+  it("announces a failed content preview without detaching the file", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     const onRemoveAttachment = vi.fn();
     const { getByRole, findByText } = render(
@@ -176,12 +176,44 @@ describe("AttachmentPreview", () => {
     );
     fireEvent.click(getByRole("button", { name: /^Preview notes\.md/ }));
     expect(
-      await findByText(
-        "Couldn't load this attachment preview. It is still attached.",
-      ),
-    ).toBeTruthy();
+      (
+        await findByText(
+          "Couldn't load this attachment preview. It is still attached.",
+        )
+      ).closest('[role="status"]'),
+    ).not.toBeNull();
     expect(onRemoveAttachment).not.toHaveBeenCalled();
   });
+
+  it.each(["rows", "cards"] as const)(
+    "returns focus after closing a %s file preview",
+    async (variant) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: async () => "Preview contents",
+        }),
+      );
+      const { getByRole, findByText, queryByRole } = render(
+        <AttachmentPreview
+          variant={variant}
+          attachmentProjectId="proj_1"
+          attachments={mixedAttachments.slice(1, 2)}
+          expandedImageIndex={null}
+          onExpandedImageIndexChange={vi.fn()}
+        />,
+      );
+      const trigger = getByRole("button", { name: /^Preview notes\.md/ });
+      fireEvent.click(trigger);
+      expect(await findByText("Preview contents")).toBeTruthy();
+      const close = getByRole("button", { name: "Close file preview" });
+      close.focus();
+      fireEvent.click(close, { detail: 0 });
+      expect(queryByRole("region", { name: "Preview notes.md" })).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    },
+  );
 
   it("renders a just-picked image from its local object URL and revokes it on remove", () => {
     registerLocalAttachmentPreview(

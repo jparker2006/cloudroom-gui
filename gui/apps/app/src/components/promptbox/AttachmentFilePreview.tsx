@@ -50,5 +50,12 @@ export default function AttachmentFilePreview({
     return () => controller.abort();
   }, [name, url]);
 
-  return <FilePreview state={state} path={name} headerMode="none" />;
+  return (
+    <div
+      className="h-full"
+      role={state.kind === "error" ? "status" : undefined}
+    >
+      <FilePreview state={state} path={name} headerMode="none" />
+    </div>
+  );
 }

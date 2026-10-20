@@ -2229,6 +2229,71 @@ describe("PromptBoxInternal compact layout", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
+  it.each([0, 1])(
+    "restores last-attachment focus on a coarse pointer only for keyboard removal (detail %s)",
+    async (detail) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      const onChange = vi.fn();
+      function Harness() {
+        const [attached, setAttached] = useState(true);
+        return (
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "hello world",
+              onChange,
+              attachments: {
+                projectId: "proj_1",
+                items: attached
+                  ? [
+                      {
+                        type: "localFile",
+                        name: "a.txt",
+                        path: "a.txt",
+                        sizeBytes: 1,
+                      },
+                    ]
+                  : [],
+                onRemove: () => setAttached(false),
+              },
+            })}
+          />
+        );
+      }
+      try {
+        render(<Harness />);
+        const editorElement = getPromptEditorElement();
+        const editor = (editorElement as HTMLElement & { editor: Editor }).editor;
+        await act(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
+        act(() => {
+          editor.commands.setTextSelection(4);
+        });
+        const remove = screen.getByRole("button", { name: "Remove a.txt" });
+        remove.focus();
+        fireEvent.click(remove, { detail });
+        for (let frame = 0; frame < 2; frame += 1) {
+          await act(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => resolve()),
+              ),
+          );
+        }
+        expect(screen.queryByRole("button", { name: "Remove a.txt" })).toBeNull();
+        expect(document.activeElement === editorElement).toBe(detail === 0);
+        expect(editor.state.selection.from).toBe(4);
+        expect(editor.getText()).toBe("hello world");
+        expect(onChange).not.toHaveBeenCalled();
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
   it("shows attachment upload progress on the submit button", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {

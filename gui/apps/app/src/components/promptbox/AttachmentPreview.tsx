@@ -341,7 +341,7 @@ interface AttachmentPreviewProps {
   onExpandedImageIndexChange: (index: number | null) => void;
   onRemoveAttachment?: (path: string) => void;
   onDismissPending?: (id: string) => void;
-  onRestoreEditorFocus?: () => void;
+  onRestoreEditorFocus?: (viaKeyboard: boolean) => void;
 }
 
 export function AttachmentPreview({
@@ -428,10 +428,10 @@ export function AttachmentPreview({
     if (neighbor) {
       requestAnimationFrame(() => {
         if (neighbor.isConnected) neighbor.focus();
-        else onRestoreEditorFocus?.();
+        else onRestoreEditorFocus?.(true);
       });
     } else {
-      onRestoreEditorFocus?.();
+      onRestoreEditorFocus?.(viaKeyboard);
     }
   };
 
@@ -792,7 +792,20 @@ export function AttachmentPreview({
                   type="button"
                   aria-label="Close file preview"
                   className="inline-flex size-7 shrink-0 items-center justify-center rounded hover:bg-state-hover"
-                  onClick={() => setInspectedFileKey(null)}
+                  onClick={() => {
+                    const wrapper = Array.from(
+                      trayRef.current?.querySelectorAll<HTMLElement>(
+                        "[data-attachment-item]",
+                      ) ?? [],
+                    ).find(
+                      (element) =>
+                        element.dataset.attachmentItem === inspectedFile.key,
+                    );
+                    setInspectedFileKey(null);
+                    wrapper
+                      ?.querySelector<HTMLElement>("a[href], button")
+                      ?.focus();
+                  }}
                 >
                   <Icon name="X" className="size-3" />
                 </button>
