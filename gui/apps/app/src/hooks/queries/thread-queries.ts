@@ -725,10 +725,20 @@ export function useThreadRecordedCompactions(
   revision: string | null,
   enabled: boolean,
 ) {
+  const queryClient = useQueryClient();
   return useQuery<RecordedCompactionsList | null>({
     queryKey: threadRecordedCompactionsQueryKey(threadId, revision ?? ""),
-    queryFn: async ({ signal }) =>
-      (await sdk.threads.context({ threadId, signal })).compactions ?? null,
+    queryFn: async ({ signal }) => {
+      const list =
+        (await sdk.threads.context({ threadId, signal })).compactions ?? null;
+      if (list !== null && list.revision !== revision) {
+        queryClient.setQueryData(
+          threadRecordedCompactionsQueryKey(threadId, list.revision),
+          list,
+        );
+      }
+      return list;
+    },
     enabled: enabled && Boolean(threadId) && revision !== null,
     staleTime: Infinity,
   });

@@ -16,6 +16,7 @@ import {
 } from "./recorded-compactions.js";
 import {
   buildThreadTimelineFromEvents,
+  getThreadContextWindowUsageState,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
@@ -1515,6 +1516,10 @@ function buildThreadTimelineInternal(
               threadId: thread.id,
             }),
           )
+        : undefined,
+    contextWindowUsageState:
+      options.page.kind === "latest"
+        ? (getThreadContextWindowUsageState(contextWindowEvents) ?? undefined)
         : undefined,
     recordedCompactions:
       options.page.kind === "latest"

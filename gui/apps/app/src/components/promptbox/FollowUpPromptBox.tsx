@@ -146,6 +146,20 @@ type RecordedCompactions = NonNullable<
   ComponentProps<typeof ThreadContextWindowIndicator>["compactions"]
 >;
 
+export function shouldShowContextIndicator(args: {
+  contextWindowUsage: ContextWindowUsage | null;
+  contextUsageUnknown: boolean;
+  recordedCompactions: RecordedCompactions | null;
+}): boolean {
+  return (
+    args.contextWindowUsage !== null ||
+    args.contextUsageUnknown ||
+    (args.recordedCompactions !== null &&
+      (args.recordedCompactions.completedCount > 0 ||
+        args.recordedCompactions.inProgress))
+  );
+}
+
 export interface FollowUpPromptBoxProps {
   id?: string;
   attachments: AttachmentsConfig;
@@ -156,6 +170,7 @@ export interface FollowUpPromptBoxProps {
   contextWindowUsage: ContextWindowUsage | null;
   contextWindowNote?: string | undefined;
   contextThreadId?: string;
+  contextUsageUnknown?: boolean;
   recordedCompactions?: RecordedCompactions | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
@@ -230,6 +245,7 @@ function FollowUpPromptBoxWithComposer({
   contextWindowUsage,
   contextWindowNote,
   contextThreadId,
+  contextUsageUnknown = false,
   recordedCompactions = null,
   execution,
   permission,
@@ -764,7 +780,11 @@ function FollowUpPromptBoxWithComposer({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {permissionControl}
-            {contextWindowUsage || recordedCompactions ? (
+            {shouldShowContextIndicator({
+              contextWindowUsage,
+              contextUsageUnknown,
+              recordedCompactions,
+            }) ? (
               <ThreadContextWindowIndicator
                 usage={contextWindowUsage}
                 note={contextWindowNote}

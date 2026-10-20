@@ -89,7 +89,7 @@ function mount(node: React.ReactNode) {
 it("never renders unknown usage as zero", () => {
   mount(
     <ThreadContextWindowCard
-      usage={{ usedTokens: null, modelContextWindow: null, estimated: false }}
+      usage={null}
       compactions={summary}
       threadId="thread-a"
       open={false}
@@ -197,7 +197,11 @@ it("announces an in-progress compaction without counting it and shows loading an
       ],
     }),
   });
-  expect(await screen.findByText("Showing newest 50.")).toBeTruthy();
+  expect(
+    await screen.findByText(
+      "Showing the newest 50 entries. The count covers the whole thread.",
+    ),
+  ).toBeTruthy();
   expect(screen.getAllByRole("listitem")).toHaveLength(4);
 });
 
@@ -234,7 +238,9 @@ it("does not reuse one thread's list after switching threads", async () => {
 });
 
 it("refetches the list when the summary revision changes", async () => {
-  context.mockResolvedValue({ usage, compactions: list() });
+  context
+    .mockResolvedValueOnce({ usage, compactions: list() })
+    .mockResolvedValueOnce({ usage, compactions: list({ revision: "r2" }) });
   const view = mount(
     <ThreadContextWindowCard
       usage={usage}
@@ -256,4 +262,80 @@ it("refetches the list when the summary revision changes", async () => {
   expect(screen.getByText("Loading compactions…")).toBeTruthy();
   await screen.findByText("Kept the migration plan.");
   expect(context).toHaveBeenCalledTimes(2);
+});
+
+it("does not show a list whose revision disagrees with the summary", async () => {
+  context.mockResolvedValue({
+    usage,
+    compactions: list({ revision: "r-newer", completedCount: 3 }),
+  });
+  mount(
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={summary}
+      threadId="thread-a"
+    />,
+  );
+  expect(await screen.findByText("Updating compactions…")).toBeTruthy();
+  expect(screen.queryByText("Kept the migration plan.")).toBeNull();
+  expect(screen.getByText("2 recorded")).toBeTruthy();
+  expect(
+    clients[0]!.getQueryData([
+      "threadRecordedCompactions",
+      "thread-a",
+      "r-newer",
+    ]),
+  ).toMatchObject({ completedCount: 3 });
+});
+
+it("labels whole-thread scope only when coverage is complete", () => {
+  const view = mount(
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={summary}
+      threadId="thread-a"
+      open={false}
+    />,
+  );
+  expect(screen.getByRole("heading").textContent).toBe(
+    "Recorded compactions · whole thread",
+  );
+  view.rerender(
+    <QueryClientProvider client={clients[0]!}>
+      <ThreadContextWindowCard
+        usage={usage}
+        compactions={{ ...summary, coverage: "partial", gaps: [] }}
+        threadId="thread-a"
+        open={false}
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByRole("heading").textContent).toBe("Recorded compactions");
+  expect(screen.getByRole("note").textContent).toBe(
+    "Partial history. Some history may be missing.",
+  );
+});
+
+it("announces when an in-progress compaction is recorded", () => {
+  const view = mount(
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={{ ...summary, inProgress: true }}
+      threadId="thread-a"
+      open={false}
+    />,
+  );
+  view.rerender(
+    <QueryClientProvider client={clients[0]!}>
+      <ThreadContextWindowCard
+        usage={usage}
+        compactions={{ ...summary, completedCount: 3, revision: "r3" }}
+        threadId="thread-a"
+        open={false}
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByRole("status").textContent).toContain(
+    "Compaction recorded.",
+  );
 });

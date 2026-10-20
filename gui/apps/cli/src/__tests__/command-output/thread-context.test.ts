@@ -60,7 +60,8 @@ describe("room-cli thread context", () => {
   it("prints unknown usage and recorded compactions without inventing zeros", async () => {
     stubServerApi({
       "v1.threads.:id.context.$get": vi.fn(async () => ({
-        usage: { usedTokens: null, modelContextWindow: null, estimated: false },
+        usage: null,
+        usageState: "unknown",
         compactions: {
           revision: "r1",
           coverage: "partial",
@@ -94,8 +95,8 @@ describe("room-cli thread context", () => {
     });
     await runCommand(["thread", "context", "thread-1"], register);
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Context window: not reported / not reported tokens",
-      "Recorded compactions (whole thread): 1 (partial history: teleported)",
+      "Context usage was not reported by the agent.",
+      "Recorded compactions (whole thread): 1 (partial history: Part of this thread ran on another machine.)",
       "  2026-10-20T12:00:00.000Z context cleared (not a compaction)",
       "  time unknown not confirmed (not counted)",
       "  2026-10-20T11:00:00.000Z compacted - Summary not provided.",

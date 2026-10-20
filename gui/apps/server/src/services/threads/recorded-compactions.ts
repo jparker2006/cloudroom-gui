@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import {
   getActiveStoredTurnId,
+  getDatabaseDataVersion,
+  getThreadEventRewriteGeneration,
   listRecordedCompactionEventRows,
   type DbConnection,
   type StoredEventRow,
@@ -75,16 +77,62 @@ function pairLateItemsWithMarkers(
   }
 }
 
+interface CachedRows {
+  dataVersion: number;
+  generation: number;
+  rows: StoredEventRow[];
+  sequenceEnd: number;
+}
+
+const RECORDED_COMPACTION_ROW_CACHE_LIMIT = 256;
+const rowCaches = new WeakMap<DbConnection, Map<string, CachedRows>>();
+
+export function listRecordedCompactionRowsCached(
+  db: DbConnection,
+  threadId: string,
+  sequenceEnd: number,
+): StoredEventRow[] {
+  let cache = rowCaches.get(db);
+  if (cache === undefined) {
+    cache = new Map();
+    rowCaches.set(db, cache);
+  }
+  const generation = getThreadEventRewriteGeneration(threadId);
+  const dataVersion = getDatabaseDataVersion(db);
+  const entry = cache.get(threadId);
+  const reusable =
+    entry !== undefined &&
+    entry.generation === generation &&
+    entry.dataVersion === dataVersion;
+  if (reusable && sequenceEnd <= entry.sequenceEnd) {
+    return entry.rows.filter((row) => row.sequence <= sequenceEnd);
+  }
+  const rows = reusable
+    ? [
+        ...entry.rows,
+        ...listRecordedCompactionEventRows(db, {
+          threadId,
+          afterSequence: entry.sequenceEnd,
+          sequenceEnd,
+        }),
+      ]
+    : listRecordedCompactionEventRows(db, { threadId, sequenceEnd });
+  cache.delete(threadId);
+  cache.set(threadId, { dataVersion, generation, rows, sequenceEnd });
+  if (cache.size > RECORDED_COMPACTION_ROW_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  return rows;
+}
+
 export function buildRecordedCompactions(
   db: DbConnection,
   thread: Thread,
   sequenceEnd: number,
   providerReportsCompactions: boolean,
 ): RecordedCompactionsList {
-  const rows = listRecordedCompactionEventRows(db, {
-    threadId: thread.id,
-    sequenceEnd,
-  });
+  const rows = listRecordedCompactionRowsCached(db, thread.id, sequenceEnd);
   const gaps = new Set<RecordedCompactionGap>(
     threadGaps(thread, providerReportsCompactions),
   );
@@ -153,6 +201,14 @@ export function buildRecordedCompactions(
         target.confirmed = true;
         target.completedAt = row.createdAt;
       }
+      continue;
+    }
+    if (row.type === "thread/context/cleared") {
+      clears.push({
+        id: `clear:${row.sequence}`,
+        at: row.createdAt,
+        sequence: row.sequence,
+      });
       continue;
     }
     if (row.type === "provider/unhandled") {

@@ -45,6 +45,7 @@ export interface UseThreadTimelineControllerResult {
   activeBackgroundCommands: ThreadTimelineResponse["activeBackgroundCommands"];
   contextBoundarySeq: ThreadTimelineResponse["contextBoundarySeq"];
   contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
+  contextWindowUsageState: ThreadTimelineResponse["contextWindowUsageState"];
   recordedCompactions: ThreadTimelineResponse["recordedCompactions"];
   goal: ThreadTimelineResponse["goal"];
   modelFallback: ThreadTimelineResponse["modelFallback"];
@@ -272,6 +273,7 @@ export function useThreadTimelineController({
     activeBackgroundCommands: latestTimeline?.activeBackgroundCommands ?? [],
     contextBoundarySeq: latestTimeline?.contextBoundarySeq ?? null,
     contextWindowUsage: latestTimeline?.contextWindowUsage,
+    contextWindowUsageState: latestTimeline?.contextWindowUsageState,
     recordedCompactions: latestTimeline?.recordedCompactions,
     goal: latestTimeline?.goal ?? null,
     modelFallback: latestTimeline?.modelFallback ?? null,

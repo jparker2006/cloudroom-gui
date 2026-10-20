@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   Popover,
   PopoverContent,
@@ -53,13 +53,8 @@ function usageToneClass(usedPercent: number | null): string {
 }
 
 function usageTokensLabel(usage: ThreadContextWindowUsage | null): string {
-  if (usage === null || usage.usedTokens === null) {
-    return "Token count not reported";
-  }
-  const used = formatCompactTokenCount(usage.usedTokens);
-  return usage.modelContextWindow === null
-    ? `${used} tokens · window size not reported`
-    : `${used} / ${formatCompactTokenCount(usage.modelContextWindow)} tokens`;
+  if (usage === null) return "Token count not reported";
+  return `${formatCompactTokenCount(usage.usedTokens)} / ${formatCompactTokenCount(usage.modelContextWindow)} tokens`;
 }
 
 const CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS = 60;
@@ -280,6 +275,18 @@ export function ThreadContextWindowIndicator({
   });
   const [pinned, setPinned] = useState(false);
   const open = defaultOpen || hoverOpen || pinned;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const tabbables = () =>
+    [
+      ...(contentRef.current?.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
+      ) ?? []),
+    ].filter((element) => element.closest("[inert]") === null);
+  const focusContent = () => {
+    setPinned(true);
+    requestAnimationFrame(() => tabbables()[0]?.focus());
+  };
 
   const usedPercent = calculateContextWindowUsagePercent(usage);
   const visualPercent =
@@ -315,9 +322,19 @@ export function ThreadContextWindowIndicator({
         <button
           type="button"
           {...triggerHoverProps}
+          ref={triggerRef}
           onClick={(event) => {
             event.preventDefault();
+            if (!pinned && event.detail === 0) {
+              focusContent();
+              return;
+            }
             setPinned((value) => !value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowDown") return;
+            event.preventDefault();
+            focusContent();
           }}
           className="-m-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={ariaLabel}
@@ -358,18 +375,38 @@ export function ThreadContextWindowIndicator({
         align="end"
         sideOffset={8}
         {...contentHoverProps}
+        onEscapeKeyDown={() => {
+          if (contentRef.current?.contains(document.activeElement)) {
+            triggerRef.current?.focus();
+          }
+        }}
         mobileTitle={titleLabel}
         className="w-auto border-0 bg-transparent p-0 shadow-none max-md:p-0"
       >
-        <ThreadContextWindowCard
-          usage={usage}
-          note={note}
-          expanded={pinned}
-          compactions={compactions}
-          threadId={threadId}
-          open={open}
-          className="max-md:w-full max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none"
-        />
+        <div
+          ref={contentRef}
+          onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            const elements = tabbables();
+            const edge = event.shiftKey
+              ? elements[0]
+              : elements[elements.length - 1];
+            if (edge === undefined || document.activeElement !== edge) return;
+            event.preventDefault();
+            if (!event.shiftKey) setPinned(false);
+            triggerRef.current?.focus();
+          }}
+        >
+          <ThreadContextWindowCard
+            usage={usage}
+            note={note}
+            expanded={pinned}
+            compactions={compactions}
+            threadId={threadId}
+            open={open}
+            className="max-md:w-full max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none"
+          />
+        </div>
       </PopoverContent>
     </Popover>
   );

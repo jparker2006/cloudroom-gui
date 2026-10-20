@@ -31,8 +31,8 @@ export function isCommaSeparatedIncludeQueryValue(
 
 export const threadContextWindowUsageSchema = z.object({
   snapshot: contextSnapshotSchema.optional(),
-  usedTokens: z.number().nullable(),
-  modelContextWindow: z.number().nullable(),
+  usedTokens: z.number(),
+  modelContextWindow: z.number(),
   estimated: z.boolean(),
   history: z.array(z.number()).optional(),
 });
@@ -51,6 +51,21 @@ export const recordedCompactionGapSchema = z.enum([
   "unhandled-compaction-event",
 ]);
 export type RecordedCompactionGap = z.infer<typeof recordedCompactionGapSchema>;
+
+export const RECORDED_COMPACTION_GAP_TEXT: Record<
+  RecordedCompactionGap,
+  string
+> = {
+  "ambiguous-legacy": "Some older records couldn't be told apart.",
+  "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
+  forked: "Records copied from the source thread may be incomplete.",
+  "imported-history": "Imported history has no compaction records.",
+  "provider-unverified":
+    "This agent doesn't declare compaction support, so some may be missing.",
+  rewound: "Edited or rewound messages may have removed some history.",
+  teleported: "Part of this thread ran on another machine.",
+  "unhandled-compaction-event": "Some compaction events couldn't be placed.",
+};
 
 export const recordedCompactionsSummarySchema = z.object({
   revision: z.string(),
@@ -92,8 +107,14 @@ export type RecordedCompactionsList = z.infer<
   typeof recordedCompactionsListSchema
 >;
 
+export const threadContextUsageStateSchema = z.enum(["reported", "unknown"]);
+export type ThreadContextUsageState = z.infer<
+  typeof threadContextUsageStateSchema
+>;
+
 export const threadContextResponseSchema = z.object({
   usage: threadContextWindowUsageSchema.nullable(),
+  usageState: threadContextUsageStateSchema.optional(),
   compactions: recordedCompactionsListSchema.optional(),
 });
 export type ThreadContextResponse = z.infer<typeof threadContextResponseSchema>;

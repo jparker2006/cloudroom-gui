@@ -367,10 +367,12 @@ function SeededIndicator({
   threadId,
   usage: u,
   list,
+  defaultOpen = true,
 }: {
   threadId: string;
   usage: ThreadContextWindowUsage | null;
   list: RecordedCompactionsList | null;
+  defaultOpen?: boolean;
 }) {
   const queryClient = useQueryClient();
   if (list) {
@@ -383,12 +385,18 @@ function SeededIndicator({
     <div className="flex min-h-[720px] flex-col justify-end bg-background p-6 max-md:p-0">
       <div className="mx-auto flex w-full max-w-2xl items-center justify-end gap-2 rounded-xl border bg-card p-3 text-xs text-muted-foreground max-md:rounded-none">
         <span className="mr-auto">Ask for follow-up changes…</span>
+        <button type="button" className="rounded px-1">
+          Model
+        </button>
         <ThreadContextWindowIndicator
           usage={u}
           threadId={threadId}
           compactions={list ? summaryOf(list) : null}
-          defaultOpen
+          defaultOpen={defaultOpen}
         />
+        <button type="button" className="rounded px-1">
+          Send
+        </button>
       </div>
     </div>
   );
@@ -416,9 +424,19 @@ export const RecordedCompactionsPartial = () => (
 );
 
 export const RecordedCompactionsUnavailable = () => (
+  <SeededIndicator threadId="story-unavailable" usage={null} list={null} />
+);
+
+export const RecordedCompactionsClosed = () => (
   <SeededIndicator
-    threadId="story-unavailable"
-    usage={{ usedTokens: null, modelContextWindow: null, estimated: false }}
-    list={null}
+    threadId="story-closed"
+    usage={{
+      usedTokens: claudeSnapshot.usedTokens,
+      modelContextWindow: claudeSnapshot.contextWindowTokens,
+      estimated: false,
+      snapshot: claudeSnapshot,
+    }}
+    list={{ ...populatedCompactions, revision: "story-closed" }}
+    defaultOpen={false}
   />
 );

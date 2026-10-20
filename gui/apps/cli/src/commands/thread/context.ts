@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { RECORDED_COMPACTION_GAP_TEXT } from "@cloudroom/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { outputJson, requireThreadIdOrSelf } from "../helpers.js";
@@ -25,11 +26,14 @@ export function registerContextCommand(
             threadId,
           });
           if (outputJson(opts, result)) return;
-          const count = (value: number | null) =>
-            value === null ? "not reported" : value.toLocaleString("en-US");
+          const count = (value: number) => value.toLocaleString("en-US");
           const usage = result.usage;
           if (!usage) {
-            console.log("Context usage is not available yet.");
+            console.log(
+              result.usageState === "unknown"
+                ? "Context usage was not reported by the agent."
+                : "Context usage is not available yet.",
+            );
           } else {
             console.log(
               `${usage.estimated ? "Estimated context" : "Context window"}: ${count(usage.usedTokens)} / ${count(usage.modelContextWindow)} tokens`,
@@ -55,7 +59,7 @@ export function registerContextCommand(
             return;
           }
           console.log(
-            `Recorded compactions (whole thread): ${compactions.completedCount}${compactions.coverage === "partial" ? ` (partial history: ${compactions.gaps.join(", ")})` : ""}`,
+            `Recorded compactions (whole thread): ${compactions.completedCount}${compactions.coverage === "partial" ? ` (partial history: ${compactions.gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
           );
           for (const entry of compactions.entries) {
             if (entry.kind === "clear") {

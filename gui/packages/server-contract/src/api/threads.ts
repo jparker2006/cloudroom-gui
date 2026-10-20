@@ -46,6 +46,7 @@ import {
   pathListIncludeQueryValueSchema,
   threadContextWindowUsageSchema,
   recordedCompactionsSummarySchema,
+  threadContextUsageStateSchema,
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
@@ -1054,6 +1055,7 @@ export const threadTimelineResponseSchema = z.object({
   goal: threadTimelineGoalSchema.nullable(),
   modelFallback: threadTimelineModelFallbackSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
+  contextWindowUsageState: threadContextUsageStateSchema.optional(),
   recordedCompactions: recordedCompactionsSummarySchema.optional(),
   timelinePage: timelinePageMetadataSchema,
   maxSeq: z.number().int().nonnegative(),

@@ -3236,7 +3236,7 @@ export const RECORDED_COMPACTION_OPERATIONS = [
 
 export function listRecordedCompactionEventRows(
   db: DbQueryConnection,
-  args: { threadId: string; sequenceEnd: number },
+  args: { threadId: string; afterSequence?: number; sequenceEnd: number },
 ): StoredEventRow[] {
   return db
     .select(storedEventRowFields)
@@ -3244,13 +3244,14 @@ export function listRecordedCompactionEventRows(
     .where(
       and(
         eq(events.threadId, args.threadId),
+        gt(events.sequence, args.afterSequence ?? 0),
         lte(events.sequence, args.sequenceEnd),
         or(
           and(
             inArray(events.type, ["item/started", "item/completed"]),
             eq(events.itemKind, "contextCompaction"),
           ),
-          eq(events.type, "thread/compacted"),
+          inArray(events.type, ["thread/compacted", "thread/context/cleared"]),
           and(
             eq(events.type, "system/operation"),
             inArray(

@@ -8,14 +8,7 @@ const TOKEN_COMPACT_FORMATTER = new Intl.NumberFormat("en-US", {
 export function calculateContextWindowUsagePercent(
   usage: ThreadContextWindowUsage | null,
 ): number | null {
-  if (
-    usage === null ||
-    usage.usedTokens === null ||
-    usage.modelContextWindow === null ||
-    usage.modelContextWindow <= 0
-  ) {
-    return null;
-  }
+  if (usage === null || usage.modelContextWindow <= 0) return null;
   const ratio = usage.usedTokens / usage.modelContextWindow;
   const clampedRatio = Math.min(Math.max(ratio, 0), 1);
   return Math.round(clampedRatio * 100);

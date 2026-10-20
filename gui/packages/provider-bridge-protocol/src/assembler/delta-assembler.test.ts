@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ClientTurnRequestId, ThreadEvent } from "@cloudroom/domain";
-import { threadScope, turnScope } from "@cloudroom/domain";
+import { threadEventSchema, threadScope, turnScope } from "@cloudroom/domain";
 import type { DeltaItemShape, ThreadDelta } from "../thread-delta.js";
 import {
   createDeltaAssembler,
@@ -649,6 +649,27 @@ describe("delta assembler", () => {
     expect(assemble(assembler, { kind: "context.compacted" })).toEqual([
       expect.not.objectContaining({ itemId: expect.anything() }),
     ]);
+  });
+
+  it("keeps the stamped compaction item id through the daemon wire schema", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const [started] = assemble(assembler, {
+      kind: "item.open",
+      key: { channel: "compaction" },
+      item: { type: "compaction" },
+    });
+    const [marker] = assemble(assembler, { kind: "context.compacted" });
+    const wire = threadEventSchema.parse(
+      JSON.parse(
+        JSON.stringify({ ...marker, threadId: "thr_1", providerThreadId: "p" }),
+      ),
+    );
+    expect(started?.type === "item/started" && started.item.id).toBeTruthy();
+    expect(wire).toMatchObject({
+      type: "thread/compacted",
+      itemId: started?.type === "item/started" ? started.item.id : "",
+    });
   });
 
   it("a settling error fails the open turn after the error event", () => {

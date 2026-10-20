@@ -89,7 +89,7 @@ export function extractThreadContextWindowUsage(
     }
   }
 
-  if (usedTokens === undefined && !usageIsUnknown) {
+  if (usedTokens === undefined || modelContextWindow === undefined) {
     return null;
   }
 
@@ -100,7 +100,19 @@ export function extractThreadContextWindowUsage(
       ? { snapshot }
       : {}),
     estimated: estimated ?? false,
-    modelContextWindow: modelContextWindow ?? null,
-    usedTokens: usedTokens ?? null,
+    modelContextWindow,
+    usedTokens,
   };
+}
+
+export function getThreadContextWindowUsageState(
+  events: readonly ThreadEventWithMeta[],
+): "reported" | "unknown" | null {
+  const orderedEvents = getOrderedContextWindowEvents(events);
+  for (let index = orderedEvents.length - 1; index >= 0; index -= 1) {
+    const signal = decodeContextWindowSignal(orderedEvents[index]);
+    if (!signal) continue;
+    return signal.usedTokens === null ? "unknown" : "reported";
+  }
+  return null;
 }

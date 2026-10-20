@@ -18,6 +18,7 @@ import {
 } from "@/lib/plugin-slots";
 import {
   FollowUpPromptBox,
+  shouldShowContextIndicator,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -320,6 +321,48 @@ beforeEach(() => {
       observe() {}
       disconnect() {}
       unobserve() {}
+    },
+  );
+});
+
+describe("shouldShowContextIndicator", () => {
+  const summary = {
+    revision: "r1",
+    coverage: "complete" as const,
+    gaps: [],
+    completedCount: 0,
+    inProgress: false,
+  };
+  const usage = { usedTokens: 1, modelContextWindow: 10, estimated: false };
+  it.each([
+    ["no usage and no compaction activity", null, false, summary, false],
+    ["an old server without compaction data", null, false, null, false],
+    ["reported usage", usage, false, null, true],
+    ["usage the agent did not report", null, true, summary, true],
+    [
+      "a recorded compaction",
+      null,
+      false,
+      { ...summary, completedCount: 1 },
+      true,
+    ],
+    [
+      "a compaction in progress",
+      null,
+      false,
+      { ...summary, inProgress: true },
+      true,
+    ],
+  ] as const)(
+    "%s",
+    (_label, contextWindowUsage, contextUsageUnknown, recordedCompactions, shown) => {
+      expect(
+        shouldShowContextIndicator({
+          contextWindowUsage,
+          contextUsageUnknown,
+          recordedCompactions,
+        }),
+      ).toBe(shown);
     },
   );
 });

@@ -266,7 +266,7 @@ describe("recorded compactions", () => {
     ]);
   });
 
-  it("shows clears as dividers in order and never counts them", () => {
+  it("shows server and provider clears as dividers in order and never counts them", () => {
     sequenceByThread = new Map();
     const { db, thread } = setup();
     compactionItem(db, thread, "item/started", "t1", "c1");
@@ -281,6 +281,7 @@ describe("recorded compactions", () => {
     expect(list.completedCount).toBe(2);
     expect(list.entries.map((entry) => entry.kind)).toEqual([
       "compaction",
+      "clear",
       "clear",
       "compaction",
     ]);

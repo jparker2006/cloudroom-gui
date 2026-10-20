@@ -130,6 +130,26 @@ describe("recorded thread context API", () => {
         completedCount: 0,
         entries: [{ kind: "clear", id: "clear:5" }],
       });
+      insertEvents(harness.db, harness.hub, [
+        {
+          ...base,
+          sequence: 6,
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            threadId: thread.id,
+            providerThreadId: "claude-session",
+            contextWindowUsage: {
+              usedTokens: null,
+              modelContextWindow: null,
+              estimated: true,
+            },
+          }),
+        },
+      ]);
+      const unknown = (await (
+        await harness.app.request(endpoint)
+      ).json()) as Record<string, unknown>;
+      expect(unknown).toMatchObject({ usage: null, usageState: "unknown" });
     });
   });
 

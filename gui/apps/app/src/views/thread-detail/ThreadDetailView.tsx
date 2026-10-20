@@ -872,6 +872,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     activeBackgroundCommands,
     contextBoundarySeq,
     contextWindowUsage,
+    contextWindowUsageState,
     recordedCompactions,
     goal,
     hasOlderTimelineRows,
@@ -2622,6 +2623,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
+      contextWindowUsageState={contextWindowUsageState}
       recordedCompactions={recordedCompactions}
       environmentCheckout={threadCheckoutDisplay}
       environmentCompactLabel={composerEnvironmentChrome?.environmentCompactLabel}

@@ -1,22 +1,11 @@
-import { useId } from "react";
-import type {
-  RecordedCompactionEntry,
-  RecordedCompactionGap,
-  RecordedCompactionsSummary,
+import { useEffect, useId, useRef, useState } from "react";
+import {
+  RECORDED_COMPACTION_GAP_TEXT,
+  type RecordedCompactionEntry,
+  type RecordedCompactionsSummary,
 } from "@cloudroom/server-contract";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useThreadRecordedCompactions } from "@/hooks/queries/thread-queries";
-
-const GAP_TEXT: Record<RecordedCompactionGap, string> = {
-  "ambiguous-legacy": "Some older records couldn't be told apart.",
-  "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
-  forked: "Records copied from the source thread may be incomplete.",
-  "imported-history": "Imported history has no compaction records.",
-  "provider-unverified": "This agent may not report compactions.",
-  rewound: "Edited or rewound messages removed some history.",
-  teleported: "Part of this thread ran on another machine.",
-  "unhandled-compaction-event": "Some compaction events couldn't be placed.",
-};
 
 const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -30,8 +19,14 @@ const CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-function formatTime(value: number | null): string {
-  return value === null ? "Time unknown" : TIME_FORMATTER.format(value);
+function Time({ value }: { value: number | null }) {
+  return value === null ? (
+    <>Time unknown</>
+  ) : (
+    <time dateTime={new Date(value).toISOString()}>
+      {TIME_FORMATTER.format(value)}
+    </time>
+  );
 }
 
 export function recordedCompactionsCountLabel(
@@ -79,7 +74,9 @@ function EntryRow({ entry }: { entry: RecordedCompactionEntry }) {
           aria-hidden="true"
           className="h-px flex-1 border-t border-dashed border-border"
         />
-        <span>Context cleared · {formatTime(entry.at)} · not a compaction</span>
+        <span>
+          Context cleared · <Time value={entry.at} /> · not a compaction
+        </span>
         <span
           aria-hidden="true"
           className="h-px flex-1 border-t border-dashed border-border"
@@ -95,7 +92,7 @@ function EntryRow({ entry }: { entry: RecordedCompactionEntry }) {
           {counted ? "Context compacted" : "Not confirmed · not counted"}
         </span>
         <span className="tabular-nums text-muted-foreground">
-          {formatTime(entry.completedAt ?? entry.startedAt)}
+          <Time value={entry.completedAt ?? entry.startedAt} />
         </span>
       </div>
       {counted ? (
@@ -112,6 +109,30 @@ function EntryRow({ entry }: { entry: RecordedCompactionEntry }) {
   );
 }
 
+function useCompletionAnnouncement(
+  summary: RecordedCompactionsSummary | null,
+): string {
+  const previous = useRef(summary);
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = summary;
+    if (
+      before !== null &&
+      summary !== null &&
+      before.inProgress &&
+      !summary.inProgress
+    ) {
+      setAnnouncement(
+        summary.completedCount > before.completedCount
+          ? "Compaction recorded."
+          : "Compaction ended without a recorded result.",
+      );
+    }
+  }, [summary]);
+  return announcement;
+}
+
 export function RecordedCompactionsSection({
   summary,
   threadId,
@@ -122,31 +143,49 @@ export function RecordedCompactionsSection({
   open: boolean;
 }) {
   const titleId = useId();
+  const countId = useId();
+  const announcement = useCompletionAnnouncement(summary);
+  const listEnabled = open && threadId !== undefined;
   const list = useThreadRecordedCompactions(
     threadId ?? "",
     summary?.revision ?? null,
-    open && threadId !== undefined,
+    listEnabled,
   );
   const listData = list.data ?? null;
+  const stale =
+    listData !== null &&
+    summary !== null &&
+    listData.revision !== summary.revision;
   const entries =
     listData?.entries.filter(
       (entry) => entry.kind === "clear" || entry.status !== "in_progress",
     ) ?? [];
-  const live = listData?.entries.find(
-    (entry) => entry.kind === "compaction" && entry.status === "in_progress",
-  );
+  const live = stale
+    ? undefined
+    : listData?.entries.find(
+        (entry) =>
+          entry.kind === "compaction" && entry.status === "in_progress",
+      );
+  const gapText =
+    summary === null || summary.gaps.length === 0
+      ? "Some history may be missing."
+      : summary.gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ");
 
   return (
     <section
       aria-labelledby={titleId}
+      aria-describedby={countId}
       className="mt-3 flex flex-col gap-1.5 border-t border-border-hairline pt-2"
     >
       <div className="flex items-baseline justify-between gap-2 text-xs max-md:text-sm">
         <h3 id={titleId} className="font-medium text-muted-foreground">
           Recorded compactions
-          <span className="font-normal"> · whole thread</span>
+          {summary?.coverage === "complete" ? (
+            <span className="font-normal"> · whole thread</span>
+          ) : null}
         </h3>
         <span
+          id={countId}
           className={cn(
             "shrink-0 tabular-nums",
             summary === null
@@ -162,9 +201,7 @@ export function RecordedCompactionsSection({
           Update Cloudroom to see compactions for this thread.
         </Note>
       ) : summary.coverage === "partial" ? (
-        <Note title="Partial history.">
-          {summary.gaps.map((gap) => GAP_TEXT[gap]).join(" ")}
-        </Note>
+        <Note title="Partial history.">{gapText}</Note>
       ) : null}
       <div role="status" aria-live="polite">
         {summary?.inProgress ? (
@@ -178,21 +215,38 @@ export function RecordedCompactionsSection({
             </span>
             {live?.kind === "compaction" && live.startedAt !== null ? (
               <span className="tabular-nums text-muted-foreground">
-                since {CLOCK_FORMATTER.format(live.startedAt)}
+                since{" "}
+                <time dateTime={new Date(live.startedAt).toISOString()}>
+                  {CLOCK_FORMATTER.format(live.startedAt)}
+                </time>
               </span>
             ) : null}
           </div>
+        ) : (
+          <span className="sr-only">{announcement}</span>
+        )}
+        {summary === null || !listEnabled ? null : list.isError ? (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground max-md:text-sm">
+            Couldn't load compactions.
+            <button
+              type="button"
+              className="cursor-pointer rounded-xs underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+              onClick={() => void list.refetch()}
+            >
+              Retry
+            </button>
+          </p>
+        ) : list.isPending || stale ? (
+          <p className="text-xs text-muted-foreground max-md:text-sm">
+            {stale ? "Updating compactions…" : "Loading compactions…"}
+          </p>
         ) : null}
       </div>
-      {summary === null || threadId === undefined ? null : list.isError ? (
-        <p className="text-xs text-muted-foreground max-md:text-sm">
-          Couldn't load compactions. Close and reopen to retry.
-        </p>
-      ) : list.isPending ? (
-        <p className="text-xs text-muted-foreground max-md:text-sm">
-          Loading compactions…
-        </p>
-      ) : listData === null ? (
+      {summary === null ||
+      !listEnabled ||
+      list.isError ||
+      list.isPending ||
+      stale ? null : listData === null ? (
         <Note title="Not available.">
           Update Cloudroom to see compactions for this thread.
         </Note>
@@ -209,7 +263,7 @@ export function RecordedCompactionsSection({
           </ol>
           {listData.truncated ? (
             <p className="text-xs text-muted-foreground max-md:text-sm">
-              Showing newest 50.
+              Showing the newest 50 entries. The count covers the whole thread.
             </p>
           ) : null}
         </>
