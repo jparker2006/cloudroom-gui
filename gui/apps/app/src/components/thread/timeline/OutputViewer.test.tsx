@@ -26,7 +26,7 @@ import {
   escapedOutputHtml,
   searchOutputHtml,
   mapOutputAnchor,
-  outputMatchContext,
+  outputMatchContexts,
 } from "./output-search";
 import { terminalOutputHtml } from "./TerminalOutputBlock";
 
@@ -93,6 +93,28 @@ beforeEach(() => {
 });
 
 describe("output HTML search", () => {
+  it("derives accurate contexts for a late visible rail page in a single forward scan", () => {
+    const text = Array.from(
+      { length: 20_000 },
+      (_, i) => `line ${i + 1} 日本語 hit`,
+    ).join("\n");
+    const result = searchOutputHtml(escapedOutputHtml(text), "hit");
+    const contexts = outputMatchContexts(
+      result.text,
+      result.matches.subarray(19_950),
+      result.ends.subarray(19_950),
+    );
+    expect(contexts).toHaveLength(50);
+    expect(contexts[0]).toEqual({
+      line: 19_951,
+      excerpt: "line 19951 日本語 hit",
+    });
+    expect(contexts[49]).toEqual({
+      line: 20_000,
+      excerpt: "line 20000 日本語 hit",
+    });
+  });
+
   it("indexes dense output with compact offsets and creates excerpts on demand", () => {
     const result = searchOutputHtml(
       escapedOutputHtml("x".repeat(100_000)),
@@ -106,11 +128,11 @@ describe("output HTML search", () => {
     expect(result.ends[99_999]).toBe(100_000);
     expect(result.html.match(/<mark /g)).toHaveLength(1);
     expect(
-      outputMatchContext(
+      outputMatchContexts(
         result.text,
-        result.matches[99_999]!,
-        result.ends[99_999]!,
-      ).excerpt.length,
+        result.matches.subarray(99_999),
+        result.ends.subarray(99_999),
+      )[0]!.excerpt.length,
     ).toBeLessThanOrEqual(97);
   });
 
@@ -153,11 +175,8 @@ describe("output HTML search", () => {
 
     expect(regexLike.matches).toHaveLength(1);
     expect(
-      outputMatchContext(
-        regexLike.text,
-        regexLike.matches[0]!,
-        regexLike.ends[0]!,
-      ).excerpt,
+      outputMatchContexts(regexLike.text, regexLike.matches, regexLike.ends)[0]!
+        .excerpt,
     ).toContain(".*");
     expect(unsafe.matches).toHaveLength(0);
     expect(parsed.querySelector("img")).toBeNull();
@@ -178,7 +197,7 @@ describe("output HTML search", () => {
     ).toBe(2);
     expect(unicode.matches).toHaveLength(1);
     expect(
-      outputMatchContext(unicode.text, unicode.matches[0]!, unicode.ends[0]!)
+      outputMatchContexts(unicode.text, unicode.matches, unicode.ends)[0]!
         .excerpt,
     ).toContain("café 🐈");
   });

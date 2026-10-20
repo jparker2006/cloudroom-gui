@@ -8,7 +8,7 @@ import {
   searchOutputHtml,
   mapOutputAnchor,
   MAX_OUTPUT_HIGHLIGHTS,
-  outputMatchContext,
+  outputMatchContexts,
 } from "./output-search";
 import {
   useTimelineWorkRowFullOutput,
@@ -90,6 +90,30 @@ export function OutputViewer({
   const visibleRailPage = Math.min(
     railPage,
     Math.max(0, Math.ceil(count / 50) - 1),
+  );
+  const railMatches = useMemo(
+    () =>
+      direction === "indexed" && query
+        ? outputMatchContexts(
+            rendered.text,
+            rendered.matches.subarray(
+              visibleRailPage * 50,
+              visibleRailPage * 50 + 50,
+            ),
+            rendered.ends.subarray(
+              visibleRailPage * 50,
+              visibleRailPage * 50 + 50,
+            ),
+          )
+        : [],
+    [
+      direction,
+      query,
+      rendered.text,
+      rendered.matches,
+      rendered.ends,
+      visibleRailPage,
+    ],
   );
   const rememberPosition = () => {
     const element = scroller.current;
@@ -315,39 +339,28 @@ export function OutputViewer({
             <p className="px-2 py-2 text-xs text-muted-foreground">
               Matching lines
             </p>
-            {Array.from(
-              rendered.matches.subarray(
-                visibleRailPage * 50,
-                visibleRailPage * 50 + 50,
-              ),
-              (start, offset) => {
-                const match = outputMatchContext(
-                  rendered.text,
-                  start,
-                  rendered.ends[visibleRailPage * 50 + offset]!,
-                );
-                return (
-                  <button
-                    type="button"
-                    key={visibleRailPage * 50 + offset}
-                    onClick={() => navigate(visibleRailPage * 50 + offset)}
-                    aria-current={
-                      selected === visibleRailPage * 50 + offset
-                        ? "true"
-                        : undefined
-                    }
-                    className="mb-1 block min-h-11 w-full rounded-md px-2 py-2 text-left text-xs hover:bg-muted aria-[current=true]:bg-muted"
-                  >
-                    <span className="text-muted-foreground">
-                      Line {match.line.toLocaleString()}
-                    </span>
-                    <span className="mt-1 block truncate font-mono">
-                      {match.excerpt}
-                    </span>
-                  </button>
-                );
-              },
-            )}
+            {railMatches.map((match, offset) => {
+              return (
+                <button
+                  type="button"
+                  key={visibleRailPage * 50 + offset}
+                  onClick={() => navigate(visibleRailPage * 50 + offset)}
+                  aria-current={
+                    selected === visibleRailPage * 50 + offset
+                      ? "true"
+                      : undefined
+                  }
+                  className="mb-1 block min-h-11 w-full rounded-md px-2 py-2 text-left text-xs hover:bg-muted aria-[current=true]:bg-muted"
+                >
+                  <span className="text-muted-foreground">
+                    Line {match.line.toLocaleString()}
+                  </span>
+                  <span className="mt-1 block truncate font-mono">
+                    {match.excerpt}
+                  </span>
+                </button>
+              );
+            })}
             {count > 50 ? (
               <div className="space-y-2 text-xs">
                 <p>

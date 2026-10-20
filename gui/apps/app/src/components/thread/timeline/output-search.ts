@@ -1,13 +1,25 @@
-export function outputMatchContext(text: string, start: number, end: number) {
-  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-  const newline = text.indexOf("\n", start);
-  return {
-    line: text.slice(0, start).split("\n").length,
-    excerpt: text.slice(
-      Math.max(lineStart, start - 36),
-      Math.min(newline === -1 ? text.length : newline, end + 60),
-    ),
-  };
+export function outputMatchContexts(
+  text: string,
+  starts: Uint32Array,
+  ends: Uint32Array,
+) {
+  let line = 1;
+  let lineStart = 0;
+  let newline = text.indexOf("\n");
+  return Array.from(starts, (start, index) => {
+    while (newline !== -1 && newline < start) {
+      line++;
+      lineStart = newline + 1;
+      newline = text.indexOf("\n", lineStart);
+    }
+    return {
+      line,
+      excerpt: text.slice(
+        Math.max(lineStart, start - 36),
+        Math.min(newline === -1 ? text.length : newline, ends[index]! + 60),
+      ),
+    };
+  });
 }
 
 export const MAX_OUTPUT_HIGHLIGHTS = 1_000;
