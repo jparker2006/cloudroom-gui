@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body.js";
@@ -51,22 +52,25 @@ describe("ThreadTimelineSurface load-older control", () => {
       .fn<() => Promise<void>>()
       .mockRejectedValueOnce(new Error("Server error"))
       .mockReturnValue(new Promise(() => {}));
+    const queryClient = new QueryClient();
     const surface = (contextBoundarySeq: number | null) => (
-      <BottomAnchorContext.Provider value={anchor}>
-        <ThreadTimelineSurface
-          activeThinking={null}
-          contextBoundarySeq={contextBoundarySeq}
-          hasOlderTimelineRows
-          isThreadTimelinePending={false}
-          onLoadOlderRows={onLoadOlderRows}
-          showOngoingIndicator={false}
-          threadId="thread-1"
-          threadRuntimeDisplayStatus="idle"
-          timelineError={false}
-          timelineRows={[]}
-          workspaceRootPath={undefined}
-        />
-      </BottomAnchorContext.Provider>
+      <QueryClientProvider client={queryClient}>
+        <BottomAnchorContext.Provider value={anchor}>
+          <ThreadTimelineSurface
+            activeThinking={null}
+            contextBoundarySeq={contextBoundarySeq}
+            hasOlderTimelineRows
+            isThreadTimelinePending={false}
+            onLoadOlderRows={onLoadOlderRows}
+            showOngoingIndicator={false}
+            threadId="thread-1"
+            threadRuntimeDisplayStatus="idle"
+            timelineError={false}
+            timelineRows={[]}
+            workspaceRootPath={undefined}
+          />
+        </BottomAnchorContext.Provider>
+      </QueryClientProvider>
     );
     const view = render(surface(null));
 
