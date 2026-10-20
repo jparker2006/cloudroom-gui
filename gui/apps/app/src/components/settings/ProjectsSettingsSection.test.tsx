@@ -11,6 +11,7 @@ import type { Host } from "@cloudroom/domain";
 import { makeHost } from "@cloudroom/test-helpers/domain-fixtures";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { hiddenProjectsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
@@ -411,13 +412,38 @@ describe("ProjectsSettingsSection", () => {
     expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
   });
 
+  it("waits for a hidden-project refetch before claiming first use", async () => {
+    stubSidebarBootstrapFetch([]);
+    vi.mocked(sdk.projects.list)
+      .mockResolvedValueOnce([])
+      .mockReturnValue(new Promise(() => {}));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <ProjectsSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    expect(await screen.findByText(/^No projects yet/u)).toBeDefined();
+
+    void queryClient.invalidateQueries({ queryKey: hiddenProjectsQueryKey() });
+
+    expect(await screen.findByText("Loading…")).toBeDefined();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
   it("keeps plain copy when hidden projects cannot be checked", async () => {
     stubSidebarBootstrapFetch([]);
     vi.mocked(sdk.projects.list).mockRejectedValue(new Error("offline"));
 
     renderSection();
 
-    expect(await screen.findByText(/^No projects yet\. Add/u)).toBeDefined();
+    expect(
+      await screen.findByText(
+        "No visible projects. Couldn't check for hidden projects.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/No projects yet/u)).toBeNull();
     expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
   });
 

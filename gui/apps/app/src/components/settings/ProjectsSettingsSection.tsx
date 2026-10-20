@@ -340,19 +340,20 @@ export function ProjectsSettingsSection() {
         ) : projects === undefined ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 &&
+          (sidebarNavigationQuery.isPlaceholderData ||
+            hiddenProjectsQuery.isPending) ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : projects.length === 0 &&
           (hiddenProjectsQuery.data?.length ?? 0) > 0 ? (
           <p className="text-sm text-subtle-foreground">
             All projects are hidden.
           </p>
-        ) : projects.length === 0 &&
-          (sidebarNavigationQuery.isPlaceholderData ||
-            hiddenProjectsQuery.isPending) ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 && hiddenProjectsQuery.isError ? (
           <p className="text-sm text-subtle-foreground">
-            No projects yet. Add a project to start running threads in a
-            repository.
+            No visible projects. Couldn't check for hidden projects.
           </p>
+        ) : projects.length === 0 && hiddenProjectsQuery.isFetching ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 ? (
           <EmptyStateScene
             scene="projects"
