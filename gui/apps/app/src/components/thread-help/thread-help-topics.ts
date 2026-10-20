@@ -191,7 +191,7 @@ export const THREAD_HELP_TOPICS: readonly ThreadHelpTopic[] = [
     summary:
       "Different limits can stop work. Each comes from a different place, and the notice names the one you hit.",
     points: [
-      "Provider quota: your model account's usage at Anthropic, OpenAI, or another provider. Cloudroom does not set or bill it. Settings → Agents → Usage shows it when a usage source reports it. Unreported usage shows as unavailable, never as zero. After a failed refresh it keeps the last values with a retry notice, so they may be out of date.",
+      'Provider quota: your model account\'s usage at Anthropic, OpenAI, or another provider. Cloudroom does not set or bill it. Settings → Agents → Usage shows it when a usage source reports it. Unreported usage shows as unavailable, never as zero. After a failed refresh it shows "Couldn’t refresh usage. Showing the last available update.", so the values may be out of date.',
       "Thread context: how full this one conversation is. It is not quota.",
       "Cloudroom plan: how many cloud agents and how much cloud time your plan includes. At the limit, Cloud threads show a notice. Your messages are saved and Local threads still work.",
       "A full cloud disk shows its own notice. That is not a usage limit.",
@@ -203,6 +203,7 @@ export const THREAD_HELP_TOPICS: readonly ThreadHelpTopic[] = [
     sources: [
       "apps/app/src/components/CloudUsageLimitNotice.tsx",
       "plugins/provider-usage/README.md",
+      "plugins/provider-usage/usage-feedback.tsx",
       "apps/server/src/services/cloudroom/sandboxes.ts",
     ],
   },
@@ -291,11 +292,12 @@ export const THREAD_HELP_TOPICS: readonly ThreadHelpTopic[] = [
       "Local threads use the harness's login on your computer.",
     ],
     nextStep:
-      "Use Connect, or Sign in to Claude, on the notice. You can also use Settings → Agents → Providers. Then use Retry start if it shows.",
+      "For Codex or Cursor, use Connect on the notice. For Claude, use Open sign-in page, paste the code, then Connect. You can also use Settings → Agents → Providers. Then use Retry start if it shows.",
     docs: { label: "If a start fails", href: THREAD_HELP_DOCS.startFails },
     related: ["start-error"],
     sources: [
       "apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx",
+      "apps/app/src/components/ClaudeConnection.tsx",
       "apps/server/src/services/cloudroom/commands.ts",
     ],
   },

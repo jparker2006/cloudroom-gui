@@ -67,6 +67,29 @@ describe("thread help topics", () => {
     expect(all).toContain("idle does not mean the task is done");
   });
 
+  it("name the controls and messages users actually see, from cited sources", () => {
+    const topic = (id: string) => {
+      const found = THREAD_HELP_TOPICS.find((item) => item.id === id);
+      if (!found) throw new Error(id);
+      return found;
+    };
+    const cited = (item: (typeof THREAD_HELP_TOPICS)[number]) =>
+      item.sources
+        .map((path) => readFileSync(join(guiRoot, path), "utf8"))
+        .join("\n");
+    const connect = topic("connect-harness");
+    for (const label of ["Open sign-in page", "Connect"]) {
+      expect(text(connect)).toContain(label);
+      expect(cited(connect)).toContain(label);
+    }
+    expect(text(connect)).not.toMatch(/Sign in to Claude/);
+    const limits = topic("limits");
+    const stale = "Couldn’t refresh usage. Showing the last available update.";
+    expect(text(limits)).toContain(stale);
+    expect(cited(limits)).toContain(stale);
+    expect(text(limits)).not.toMatch(/retry notice/);
+  });
+
   it("keep missing, stale and estimated data explicit", () => {
     const context = THREAD_HELP_TOPICS.find(
       (topic) => topic.id === "context-usage",
