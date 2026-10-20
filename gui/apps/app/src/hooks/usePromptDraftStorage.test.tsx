@@ -960,3 +960,24 @@ describe("listing saved drafts the composer doesn't show", () => {
     expect(listedRev).toMatch(/^[0-9a-f]{16}$/);
   });
 });
+
+describe("reloading the app", () => {
+  it("restores each project's draft, including typing flushed as the page closed", async () => {
+    vi.useFakeTimers();
+    const before = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => before.result.current.setDraft({ text: "saved", mentions: [], attachments: [] }));
+    act(() => before.result.current.setTextAndMentions("saved, then typed", []));
+    window.dispatchEvent(new Event("pagehide"));
+    before.unmount();
+
+    vi.resetModules();
+    const reloaded = await import("./usePromptDraftStorage");
+    const alpha = reloaded.getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    const other = reloaded.getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}b` });
+
+    expect(alpha.getCurrent().text).toBe("saved, then typed");
+    expect(other.getCurrent().text).toBe("");
+  });
+});
