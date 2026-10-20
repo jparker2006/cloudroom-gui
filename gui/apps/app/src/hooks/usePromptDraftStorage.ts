@@ -233,10 +233,15 @@ function reconcileWithStoredNewThreadDraft(
   if (record.kind === "unreadable") {
     return holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
   }
-  if (record.kind === "moved" || record.kind === "discarded") {
+  if (
+    (record.kind === "moved" || record.kind === "discarded") &&
+    record.rev !== newThreadDraftRevs.get(storageKey)
+  ) {
     return holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
   }
-  if (record.kind === "missing") return true;
+  if (record.kind === "missing" || record.kind === "moved" || record.kind === "discarded") {
+    return true;
+  }
   const storedRev = record.rev;
   if (storedRev) removeRecoveryCopiesWithRev(storageKey, storedRev);
   if (!storedRev || storedRev === newThreadDraftRevs.get(storageKey)) {
@@ -831,6 +836,20 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
+  const keepMyCopy = useCallback(() => {
+    const storedRev = readStoredRev(readStoredPromptDraftValue(storageKey));
+    if (storedRev) newThreadDraftRevs.set(storageKey, storedRev);
+    unsavedPromptDraftKeys.delete(storageKey);
+    newThreadDraftNotices.delete(storageKey);
+    persistPromptDraftCache(storageKey);
+    emitPromptDraftChange(storageKey);
+  }, [storageKey]);
+
+  const dismissNotice = useCallback(() => {
+    newThreadDraftNotices.delete(storageKey);
+    emitPromptDraftChange(storageKey);
+  }, [storageKey]);
+
   const restoreIfEmpty = useCallback(
     (nextDraft: PromptDraftState) => {
       restorePromptDraftIfEmpty(storageKey, nextDraft);
@@ -859,17 +878,21 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       clear,
       clearIfCurrentMatches,
       restoreIfEmpty,
+      keepMyCopy,
+      dismissNotice,
     }),
     [
       addAttachment,
       addQuote,
       clear,
       clearIfCurrentMatches,
+      dismissNotice,
       draft.attachments,
       draft.contexts,
       draft.mentions,
       draft.text,
       getCurrent,
+      keepMyCopy,
       removeAttachment,
       restoreIfEmpty,
       setAttachments,

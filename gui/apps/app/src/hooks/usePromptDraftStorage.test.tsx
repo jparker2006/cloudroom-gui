@@ -981,3 +981,34 @@ describe("reloading the app", () => {
     expect(other.getCurrent().text).toBe("");
   });
 });
+
+describe("answering a notice about another window", () => {
+  it("saves this window's text over a moved marker when the user keeps their copy", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), JSON.stringify({ rev: "1212121212121212", moved: true }));
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    act(() => result.current.keepMyCopy());
+
+    expect(storedRecord(alphaKey())).toMatchObject({ text: "mine, edited", base: "1212121212121212" });
+    expect(result.current.notice).toBeNull();
+    expect(result.current.isUnsaved).toBe(false);
+  });
+
+  it("clears a sent-elsewhere notice when dismissed", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), JSON.stringify({ rev: "3434343434343434", sent: true }));
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    act(() => result.current.dismissNotice());
+
+    expect(result.current.notice).toBeNull();
+    expect(result.current.text).toBe("mine, edited");
+  });
+});
