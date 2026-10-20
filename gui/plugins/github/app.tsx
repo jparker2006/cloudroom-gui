@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   definePluginApp,
   experimental_Diff as Diff,
+  experimental_Icon as Icon,
   experimental_FileLink as FileLink,
   UrlLink,
   useBbNavigate,
@@ -13,7 +21,9 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import {
   buildSuggestions,
+  classifyGhFailure,
   matchesQuery,
+  summarizeChecks,
   parseQuery,
   parseSubPath,
   routeToSubPath,
@@ -56,7 +66,7 @@ type IssueDetail = PluginRpcResult<
 type PullDetail = PluginRpcResult<
   (typeof githubRpcContract)["getPull"]
 >["pull"];
-type PullCheck = PullDetail["checks"][number];
+type PullCheck = NonNullable<PullDetail["checks"]>[number];
 type ReviewThread = PullDetail["reviewThreads"][number];
 type PullFile = PullDetail["files"][number];
 type Status = PluginRpcResult<(typeof githubRpcContract)["status"]>;
@@ -1237,19 +1247,71 @@ function IssueDetailView({
   );
 }
 
-function pullStateBadgeParts(state: string): { dot: string; label: string } {
-  if (state === "DRAFT")
-    return { dot: "bg-muted-foreground/60", label: "draft" };
-  if (state === "OPEN") return { dot: "bg-green-500", label: "open" };
-  if (state === "MERGED") return { dot: "bg-purple-500", label: "merged" };
-  return { dot: "bg-red-500", label: "closed" };
+const PULL_STATE_DISPLAY: Record<
+  string,
+  { icon: string; className: string; label: string }
+> = {
+  OPEN: {
+    icon: "GitPullRequestArrow",
+    className: "text-success",
+    label: "Open",
+  },
+  DRAFT: {
+    icon: "GitPullRequestDraft",
+    className: "text-muted-foreground",
+    label: "Draft",
+  },
+  MERGED: { icon: "GitMerge", className: "text-pr-merged", label: "Merged" },
+  CLOSED: {
+    icon: "GitPullRequestClosed",
+    className: "text-destructive",
+    label: "Closed",
+  },
+};
+
+function pullStateDisplay(state: string) {
+  return (
+    PULL_STATE_DISPLAY[state] ?? {
+      icon: "CircleQuestion",
+      className: "text-muted-foreground",
+      label: "State unknown",
+    }
+  );
+}
+
+function Notice({
+  tone,
+  urgent = false,
+  children,
+}: {
+  tone: "info" | "warn" | "error";
+  urgent?: boolean;
+  children: React.ReactNode;
+}) {
+  const cls = {
+    info: "border-border bg-muted/60",
+    warn: "border-warning/50 bg-warning/10",
+    error: "border-destructive/50 bg-destructive/10",
+  }[tone];
+  return (
+    <div
+      role={urgent ? "alert" : undefined}
+      className={`rounded-md border px-3 py-2 text-xs leading-relaxed text-foreground ${cls}`}
+    >
+      {children}
+    </div>
+  );
 }
 
 function PullStateBadge({ state }: { state: string }) {
-  const { dot, label } = pullStateBadgeParts(state);
+  const { icon, className, label } = pullStateDisplay(state);
   return (
-    <Badge variant="outline" className="gap-1.5 font-normal">
-      <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+    <Badge variant="outline" className="gap-1 font-normal">
+      <Icon
+        name={icon}
+        className={`size-3.5 shrink-0 ${className}`}
+        aria-hidden
+      />
       {label}
     </Badge>
   );
@@ -1283,71 +1345,151 @@ function ReviewDecisionBadge({ decision }: { decision: string }) {
   if (decision === "REVIEW_REQUIRED") {
     return <Badge variant="secondary">review required</Badge>;
   }
-  return null;
-}
-
-function checkDotClass(status: PullCheck["status"]): string {
-  if (status === "success") return "bg-green-500";
-  if (status === "failure") return "bg-red-500";
-  if (status === "pending") return "animate-pulse bg-yellow-500";
-  return "bg-muted-foreground/50";
-}
-
-function ChecksSection({ checks }: { checks: PullCheck[] }) {
-  const [open, setOpen] = useState(() =>
-    checks.some((check) => check.status === "failure"),
+  return (
+    <Badge variant="outline" className="font-normal text-muted-foreground">
+      {decision === "" ? "no review decision" : decision.toLowerCase()}
+    </Badge>
   );
-  if (checks.length === 0) return null;
-  const passing = checks.filter((check) => check.status === "success").length;
-  const failing = checks.filter((check) => check.status === "failure").length;
+}
+
+const CHECK_STATUS_DISPLAY: Record<
+  PullCheck["status"],
+  { icon: string; className: string; label: string }
+> = {
+  success: { icon: "CircleCheck", className: "text-success", label: "passed" },
+  failure: { icon: "CircleX", className: "text-destructive", label: "failed" },
+  pending: { icon: "Clock", className: "text-warning", label: "pending" },
+  neutral: {
+    icon: "Unavailable",
+    className: "text-muted-foreground",
+    label: "neutral or skipped",
+  },
+  unknown: {
+    icon: "CircleQuestion",
+    className: "text-muted-foreground",
+    label: "result unknown",
+  },
+};
+
+function checksSummaryParts(checks: PullCheck[] | null): {
+  icon: string;
+  className: string;
+  text: string;
+} {
+  const summary = summarizeChecks(checks);
+  if (summary.state === "unknown") {
+    return {
+      icon: "CircleQuestion",
+      className: "text-muted-foreground",
+      text: "Checks unknown",
+    };
+  }
+  if (summary.state === "none") {
+    return {
+      icon: "Circle",
+      className: "text-muted-foreground",
+      text: "No checks reported",
+    };
+  }
+  const parts = [
+    summary.failed > 0 ? `${summary.failed} failing` : null,
+    summary.pending > 0 ? `${summary.pending} pending` : null,
+    summary.unknown > 0 ? `${summary.unknown} unknown` : null,
+    `${summary.passed}/${summary.total} passed`,
+  ].filter((part) => part !== null);
+  const display = {
+    failing: CHECK_STATUS_DISPLAY.failure,
+    pending: CHECK_STATUS_DISPLAY.pending,
+    unknown_results: CHECK_STATUS_DISPLAY.unknown,
+    passing: CHECK_STATUS_DISPLAY.success,
+    neutral: CHECK_STATUS_DISPLAY.neutral,
+  }[summary.state];
+  const prefix =
+    summary.state === "passing"
+      ? "Checks passing"
+      : summary.state === "neutral"
+        ? "Checks skipped or neutral"
+        : "Checks";
+  return {
+    icon: display.icon,
+    className: display.className,
+    text: `${prefix} · ${parts.join(" · ")}`,
+  };
+}
+
+function ChecksSection({ checks }: { checks: PullCheck[] | null }) {
+  const [open, setOpen] = useState(
+    () => checks?.some((check) => check.status === "failure") ?? false,
+  );
+  const listId = useId();
+  const { icon, className, text } = checksSummaryParts(checks);
+  const summaryIcon = (
+    <Icon name={icon} className={`size-4 shrink-0 ${className}`} aria-hidden />
+  );
+  if (checks === null || checks.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+        {summaryIcon}
+        <span className="text-foreground">{text}</span>
+        {checks === null ? (
+          <span className="text-xs text-muted-foreground">
+            GitHub did not report check status
+          </span>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50"
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50 pointer-coarse:min-h-11"
+        aria-expanded={open}
+        aria-controls={listId}
         onClick={() => setOpen((prev) => !prev)}
       >
-        <span
-          className={`size-2 shrink-0 rounded-full ${
-            failing > 0
-              ? "bg-red-500"
-              : passing === checks.length
-                ? "bg-green-500"
-                : "animate-pulse bg-yellow-500"
-          }`}
-        />
-        <span className="font-medium text-foreground">Checks</span>
-        <span className="text-xs text-muted-foreground">
-          {passing}/{checks.length} passing
-          {failing > 0 ? ` · ${failing} failing` : ""}
-        </span>
-        <span className="ml-auto text-xs text-muted-foreground">
+        {summaryIcon}
+        <span className="min-w-0 flex-1 text-foreground">{text}</span>
+        <span aria-hidden className="text-xs text-muted-foreground">
           {open ? "▾" : "▸"}
         </span>
       </button>
       {open ? (
-        <div className="divide-y divide-border border-t border-border">
-          {checks.map((check, index) => (
-            <div
-              key={`${check.name}-${index}`}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs"
-            >
-              <span
-                className={`size-2 shrink-0 rounded-full ${checkDotClass(check.status)}`}
-              />
-              <span className="min-w-0 flex-1 truncate text-foreground">
-                {check.name}
-              </span>
-              {check.url.length > 0 ? (
-                <UrlLink
-                  href={check.url}
-                  className="shrink-0 text-muted-foreground underline hover:text-foreground"
-                >
-                  details ↗
-                </UrlLink>
-              ) : null}
-            </div>
-          ))}
-        </div>
+        <ul
+          id={listId}
+          className="divide-y divide-border border-t border-border"
+        >
+          {checks.map((check, index) => {
+            const display = CHECK_STATUS_DISPLAY[check.status];
+            return (
+              <li
+                key={`${check.name}-${index}`}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs"
+              >
+                <Icon
+                  name={display.icon}
+                  className={`size-3.5 shrink-0 ${display.className}`}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 truncate text-foreground">
+                  {check.name}
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {display.label}
+                </span>
+                {check.url.length > 0 ? (
+                  <UrlLink
+                    href={check.url}
+                    className="shrink-0 text-muted-foreground underline hover:text-foreground"
+                    aria-label={`${check.name} details`}
+                  >
+                    details ↗
+                  </UrlLink>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
       ) : null}
     </div>
   );
@@ -1596,45 +1738,154 @@ function PullCommentBox({
   );
 }
 
+interface PullDetailState {
+  pull: PullDetail | null;
+  fetchedAt: string | null;
+  refreshing: boolean;
+  error: string | null;
+  refresh: () => void;
+}
+
+function describeGhError(message: string): string {
+  const reason = classifyGhFailure(message);
+  if (reason === "auth") return `GitHub sign-in needed. ${message}`;
+  if (reason === "unavailable") return `GitHub is unavailable. ${message}`;
+  return message;
+}
+
+function usePullDetail(repo: string, number: number): PullDetailState {
+  const rpc = useRpc<typeof githubRpcContract>();
+  const key = `${repo}#${number}`;
+  const initial = useMemo(
+    () => ({
+      key,
+      pull: null as PullDetail | null,
+      fetchedAt: null as string | null,
+      refreshing: true,
+      error: null as string | null,
+    }),
+    [key],
+  );
+  const [stored, setState] = useState(initial);
+  const state = stored.key === key ? stored : initial;
+  const generation = useRef(0);
+
+  const refresh = useCallback(() => {
+    const current = ++generation.current;
+    setState((prev) =>
+      prev.key === key
+        ? { ...prev, refreshing: true }
+        : { ...initial, refreshing: true },
+    );
+    rpc.call("getPull", { repo, number }).then(
+      (result) => {
+        if (current !== generation.current || result.pull.number !== number) {
+          return;
+        }
+        setState({
+          key,
+          pull: result.pull,
+          fetchedAt: result.fetchedAt,
+          refreshing: false,
+          error: null,
+        });
+      },
+      (error: unknown) => {
+        if (current !== generation.current) return;
+        setState((prev) => ({
+          ...(prev.key === key ? prev : initial),
+          refreshing: false,
+          error: errorText(error),
+        }));
+      },
+    );
+  }, [rpc, repo, number, key, initial]);
+
+  useEffect(() => {
+    let cancelled = false;
+    rpc.call("cachedPull", { repo, number }).then(
+      (result) => {
+        const cached = result.cached;
+        if (cancelled || cached === null || cached.pull.number !== number) {
+          return;
+        }
+        setState((prev) => {
+          const base = prev.key === key ? prev : initial;
+          return base.pull !== null
+            ? base
+            : { ...base, pull: cached.pull, fetchedAt: cached.fetchedAt };
+        });
+      },
+      () => {},
+    );
+    refresh();
+    return () => {
+      cancelled = true;
+      generation.current += 1;
+    };
+  }, [rpc, repo, number, key, initial, refresh]);
+
+  return {
+    pull: state.pull,
+    fetchedAt: state.fetchedAt,
+    refreshing: state.refreshing,
+    error: state.error,
+    refresh,
+  };
+}
+
 function PullDetailView({
   repo,
   number,
   onBack,
+}: {
+  repo: string;
+  number: number;
+  onBack: () => void;
+}) {
+  const detail = usePullDetail(repo, number);
+  if (detail.pull === null) {
+    return detail.error !== null ? (
+      <EmptyState message={describeGhError(detail.error)} />
+    ) : (
+      <DetailSkeleton />
+    );
+  }
+  return (
+    <PullDetailBody
+      repo={repo}
+      number={number}
+      detail={detail}
+      pull={detail.pull}
+      onBack={onBack}
+    />
+  );
+}
+
+function PullDetailBody({
+  repo,
+  number,
+  detail,
+  pull,
+  onBack,
   backLabel = "Pull requests",
   compact = false,
+  readOnly = false,
   workspaceEnvironmentId = null,
 }: {
   repo: string;
   number: number;
+  detail: PullDetailState;
+  pull: PullDetail;
   onBack?: () => void;
   backLabel?: string;
   compact?: boolean;
+  readOnly?: boolean;
   workspaceEnvironmentId?: string | null;
 }) {
-  const rpc = useRpc<typeof githubRpcContract>();
   const links = useLinks();
   const { spawn, spawningKey } = useSpawn();
-  const [pull, setPull] = useState<PullDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    rpc.call("getPull", { repo, number }).then(
-      (result) => {
-        setPull(result.pull);
-        setError(null);
-      },
-      (err: unknown) => setError(errorText(err)),
-    );
-  }, [rpc, repo, number]);
-  useEffect(() => {
-    setPull(null);
-    load();
-  }, [load]);
-
-  if (error !== null) return <EmptyState message={error} />;
-  if (pull === null) {
-    return <DetailSkeleton />;
-  }
+  const { error, fetchedAt } = detail;
 
   const pullLinks = links[`pr:${repo}#${number}`];
   const mainColumn = (
@@ -1682,12 +1933,25 @@ function PullDetailView({
         </div>
       ) : null}
 
-      <PullCommentBox repo={repo} number={number} onPosted={load} />
+      {readOnly ? null : (
+        <PullCommentBox repo={repo} number={number} onPosted={detail.refresh} />
+      )}
     </div>
   );
 
   return (
     <div className="flex flex-col gap-4">
+      {pull.repo.toLowerCase() !== repo.toLowerCase() ? (
+        <Notice tone="info">
+          GitHub now reports this pull request as {pull.repo}#{pull.number}.
+        </Notice>
+      ) : null}
+      {error !== null ? (
+        <Notice tone="warn">
+          Refresh failed. Showing data fetched{" "}
+          {fetchedAt !== null ? relativeTime(fetchedAt) : "earlier"}. {error}
+        </Notice>
+      ) : null}
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         {onBack !== undefined ? (
           <Button
@@ -1720,13 +1984,15 @@ function PullDetailView({
             #{pull.number}
           </span>
         </h2>
-        <Button
-          size="sm"
-          disabled={spawningKey !== null}
-          onClick={() => spawn("startReview", repo, number)}
-        >
-          {spawningKey !== null ? "Starting…" : "Review with agent"}
-        </Button>
+        {readOnly ? null : (
+          <Button
+            size="sm"
+            disabled={spawningKey !== null}
+            onClick={() => spawn("startReview", repo, number)}
+          >
+            {spawningKey !== null ? "Starting…" : "Review with agent"}
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1795,106 +2061,707 @@ function PullDetailView({
   );
 }
 
-function PullPickerList({
-  onPick,
+type PullAssociation = PluginRpcResult<
+  (typeof githubRpcContract)["pullForThread"]
+>;
+type PullRef = { repo: string; number: number };
+
+function usePullAssociation(threadId: string) {
+  const rpc = useRpc<typeof githubRpcContract>();
+  const [association, setAssociation] = useState<PullAssociation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const generation = useRef(0);
+  const saveSequence = useRef(0);
+
+  const accept = useCallback(
+    (current: number, result: PullAssociation) => {
+      if (current !== generation.current || result.threadId !== threadId) {
+        return;
+      }
+      setAssociation(result);
+      setError(null);
+      setLoading(false);
+    },
+    [threadId],
+  );
+
+  const reload = useCallback(() => {
+    const current = ++generation.current;
+    setLoading(true);
+    rpc.call("pullForThread", { threadId }).then(
+      (result) => accept(current, result),
+      (err: unknown) => {
+        if (current !== generation.current) return;
+        setError(errorText(err));
+        setLoading(false);
+      },
+    );
+  }, [rpc, threadId, accept]);
+
+  const choose = useCallback(
+    (pull: PullRef | null): Promise<boolean> => {
+      const current = ++generation.current;
+      const save = ++saveSequence.current;
+      setSaving(true);
+      setSaveError(null);
+      return rpc
+        .call("setPullForThread", { threadId, pull })
+        .then(
+          (result) => {
+            accept(current, result);
+            return save === saveSequence.current;
+          },
+          (err: unknown) => {
+            if (save === saveSequence.current) {
+              setSaveError(errorText(err));
+            }
+            return false;
+          },
+        )
+        .finally(() => {
+          if (save === saveSequence.current) setSaving(false);
+        });
+    },
+    [rpc, threadId, accept],
+  );
+
+  useEffect(() => {
+    reload();
+    return () => {
+      generation.current += 1;
+    };
+  }, [reload]);
+  useRealtime("association-changed", (payload) => {
+    if ((payload as { threadId?: unknown } | null)?.threadId === threadId) {
+      reload();
+    }
+  });
+
+  return { association, error, loading, saving, saveError, reload, choose };
+}
+
+const SOURCE_LABELS: Record<"workspace" | "review", string> = {
+  workspace: "workspace branch",
+  review: "review thread",
+};
+
+function parsePullInput(value: string): PullRef | null {
+  const trimmed = value.trim();
+  const url = trimmed.match(
+    /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)\/?$/,
+  );
+  const short = trimmed.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/);
+  const match = url ?? short;
+  if (match === null) return null;
+  const number = Number(match[2]);
+  return number > 0 ? { repo: match[1], number } : null;
+}
+
+function PullChooser({
+  candidates,
+  onChoose,
+  disabled,
 }: {
-  onPick: (repo: string, number: number) => void;
+  candidates: PullAssociation["candidates"];
+  onChoose: (pull: PullRef) => void;
+  disabled: boolean;
 }) {
   const { items, error } = useItems("pr");
-  if (error !== null) return <EmptyState message={error} />;
-  if (items === null) {
-    return (
-      <DelayedLoading>
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-5/6" />
-          <Skeleton className="h-5 w-2/3" />
-        </div>
-      </DelayedLoading>
-    );
-  }
-  const open = items.filter((item) => item.state === "OPEN");
-  if (open.length === 0) {
-    return <EmptyState message="No open pull requests in the tracked repos." />;
-  }
+  const [query, setQuery] = useState("");
+  const inputId = useId();
+  const direct = parsePullInput(query);
+  const sourcesFor = (repo: string, number: number) =>
+    candidates.find(
+      (candidate) =>
+        candidate.number === number &&
+        candidate.repo.toLowerCase() === repo.toLowerCase(),
+    )?.sources ?? [];
+  const needle = query.trim().toLowerCase();
+  const rows = (items ?? [])
+    .filter(
+      (item) =>
+        needle.length === 0 ||
+        `${item.repo}#${item.number} ${item.title}`
+          .toLowerCase()
+          .includes(needle.replace(/^#/, "")),
+    )
+    .sort(
+      (a, b) =>
+        sourcesFor(b.repo, b.number).length -
+          sourcesFor(a.repo, a.number).length ||
+        Number(b.state === "OPEN") - Number(a.state === "OPEN"),
+    )
+    .slice(0, 30);
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="divide-y divide-border">
-        {open.map((item) => (
-          <button
-            key={`${item.repo}#${item.number}`}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/50"
-            onClick={() => onPick(item.repo, item.number)}
+    <div className="flex flex-col gap-2">
+      <label htmlFor={inputId} className="text-xs text-muted-foreground">
+        Search tracked PRs, or paste a PR link or owner/repo#number
+      </label>
+      <div className="flex gap-2">
+        <Input
+          id={inputId}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="acme/widgets#42"
+          className="h-8 pointer-coarse:h-11"
+        />
+        {direct !== null ? (
+          <Button
+            size="sm"
+            className="h-8 shrink-0 pointer-coarse:h-11"
+            disabled={disabled}
+            onClick={() => onChoose(direct)}
           >
-            <StateDot kind="pr" state={item.state} />
-            <span className="shrink-0 font-mono text-xs text-muted-foreground">
-              #{item.number}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-              {item.title}
-            </span>
-            <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-              {item.repo}
-            </span>
-          </button>
-        ))}
+            Use {direct.repo}#{direct.number}
+          </Button>
+        ) : null}
       </div>
+      {error !== null ? (
+        <p className="text-xs text-muted-foreground">{error}</p>
+      ) : null}
+      {rows.length > 0 ? (
+        <div
+          role="group"
+          aria-label="Pull requests"
+          className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
+        >
+          {rows.map((item) => (
+            <CandidateRow
+              key={`${item.repo}#${item.number}`}
+              pull={{ repo: item.repo, number: item.number }}
+              title={item.title}
+              state={item.state}
+              sources={sourcesFor(item.repo, item.number)}
+              disabled={disabled}
+              onChoose={onChoose}
+            />
+          ))}
+        </div>
+      ) : items !== null && direct === null ? (
+        <p className="text-xs text-muted-foreground">
+          No tracked pull requests match.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-function PullPanelTab({ threadId }: PluginThreadPanelProps) {
-  const rpc = useRpc<typeof githubRpcContract>();
-  const [resolved, setResolved] = useState(false);
-  const [selected, setSelected] = useState<{
-    repo: string;
-    number: number;
-    environmentId: string | null;
-  } | null>(null);
+function CandidateRow({
+  pull,
+  title,
+  state,
+  sources,
+  disabled,
+  onChoose,
+}: {
+  pull: PullRef;
+  title: string | null;
+  state: string | null;
+  sources: Array<"workspace" | "review">;
+  disabled: boolean;
+  onChoose: (pull: PullRef) => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChoose({ repo: pull.repo, number: pull.number })}
+      className="flex w-full flex-col gap-1 px-3 py-2.5 text-left hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 pointer-coarse:py-3"
+    >
+      <span className="flex w-full flex-wrap items-start gap-x-2 text-sm">
+        <span className="min-w-0 break-all font-mono text-xs leading-5 text-muted-foreground">
+          {pull.repo}#{pull.number}
+        </span>
+        <span className="min-w-0 flex-1 text-foreground">
+          {title ?? "Title not cached"}
+        </span>
+      </span>
+      {state !== null || sources.length > 0 ? (
+        <span className="flex flex-wrap items-center gap-1.5 text-xs">
+          {state !== null ? <PullStateBadge state={state} /> : null}
+          {sources.map((source) => (
+            <Badge key={source} variant="secondary" className="font-normal">
+              {SOURCE_LABELS[source]}
+            </Badge>
+          ))}
+        </span>
+      ) : null}
+    </button>
+  );
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    rpc.call("pullForThread", { threadId }).then(
-      (result) => {
-        if (cancelled) return;
-        if (result.pull !== null) setSelected(result.pull);
-        setResolved(true);
-      },
-      () => {
-        if (!cancelled) setResolved(true);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [rpc, threadId]);
+const TAP_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
 
-  if (!resolved) {
-    return <DetailSkeleton />;
+function PanelButton({
+  children,
+  variant = "ghost",
+  ...props
+}: React.ComponentProps<typeof Button>) {
+  return (
+    <Button
+      size="sm"
+      variant={variant}
+      className={`h-8 px-2.5 text-xs font-normal ${TAP_TARGET}`}
+      {...props}
+    >
+      {children}
+    </Button>
+  );
+}
+
+function RefreshPanelButton({
+  busy,
+  onRefresh,
+}: {
+  busy: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className={`h-8 shrink-0 gap-1.5 px-2.5 text-xs ${TAP_TARGET}`}
+      aria-busy={busy}
+      onClick={() => {
+        if (!busy) onRefresh();
+      }}
+    >
+      <RefreshIcon
+        className={busy ? "animate-spin motion-reduce:animate-none" : undefined}
+      />
+      {busy ? "Refreshing…" : "Refresh"}
+    </Button>
+  );
+}
+
+function FetchedTime({ detail }: { detail: PullDetailState }) {
+  if (detail.fetchedAt === null) {
+    return <span>{detail.refreshing ? "Fetching…" : "Not fetched yet"}</span>;
   }
-  if (selected === null) {
+  return (
+    <span>
+      Fetched{" "}
+      <time
+        dateTime={detail.fetchedAt}
+        title={new Date(detail.fetchedAt).toLocaleString()}
+      >
+        {relativeTime(detail.fetchedAt)}
+      </time>
+      {detail.error !== null ? " · refresh failed" : ""}
+    </span>
+  );
+}
+
+function provenanceLabel(resolution: PullAssociation["resolution"]): string {
+  if (resolution.kind === "selected") return "Your saved choice";
+  if (resolution.kind !== "candidate") return "";
+  const workspace = resolution.sources.includes("workspace");
+  const review = resolution.sources.includes("review");
+  if (workspace && review)
+    return "Matched by workspace branch and review thread";
+  return workspace ? "Matched by workspace branch" : "Linked by review thread";
+}
+
+const FAILURE_SOURCE_LABELS: Record<
+  PullAssociation["failures"][number]["source"],
+  string
+> = {
+  selection: "your saved choice",
+  workspace: "the workspace branch",
+  review: "review threads",
+};
+
+function FailureNotice({
+  reason,
+  message,
+}: {
+  reason: "auth" | "unavailable" | "lookup";
+  message: string;
+}) {
+  if (reason === "auth") {
+    return (
+      <Notice tone="error">
+        <b>GitHub sign-in needed.</b> The GitHub CLI that Cloudroom uses is not
+        signed in or cannot read this repository, so this session’s pull request
+        is unknown. Run <code>gh auth login</code> on the machine running
+        Cloudroom, then Refresh. ({message})
+      </Notice>
+    );
+  }
+  if (reason === "unavailable") {
+    return (
+      <Notice tone="warn">
+        <b>GitHub or the workspace is unavailable.</b> This session’s pull
+        request is unknown right now. Refresh to try again. ({message})
+      </Notice>
+    );
+  }
+  return (
+    <Notice tone="error">
+      <b>Couldn’t look up this session’s pull request.</b> {message}
+    </Notice>
+  );
+}
+
+function PullPanelTab({ threadId }: PluginThreadPanelProps) {
+  return <SessionPullPanel key={threadId} threadId={threadId} />;
+}
+
+function SessionPullPanel({ threadId }: { threadId: string }) {
+  const session = usePullAssociation(threadId);
+  const { items } = useItems("pr");
+  const [choosing, setChoosing] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const { association } = session;
+
+  const choose = useCallback(
+    (pull: PullRef | null) => {
+      void session.choose(pull).then((saved) => {
+        if (!saved) return;
+        setChoosing(false);
+        setAnnouncement(
+          pull === null
+            ? "Saved choice cleared. Using automatic matching."
+            : `Saved ${pull.repo}#${pull.number} for this session.`,
+        );
+      });
+    },
+    [session],
+  );
+
+  const titleFor = (repo: string, number: number) =>
+    items?.find(
+      (item) =>
+        item.number === number &&
+        item.repo.toLowerCase() === repo.toLowerCase(),
+    ) ?? null;
+
+  const liveRegion = (
+    <p role="status" aria-live="polite" className="sr-only">
+      {announcement}
+    </p>
+  );
+
+  if (association === null) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground">
-          No pull request is linked to this thread yet — pick one:
-        </p>
-        <PullPickerList
-          onPick={(repo, number) =>
-            setSelected({ repo, number, environmentId: null })
-          }
+        {liveRegion}
+        {session.error !== null ? (
+          <>
+            <SessionHeading busy={session.loading} onRefresh={session.reload} />
+            <FailureNotice
+              reason={classifyGhFailure(session.error)}
+              message={session.error}
+            />
+          </>
+        ) : (
+          <DetailSkeleton />
+        )}
+      </div>
+    );
+  }
+
+  const { resolution, selection, candidates, failures } = association;
+  const shown =
+    resolution.kind === "selected" || resolution.kind === "candidate"
+      ? { repo: resolution.repo, number: resolution.number }
+      : null;
+  const saveError =
+    session.saveError !== null ? (
+      <Notice tone="error" urgent>
+        Couldn’t save that choice. {session.saveError}
+      </Notice>
+    ) : null;
+
+  if (choosing) {
+    return (
+      <div className="flex flex-col gap-3">
+        {liveRegion}
+        <div className="flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 text-sm font-medium text-foreground">
+            Choose this session’s pull request
+          </h2>
+          <PanelButton variant="outline" onClick={() => setChoosing(false)}>
+            Cancel
+          </PanelButton>
+        </div>
+        {saveError}
+        {session.saving ? (
+          <p className="text-xs text-muted-foreground">Checking on GitHub…</p>
+        ) : null}
+        <PullChooser
+          candidates={candidates}
+          disabled={session.saving}
+          onChoose={choose}
         />
       </div>
     );
   }
+
+  if (shown === null) {
+    const candidateRows = candidates.map((candidate) => {
+      const cached = titleFor(candidate.repo, candidate.number);
+      return (
+        <CandidateRow
+          key={`${candidate.repo}#${candidate.number}`}
+          pull={candidate}
+          title={cached?.title ?? null}
+          state={cached?.state ?? null}
+          sources={candidate.sources}
+          disabled={session.saving}
+          onChoose={choose}
+        />
+      );
+    });
+    const selectionUnreadable = failures.some(
+      (failure) => failure.source === "selection",
+    );
+    return (
+      <div className="flex flex-col gap-3">
+        {liveRegion}
+        <SessionHeading busy={session.loading} onRefresh={session.reload} />
+        {saveError}
+        {resolution.kind === "ambiguous" ? (
+          <p className="text-sm text-foreground">
+            {candidates.length} pull requests match this session. Choose one:
+          </p>
+        ) : resolution.kind === "none" ? (
+          <p className="text-sm text-foreground">
+            No pull request matches this session’s workspace branch or review
+            threads.
+          </p>
+        ) : resolution.kind === "failed" ? (
+          <FailureNotice
+            reason={resolution.reason}
+            message={resolution.message}
+          />
+        ) : null}
+        {resolution.kind === "failed" && candidates.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            The lookup was incomplete. These were found; choose one only if it’s
+            right:
+          </p>
+        ) : null}
+        {candidateRows.length > 0 ? (
+          <div
+            role="group"
+            aria-label="Matching pull requests"
+            className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
+          >
+            {candidateRows}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <PanelButton variant="outline" onClick={() => setChoosing(true)}>
+            Choose a PR…
+          </PanelButton>
+          {selectionUnreadable ? (
+            <PanelButton disabled={session.saving} onClick={() => choose(null)}>
+              Use automatic matching
+            </PanelButton>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  const shownKey = `${shown.repo.toLowerCase()}#${shown.number}`;
+  const workspaceMatch = candidates.some(
+    (candidate) =>
+      `${candidate.repo.toLowerCase()}#${candidate.number}` === shownKey &&
+      candidate.sources.includes("workspace"),
+  );
+  const otherCandidates = candidates.filter(
+    (candidate) =>
+      `${candidate.repo.toLowerCase()}#${candidate.number}` !== shownKey,
+  );
+  const notices = (
+    <>
+      {saveError}
+      {resolution.kind === "selected" && otherCandidates.length > 0 ? (
+        <Notice tone="info">
+          Also matching this session:{" "}
+          {otherCandidates
+            .map(
+              (candidate) =>
+                `${candidate.repo}#${candidate.number} (${candidate.sources
+                  .map((source) => SOURCE_LABELS[source])
+                  .join(", ")})`,
+            )
+            .join("; ")}
+          .
+        </Notice>
+      ) : null}
+      {resolution.kind === "selected" && failures.length > 0 ? (
+        <Notice tone="warn">
+          Couldn’t check{" "}
+          {failures
+            .map((failure) => FAILURE_SOURCE_LABELS[failure.source])
+            .join(" or ")}
+          , so other matches are unknown. ({failures[0].message})
+        </Notice>
+      ) : null}
+    </>
+  );
+
   return (
-    <PullDetailView
-      repo={selected.repo}
-      number={selected.number}
-      compact
-      workspaceEnvironmentId={selected.environmentId}
-      backLabel="All PRs"
-      onBack={() => setSelected(null)}
-    />
+    <div className="flex flex-col gap-3">
+      {liveRegion}
+      <SessionPullDetail
+        key={shownKey}
+        repo={shown.repo}
+        number={shown.number}
+        expectedId={
+          resolution.kind === "selected" ? (selection?.id ?? null) : null
+        }
+        provenance={provenanceLabel(resolution)}
+        saved={selection !== null}
+        saving={session.saving}
+        environmentId={workspaceMatch ? association.environmentId : null}
+        notices={notices}
+        onReloadAssociation={session.reload}
+        onChange={() => setChoosing(true)}
+        onClear={() => choose(null)}
+        onAnnounce={setAnnouncement}
+      />
+    </div>
+  );
+}
+
+function SessionHeading({
+  busy,
+  onRefresh,
+}: {
+  busy: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <h2 className="min-w-0 flex-1 text-sm font-medium text-foreground">
+        Session pull request
+      </h2>
+      <RefreshPanelButton busy={busy} onRefresh={onRefresh} />
+    </div>
+  );
+}
+
+function SessionPullDetail({
+  repo,
+  number,
+  expectedId,
+  provenance,
+  saved,
+  saving,
+  environmentId,
+  notices,
+  onReloadAssociation,
+  onChange,
+  onClear,
+  onAnnounce,
+}: {
+  repo: string;
+  number: number;
+  expectedId: string | null;
+  provenance: string;
+  saved: boolean;
+  saving: boolean;
+  environmentId: string | null;
+  notices: React.ReactNode;
+  onReloadAssociation: () => void;
+  onChange: () => void;
+  onClear: () => void;
+  onAnnounce: (message: string) => void;
+}) {
+  const detail = usePullDetail(repo, number);
+  const clearHintId = useId();
+  const userRefresh = useRef(false);
+  const wasRefreshing = useRef(detail.refreshing);
+  useEffect(() => {
+    if (wasRefreshing.current && !detail.refreshing && userRefresh.current) {
+      userRefresh.current = false;
+      onAnnounce(
+        detail.error === null
+          ? "Pull request refreshed."
+          : "Refresh failed. Showing earlier data.",
+      );
+    }
+    wasRefreshing.current = detail.refreshing;
+  }, [detail.refreshing, detail.error, onAnnounce]);
+
+  const identityChanged =
+    expectedId !== null &&
+    detail.pull !== null &&
+    detail.pull.id !== "" &&
+    detail.pull.id !== expectedId;
+
+  return (
+    <>
+      <div className="flex flex-col gap-1 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-col pt-1">
+            <span className="font-medium text-foreground">{provenance}</span>
+            <FetchedTime detail={detail} />
+          </div>
+          <RefreshPanelButton
+            busy={detail.refreshing}
+            onRefresh={() => {
+              userRefresh.current = true;
+              detail.refresh();
+              onReloadAssociation();
+            }}
+          />
+        </div>
+        <div className="-mx-1 flex flex-wrap items-center gap-1">
+          <PanelButton disabled={saving} onClick={onChange}>
+            Change…
+          </PanelButton>
+          {saved ? (
+            <PanelButton
+              disabled={saving}
+              aria-describedby={clearHintId}
+              onClick={onClear}
+            >
+              Use automatic matching
+            </PanelButton>
+          ) : null}
+        </div>
+        {saved ? (
+          <p id={clearHintId} className="pb-1">
+            Clears your saved choice. The panel then follows the workspace
+            branch and review threads, which may show this same PR.
+          </p>
+        ) : null}
+      </div>
+      {notices}
+      {identityChanged ? (
+        <Notice tone="error">
+          {repo}#{number} is no longer the pull request you saved. The
+          repository may have been renamed or reused. Choose again.
+        </Notice>
+      ) : detail.pull === null ? (
+        detail.error !== null ? (
+          <FailureNotice
+            reason={classifyGhFailure(detail.error)}
+            message={detail.error}
+          />
+        ) : (
+          <DetailSkeleton />
+        )
+      ) : (
+        <PullDetailBody
+          repo={repo}
+          number={number}
+          detail={detail}
+          pull={detail.pull}
+          compact
+          readOnly
+          workspaceEnvironmentId={environmentId}
+        />
+      )}
+    </>
   );
 }
 
