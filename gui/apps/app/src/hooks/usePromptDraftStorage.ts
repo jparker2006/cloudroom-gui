@@ -42,6 +42,36 @@ const promptDraftSubscribers = new Map<string, Set<PromptDraftListener>>();
 const pendingPromptDraftStorageKeys = new Set<string>();
 const promptDraftPersistTimers = new Map<string, number>();
 let promptDraftStorageObserverInitialized = false;
+const newThreadDraftRevs = new Map<string, string>();
+const NEW_THREAD_DRAFT_KEY_PREFIX = `${PROMPT_DRAFT_STORAGE_PREFIX}-new-thread-`;
+
+function isNewThreadProjectDraftKey(storageKey: string): boolean {
+  return storageKey.startsWith(NEW_THREAD_DRAFT_KEY_PREFIX);
+}
+
+function createDraftRev(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function readStoredRev(rawValue: string | null): string | undefined {
+  if (rawValue === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(rawValue);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const rev = (parsed as { rev?: unknown }).rev;
+    return typeof rev === "string" ? rev : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function withDraftRev(storageKey: string, serialized: string): string {
+  const rev = createDraftRev();
+  const base = newThreadDraftRevs.get(storageKey);
+  newThreadDraftRevs.set(storageKey, rev);
+  return JSON.stringify({ ...JSON.parse(serialized), rev, ...(base ? { base } : {}) });
+}
 
 function normalizeStorageSegment(value: string): string {
   return encodeURIComponent(value.trim());
@@ -63,6 +93,10 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
   }
 
   const draft = parsePromptDraftStorage(rawValue);
+  if (isNewThreadProjectDraftKey(storageKey)) {
+    const rev = readStoredRev(rawValue);
+    if (rev) newThreadDraftRevs.set(storageKey, rev);
+  }
   promptDraftCache.set(storageKey, {
     rawValue,
     draft,
@@ -99,7 +133,11 @@ function persistPromptDraftCache(storageKey: string): void {
     return;
   }
 
-  const serialized = serializePromptDraftStorage(cachedEntry.draft);
+  const plainSerialized = serializePromptDraftStorage(cachedEntry.draft);
+  const serialized =
+    plainSerialized !== null && isNewThreadProjectDraftKey(storageKey)
+      ? withDraftRev(storageKey, plainSerialized)
+      : plainSerialized;
   cachedEntry.rawValue = serialized;
   if (serialized === null) {
     window.localStorage.removeItem(storageKey);

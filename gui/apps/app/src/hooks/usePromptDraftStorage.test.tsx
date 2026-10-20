@@ -417,8 +417,31 @@ describe("switching projects in the new-thread composer", () => {
     rerender({ projectId: "proj_beta" });
 
     expect(result.current.text).toBe("beta text");
-    expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toBe(
-      storedDraft("alpha typed"),
+    expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toContain(
+      '"text":"alpha typed"',
     );
+  });
+});
+
+const ALPHA_KEY = "bb.promptbox.contents-new-thread-proj_alpha-3";
+
+function storedRecord(key: string): Record<string, unknown> {
+  return JSON.parse(window.localStorage.getItem(key) ?? "null");
+}
+
+describe("new-thread draft revisions", () => {
+  it("stamps each saved draft with a revision and the revision it replaced", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+
+    alpha.setDraft({ text: "first", mentions: [], attachments: [] });
+    const first = storedRecord(ALPHA_KEY);
+    alpha.setDraft({ text: "second", mentions: [], attachments: [] });
+    const second = storedRecord(ALPHA_KEY);
+
+    expect(first.rev).toMatch(/^[0-9a-f]{16}$/);
+    expect(second.rev).toMatch(/^[0-9a-f]{16}$/);
+    expect(second.rev).not.toBe(first.rev);
+    expect(second.base).toBe(first.rev);
+    expect(alpha.getCurrent().text).toBe("second");
   });
 });
