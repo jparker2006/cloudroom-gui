@@ -711,6 +711,30 @@ esac
   it("keeps every review link when reviews start concurrently", async () => {
     const world = newWorld();
     const host = await loadPlugin(world);
+    const kv = host.bb.storage.kv;
+    const get = kv.get.bind(kv);
+    let waiting: (() => void) | null = null;
+    kv.get = (async (key: string) => {
+      if (key === "link:pr:acme/widgets#42") {
+        await new Promise<void>((resolve) => {
+          if (waiting === null) {
+            const timer = setTimeout(() => {
+              waiting = null;
+              resolve();
+            }, 200);
+            waiting = () => {
+              clearTimeout(timer);
+              resolve();
+            };
+          } else {
+            waiting();
+            waiting = null;
+            resolve();
+          }
+        });
+      }
+      return get(key);
+    }) as typeof kv.get;
 
     await Promise.all([
       host.harness.callRpc("startReview", { repo: "acme/widgets", number: 42 }),
