@@ -1228,25 +1228,34 @@ export default async function plugin(bb: BbPluginApi) {
 
   const MAX_CACHED_DETAIL_BYTES = 200_000;
 
-  async function cachePullDetail(
+  const cacheWrites = new Map<string, Promise<void>>();
+
+  function cachePullDetail(
     fetched: z.infer<typeof cachedPullSchema>,
   ): Promise<void> {
     const key = pullDetailKey(fetched.pull.repo, fetched.pull.number);
-    const stored = cachedPullSchema.safeParse(await bb.storage.kv.get(key));
-    if (stored.success && stored.data.fetchedAt > fetched.fetchedAt) return;
-    const compact = {
-      ...fetched,
-      pull: {
-        ...fetched.pull,
-        files: fetched.pull.files.map((file) => ({ ...file, patch: null })),
-      },
-    };
-    if (JSON.stringify(compact).length > MAX_CACHED_DETAIL_BYTES) return;
-    try {
-      await bb.storage.kv.set(key, compact);
-    } catch (error) {
-      bb.log.warn(`could not cache ${key}: ${errorMessage(error)}`);
-    }
+    const write = (cacheWrites.get(key) ?? Promise.resolve())
+      .then(async () => {
+        const stored = cachedPullSchema.safeParse(await bb.storage.kv.get(key));
+        if (stored.success && stored.data.fetchedAt > fetched.fetchedAt) return;
+        const compact = {
+          ...fetched,
+          pull: {
+            ...fetched.pull,
+            files: fetched.pull.files.map((file) => ({ ...file, patch: null })),
+          },
+        };
+        if (JSON.stringify(compact).length > MAX_CACHED_DETAIL_BYTES) return;
+        await bb.storage.kv.set(key, compact);
+      })
+      .catch((error: unknown) => {
+        bb.log.warn(`could not cache ${key}: ${errorMessage(error)}`);
+      });
+    cacheWrites.set(key, write);
+    void write.then(() => {
+      if (cacheWrites.get(key) === write) cacheWrites.delete(key);
+    });
+    return write;
   }
 
   function failureFrom(
@@ -1730,7 +1739,7 @@ export default async function plugin(bb: BbPluginApi) {
 
       const fetched = {
         pull: {
-          repo,
+          repo: identity.repo,
           number,
           id: String(view.id ?? ""),
           title: String(view.title ?? ""),

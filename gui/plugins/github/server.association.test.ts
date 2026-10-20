@@ -623,6 +623,69 @@ describe("pull detail cache and checks truth", () => {
     ).resolves.toMatchObject({ cached: { pull: { title: "newer" } } });
   });
 
+  it("orders overlapping cache writes by fetch start", async () => {
+    writeFileSync(
+      join(binDir, "gh"),
+      `#!/usr/bin/env bash
+case "$*" in
+  "--version") echo "gh version 2.96.0 (fake)";;
+  "auth status --hostname github.com --active") echo "authenticated";;
+  "pr view 42 -R acme/widgets --json"*) if [ -f "${binDir}/second" ]; then printf '%s\\n' '${JSON.stringify(pullView(42, { title: "newer" }))}'; else touch "${binDir}/second"; sleep 0.4; printf '%s\\n' '${JSON.stringify(pullView(42, { title: "older" }))}'; fi;;
+  "api --paginate --slurp "*) printf '%s\\n' '[[]]';;
+  *) printf '%s\\n' '[]';;
+esac
+`,
+    );
+    chmodSync(join(binDir, "gh"), 0o755);
+    const host = await loadPlugin(newWorld());
+    const kv = host.bb.storage.kv;
+    const realGet = kv.get.bind(kv);
+    kv.get = (async (key: string) => {
+      const snapshot = await realGet(key);
+      if (key.startsWith("pull-detail:")) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      return snapshot;
+    }) as typeof kv.get;
+
+    const older = host.harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const newer = host.harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+    await Promise.all([older, newer]);
+
+    await expect(
+      host.harness.callRpc("cachedPull", { repo: "acme/widgets", number: 42 }),
+    ).resolves.toMatchObject({ cached: { pull: { title: "newer" } } });
+  });
+
+  it("returns fresh detail even when the cache cannot be read", async () => {
+    const host = await loadPlugin(newWorld());
+    host.bb.storage.kv.get = (async () => {
+      throw new Error("kv offline");
+    }) as typeof host.bb.storage.kv.get;
+
+    await expect(
+      host.harness.callRpc("getPull", { repo: "acme/widgets", number: 42 }),
+    ).resolves.toMatchObject({ pull: { number: 42 } });
+  });
+
+  it("labels detail with the repository GitHub reports", async () => {
+    writeGh({
+      42: pullView(42, { url: "https://github.com/acme/renamed/pull/42" }),
+    });
+    const { harness } = await loadPlugin(newWorld());
+
+    await expect(
+      harness.callRpc("getPull", { repo: "acme/widgets", number: 42 }),
+    ).resolves.toMatchObject({ pull: { repo: "acme/renamed", number: 42 } });
+  });
+
   it("caches without file patches and skips detail too large for storage", async () => {
     writeGh({
       42: pullView(42),
