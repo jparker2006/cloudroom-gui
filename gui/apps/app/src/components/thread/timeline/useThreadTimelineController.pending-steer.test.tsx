@@ -294,6 +294,33 @@ describe("steer queued until the turn starts", () => {
     ]);
   });
 
+  it("hands off a multi-part steer whose server row joins its text parts differently", () => {
+    const queryClient = makeQueryClient();
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      turnStartingSteer({
+        content: [
+          { type: "text", text: "also check", mentions: [] },
+          { type: "text", text: " the tests", mentions: [] },
+        ],
+      }),
+    ]);
+    const { view } = renderHandoff(queryClient);
+    expect(view().timeline).toEqual([
+      "first|accepted",
+      "also check\n\n the tests|pending",
+    ]);
+
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
+    setServerTimeline(queryClient, [
+      userRow("first", "turn-1", 1),
+      userRow("also check the tests", "steer-row", 12),
+    ]);
+    expect(view().timeline).toEqual([
+      "first|accepted",
+      "also check the tests|accepted",
+    ]);
+  });
+
   it("lets a departed steer go after the handoff window when no timeline row arrives", () => {
     vi.useFakeTimers();
     const queryClient = makeQueryClient();
@@ -305,7 +332,7 @@ describe("steer queued until the turn starts", () => {
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
     expect(view()).toEqual(PENDING_VIEW);
 
-    act(() => vi.advanceTimersByTime(1_999));
+    act(() => vi.advanceTimersByTime(4_999));
     expect(view()).toEqual(PENDING_VIEW);
     act(() => vi.advanceTimersByTime(1));
     expect(view()).toEqual({ strip: [], timeline: ["first|accepted"] });

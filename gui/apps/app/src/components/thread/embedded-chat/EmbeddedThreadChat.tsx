@@ -263,13 +263,11 @@ function EmbeddedThreadChatWithComposer({
     markThreadRead,
     thread: threadQuery.data,
   });
-  const { data: threadQueuedMessages } = useThreadQueuedMessages(threadId);
-  const queuedMessages = useMemo(
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId);
+  const stripQueuedMessages = useMemo(
     () =>
-      threadQueuedMessages?.filter(
-        (message) => !isPendingSteerQueuedMessage(message),
-      ) ?? [],
-    [threadQueuedMessages],
+      queuedMessages.filter((message) => !isPendingSteerQueuedMessage(message)),
+    [queuedMessages],
   );
 
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
@@ -1094,10 +1092,10 @@ function EmbeddedThreadChatWithComposer({
 
   const queuedMessagesStack = useMemo(
     () =>
-      queuedMessages.length > 0 && !pendingInteractionOccupiesComposer ? (
+      stripQueuedMessages.length > 0 && !pendingInteractionOccupiesComposer ? (
         <QueuedMessagesList
           attachedToComposer
-          queuedMessages={queuedMessages}
+          queuedMessages={stripQueuedMessages}
           resolveMentionLink={resolveMentionLink}
           attachmentProjectId={projectId}
           inlineEditor={inlineEditor}
@@ -1124,7 +1122,7 @@ function EmbeddedThreadChatWithComposer({
       pendingInteractionOccupiesComposer,
       projectId,
       queuedMessageActionPending,
-      queuedMessages,
+      stripQueuedMessages,
       resolveMentionLink,
     ],
   );

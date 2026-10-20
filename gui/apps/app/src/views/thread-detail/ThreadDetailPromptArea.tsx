@@ -501,12 +501,11 @@ export function ThreadDetailPromptArea({
   const queuedMessagesQuery = useThreadQueuedMessages(thread.id, {
     enabled: true,
   });
-  const queuedMessages = useMemo(
+  const queuedMessages = queuedMessagesQuery.data ?? EMPTY_QUEUED_MESSAGES;
+  const stripQueuedMessages = useMemo(
     () =>
-      queuedMessagesQuery.data?.filter(
-        (message) => !isPendingSteerQueuedMessage(message),
-      ) ?? EMPTY_QUEUED_MESSAGES,
-    [queuedMessagesQuery.data],
+      queuedMessages.filter((message) => !isPendingSteerQueuedMessage(message)),
+    [queuedMessages],
   );
   const queuedMessagesPending =
     queuedMessagesQuery.data === undefined && queuedMessageCount > 0;
@@ -2037,7 +2036,7 @@ export function ThreadDetailPromptArea({
         ) : (
           <QueuedMessagesList
             attachedToComposer={true}
-            queuedMessages={queuedMessages}
+            queuedMessages={stripQueuedMessages}
             resolveMentionLink={resolveMentionLink}
             attachmentProjectId={projectId}
             inlineEditor={queuedMessageEditor ?? undefined}
@@ -2096,7 +2095,7 @@ export function ThreadDetailPromptArea({
       isCloud,
       cloudConnection.data?.queue_reorder,
       queuedMessageCount,
-      queuedMessages,
+      stripQueuedMessages,
       queuedMessagesPending,
       resolveMentionLink,
       runtimeDisplayStatus,

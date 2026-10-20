@@ -115,7 +115,8 @@ function reconcileLoadedTimeline({
   });
 }
 
-const PENDING_STEER_HANDOFF_MS = 2_000;
+const PENDING_STEER_HANDOFF_MS = 5_000;
+const EMPTY_TIMELINE_ROWS: TimelineRow[] = [];
 
 interface PendingSteerState {
   queuedMessages: ThreadQueuedMessageListResponse | undefined;
@@ -123,7 +124,7 @@ interface PendingSteerState {
   threadId: string;
 }
 
-export function nextShownPendingSteers(
+function nextShownPendingSteers(
   previous: readonly ThreadQueuedMessage[],
   queuedMessages: ThreadQueuedMessageListResponse | undefined,
 ): readonly ThreadQueuedMessage[] {
@@ -135,6 +136,10 @@ export function nextShownPendingSteers(
   ].sort((left, right) => left.createdAt - right.createdAt);
 }
 
+function steerMatchText(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
 export function appendPendingSteerRows(
   rows: TimelineRow[],
   pendingSteers: readonly ThreadQueuedMessage[],
@@ -144,12 +149,13 @@ export function appendPendingSteerRows(
   const appendedRows: TimelineRow[] = [];
   for (const pendingSteer of pendingSteers) {
     const pendingRow = buildPendingSteerTimelineRow(pendingSteer);
+    const pendingText = steerMatchText(pendingRow.text);
     const matchingRow = rows.find(
       (row) =>
         !claimedRowIds.has(row.id) &&
         row.kind === "conversation" &&
         row.role === "user" &&
-        row.text === pendingRow.text &&
+        steerMatchText(row.text) === pendingText &&
         (isOptimisticTimelineRowId(row.id) ||
           row.createdAt >= pendingSteer.createdAt),
     );
@@ -347,14 +353,17 @@ export function useThreadTimelineController({
   const loadedTimelineRows =
     loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
       ? loadedTimeline.rows
-      : (latestTimeline?.rows ?? []);
+      : (latestTimeline?.rows ?? EMPTY_TIMELINE_ROWS);
   const { data: queuedMessages } = useThreadQueuedMessages(threadId, {
     enabled,
   });
   const pendingSteers = usePendingSteerHandoff(threadId, queuedMessages);
   const timelineRows = useMemo(
-    () => appendPendingSteerRows(loadedTimelineRows, pendingSteers),
-    [loadedTimelineRows, pendingSteers],
+    () =>
+      latestTimeline === undefined
+        ? loadedTimelineRows
+        : appendPendingSteerRows(loadedTimelineRows, pendingSteers),
+    [latestTimeline, loadedTimelineRows, pendingSteers],
   );
   const timelineQueryState = useConnectionAwareQueryState({
     hasResolvedData:
