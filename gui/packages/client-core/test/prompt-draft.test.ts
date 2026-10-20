@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@cloudroom/domain";
 import {
+  appendMessageContextToDraft,
   appendPromptDraft,
   appendQuoteAndAttachmentsToDraft,
   appendQuoteToDraftText,
@@ -457,5 +458,18 @@ describe("appendPromptDraft duplicates", () => {
         attachments: [attachment, attachment],
       }).attachments,
     ).toEqual([attachment]);
+  });
+});
+
+describe("appendPromptDraft contexts", () => {
+  it("keeps both messages when moved text has a context label already in the target", () => {
+    const target = appendMessageContextToDraft(emptyPromptDraftState(), "target words", 7);
+    const source = appendMessageContextToDraft(emptyPromptDraftState(), "source words", 7);
+
+    const input = promptDraftToInput(appendPromptDraft(target, source));
+    const sent = JSON.stringify(input);
+
+    expect(sent).toContain("target words");
+    expect(sent).toContain("source words");
   });
 });

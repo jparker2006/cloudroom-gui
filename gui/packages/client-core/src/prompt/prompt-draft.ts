@@ -228,10 +228,49 @@ export function serializePromptDraftStorage(
   });
 }
 
-export function appendPromptDraft(
+function relabelCollidingContexts(
   target: PromptDraftState,
   source: PromptDraftState,
 ): PromptDraftState {
+  const taken = new Map((target.contexts ?? []).map((context) => [context.label, context.text]));
+  let text = source.text;
+  let mentions = source.mentions;
+  const contexts: PromptDraftContext[] = [];
+  for (const context of source.contexts ?? []) {
+    const existing = taken.get(context.label);
+    if (existing === context.text) continue;
+    if (existing === undefined) {
+      taken.set(context.label, context.text);
+      contexts.push(context);
+      continue;
+    }
+    let label = context.label;
+    for (let suffix = 2; taken.has(label); suffix += 1) {
+      label = `${context.label.slice(0, -1)} (${suffix})]`;
+    }
+    const from = messageContextLine(context.label);
+    const to = messageContextLine(label);
+    const delta = to.length - from.length;
+    for (let start = text.indexOf(from); start !== -1; start = text.indexOf(from, start + to.length)) {
+      text = `${text.slice(0, start)}${to}${text.slice(start + from.length)}`;
+      const lineEnd = start + from.length;
+      mentions = mentions.map((mention) =>
+        mention.start >= lineEnd
+          ? { ...mention, start: mention.start + delta, end: mention.end + delta }
+          : mention,
+      );
+    }
+    taken.set(label, context.text);
+    contexts.push({ label, text: context.text });
+  }
+  return { ...source, text, mentions, contexts };
+}
+
+export function appendPromptDraft(
+  target: PromptDraftState,
+  originalSource: PromptDraftState,
+): PromptDraftState {
+  const source = relabelCollidingContexts(target, originalSource);
   const separator = target.text.length > 0 && source.text.length > 0 ? "\n\n" : "";
   const offset = target.text.length + separator.length;
   const targetPaths = new Set(target.attachments.map((attachment) => attachment.path));
