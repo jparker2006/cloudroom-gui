@@ -163,7 +163,6 @@ interface BuildThreadTimelineOptions {
   summaryOnly?: boolean;
   providerDisplayName?: string;
   planCommand?: ProviderComposerCommand | null;
-  providerReportsCompactions?: boolean;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
@@ -1524,12 +1523,7 @@ function buildThreadTimelineInternal(
     recordedCompactions:
       options.page.kind === "latest"
         ? summarizeRecordedCompactions(
-            buildRecordedCompactions(
-              db,
-              thread,
-              snapshot.maxSeq,
-              options.providerReportsCompactions ?? false,
-            ),
+            buildRecordedCompactions(db, thread, snapshot.maxSeq),
           )
         : undefined,
     timelinePage: {

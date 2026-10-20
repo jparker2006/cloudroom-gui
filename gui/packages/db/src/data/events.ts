@@ -3260,6 +3260,14 @@ export function listRecordedCompactionEventRows(
             ),
           ),
           and(
+            eq(events.type, "provider/error"),
+            sql`json_extract(${events.data}, '$.message') LIKE 'Context compaction%'`,
+          ),
+          and(
+            eq(events.type, "provider/warning"),
+            sql`json_extract(${events.data}, '$.category') = 'compaction-skipped'`,
+          ),
+          and(
             eq(events.type, "provider/unhandled"),
             sql`lower(json_extract(${events.data}, '$.rawType')) LIKE '%compact%'`,
           ),

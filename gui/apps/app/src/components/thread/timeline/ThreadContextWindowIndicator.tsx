@@ -285,7 +285,9 @@ export function ThreadContextWindowIndicator({
     ].filter((element) => element.closest("[inert]") === null);
   const focusContent = () => {
     setPinned(true);
-    requestAnimationFrame(() => tabbables()[0]?.focus());
+    requestAnimationFrame(() =>
+      (tabbables()[0] ?? contentRef.current)?.focus(),
+    );
   };
 
   const usedPercent = calculateContextWindowUsagePercent(usage);
@@ -386,13 +388,19 @@ export function ThreadContextWindowIndicator({
       >
         <div
           ref={contentRef}
+          tabIndex={-1}
+          className="outline-none"
           onKeyDown={(event) => {
             if (event.key !== "Tab") return;
             const elements = tabbables();
             const edge = event.shiftKey
               ? elements[0]
               : elements[elements.length - 1];
-            if (edge === undefined || document.activeElement !== edge) return;
+            const atEdge =
+              document.activeElement === contentRef.current
+                ? event.shiftKey || elements.length === 0
+                : document.activeElement === edge;
+            if (!atEdge) return;
             event.preventDefault();
             if (!event.shiftKey) setPinned(false);
             triggerRef.current?.focus();

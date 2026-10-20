@@ -192,7 +192,6 @@ describe("recorded compactions through persistence", () => {
           harness.db,
           thread,
           getLatestThreadSequence(harness.db, { threadId: thread.id }),
-          true,
         );
       const both = build();
       expect(both.completedCount).toBe(2);

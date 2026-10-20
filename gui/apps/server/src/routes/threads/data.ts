@@ -412,7 +412,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         deps.db,
         thread,
         getLatestThreadSequence(deps.db, { threadId: thread.id }),
-        deps.providerRegistry.supportsManualCompaction(thread.providerId),
       ),
     });
   });
@@ -469,8 +468,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
               deps.providerRegistry,
               thread.providerId,
             ),
-            providerReportsCompactions:
-              deps.providerRegistry.supportsManualCompaction(thread.providerId),
             summaryOnly,
           },
         );

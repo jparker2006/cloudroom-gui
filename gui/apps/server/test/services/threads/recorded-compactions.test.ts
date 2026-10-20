@@ -129,16 +129,11 @@ function operation(
   });
 }
 
-function build(
-  db: DbConnection,
-  thread: Thread,
-  providerReportsCompactions = true,
-) {
+function build(db: DbConnection, thread: Thread) {
   return buildRecordedCompactions(
     db,
     thread,
     sequenceByThread.get(thread.id) ?? 0,
-    providerReportsCompactions,
   );
 }
 
@@ -315,16 +310,16 @@ describe("recorded compactions", () => {
       gaps: [
         "cloud-auto-not-reported",
         "imported-history",
+        "provider-unverified",
         "rewound",
         "teleported",
         "unhandled-compaction-event",
       ],
     });
 
-    const unverified = setup();
-    expect(build(unverified.db, unverified.thread, false).gaps).toEqual([
-      "provider-unverified",
-    ]);
+    const reported = setup();
+    compactionItem(reported.db, reported.thread, "item/started", "t1", "c1");
+    expect(build(reported.db, reported.thread).gaps).toEqual([]);
   });
 
   it("never infers a compaction from a token drop", () => {
@@ -397,7 +392,6 @@ describe("recorded compactions", () => {
       maxInlineOutputChars: null,
       maxSeq: sequenceByThread.get(thread.id) ?? 0,
       page: { kind: "latest", segmentLimit: 20 },
-      providerReportsCompactions: true,
     }).response.recordedCompactions;
     expect(summary).toEqual({
       revision: first.revision,
@@ -409,5 +403,54 @@ describe("recorded compactions", () => {
 
     operation(db, thread, "edit_message");
     expect(build(db, thread).revision).not.toBe(first.revision);
+  });
+
+  it("ends an in-progress compaction when its item closes or its compaction error arrives", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup({ status: "active", providerId: "pi" });
+    append(db, thread, "turn/started", "t1");
+    compactionItem(db, thread, "item/started", "t1", "c1");
+    expect(build(db, thread).inProgress).toBe(true);
+    append(db, thread, "provider/error", "t1", {
+      message: "Context compaction failed",
+    });
+    const failed = build(db, thread);
+    expect(failed).toMatchObject({ inProgress: false, completedCount: 0 });
+    expect(compactions(failed)).toEqual([
+      expect.objectContaining({ id: "c1", status: "unconfirmed" }),
+    ]);
+
+    compactionItem(db, thread, "item/started", "t1", "c2");
+    append(db, thread, "provider/warning", "t1", {
+      category: "compaction-skipped",
+      summary: "Context compaction skipped",
+    });
+    compactionItem(db, thread, "item/started", "t1", "c3");
+    compactionItem(db, thread, "item/completed", "t1", "c3");
+    expect(build(db, thread)).toMatchObject({
+      inProgress: false,
+      completedCount: 0,
+    });
+  });
+
+  it("does not claim complete coverage until the agent has reported a compaction lifecycle in this thread", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    expect(build(db, thread)).toMatchObject({
+      coverage: "partial",
+      gaps: ["provider-unverified"],
+      completedCount: 0,
+    });
+    marker(db, thread, "t1");
+    expect(build(db, thread)).toMatchObject({
+      coverage: "partial",
+      completedCount: 1,
+    });
+    compactionItem(db, thread, "item/started", "t2", "c2");
+    marker(db, thread, "t2", "c2");
+    expect(build(db, thread)).toMatchObject({
+      coverage: "complete",
+      completedCount: 2,
+    });
   });
 });

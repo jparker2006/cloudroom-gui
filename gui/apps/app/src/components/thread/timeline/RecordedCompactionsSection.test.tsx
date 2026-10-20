@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type {
   RecordedCompactionsList,
@@ -8,7 +15,10 @@ import type {
   ThreadContextWindowUsage,
 } from "@cloudroom/server-contract";
 import { sdk } from "@/lib/sdk";
-import { ThreadContextWindowCard } from "./ThreadContextWindowIndicator";
+import {
+  ThreadContextWindowCard,
+  ThreadContextWindowIndicator,
+} from "./ThreadContextWindowIndicator";
 
 vi.mock("@/lib/sdk", () => ({ sdk: { threads: { context: vi.fn() } } }));
 
@@ -338,4 +348,61 @@ it("announces when an in-progress compaction is recorded", () => {
   expect(screen.getByRole("status").textContent).toContain(
     "Compaction recorded.",
   );
+});
+
+it("refetches instead of reusing a mismatched list when the popover reopens on the original revision", async () => {
+  context
+    .mockResolvedValueOnce({
+      usage,
+      compactions: list({ revision: "r-later" }),
+    })
+    .mockResolvedValueOnce({ usage, compactions: list() });
+  const card = (
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={summary}
+      threadId="thread-a"
+    />
+  );
+  const first = mount(card);
+  expect(await screen.findByText("Updating compactions…")).toBeTruthy();
+  first.unmount();
+  render(
+    <QueryClientProvider client={clients[0]!}>{card}</QueryClientProvider>,
+  );
+  expect(await screen.findByText("Kept the migration plan.")).toBeTruthy();
+  expect(context).toHaveBeenCalledTimes(2);
+});
+
+it("moves keyboard focus into the popover even while the list is still loading", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) =>
+      ({
+        matches: false,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+      }) as unknown as MediaQueryList,
+  );
+  context.mockReturnValue(new Promise(() => {}));
+  mount(
+    <ThreadContextWindowIndicator
+      usage={null}
+      compactions={{ ...summary, completedCount: 1 }}
+      threadId="thread-a"
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: /^Context usage/ });
+  trigger.focus();
+  fireEvent.click(trigger, { detail: 0 });
+  await waitFor(() =>
+    expect(document.activeElement?.textContent).toContain(
+      "Loading compactions…",
+    ),
+  );
+  expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
+  vi.unstubAllGlobals();
 });

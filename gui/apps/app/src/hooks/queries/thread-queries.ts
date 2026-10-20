@@ -740,7 +740,10 @@ export function useThreadRecordedCompactions(
       return list;
     },
     enabled: enabled && Boolean(threadId) && revision !== null,
-    staleTime: Infinity,
+    staleTime: (query) =>
+      query.state.data === null || query.state.data?.revision === revision
+        ? Infinity
+        : 0,
   });
 }
 

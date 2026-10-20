@@ -28,6 +28,7 @@ interface CompactionState {
   startedAt: number | null;
   completedAt: number | null;
   confirmed: boolean;
+  ended: boolean;
 }
 
 function parseData(row: StoredEventRow): Record<string, unknown> {
@@ -41,14 +42,10 @@ function parseData(row: StoredEventRow): Record<string, unknown> {
   }
 }
 
-function threadGaps(
-  thread: Thread,
-  providerReportsCompactions: boolean,
-): RecordedCompactionGap[] {
+function threadGaps(thread: Thread): RecordedCompactionGap[] {
   const gaps: RecordedCompactionGap[] = [];
   if (thread.originKind === "fork") gaps.push("forked");
   if (thread.executionTarget === "cloud") gaps.push("cloud-auto-not-reported");
-  if (!providerReportsCompactions) gaps.push("provider-unverified");
   return gaps;
 }
 
@@ -130,12 +127,10 @@ export function buildRecordedCompactions(
   db: DbConnection,
   thread: Thread,
   sequenceEnd: number,
-  providerReportsCompactions: boolean,
 ): RecordedCompactionsList {
   const rows = listRecordedCompactionRowsCached(db, thread.id, sequenceEnd);
-  const gaps = new Set<RecordedCompactionGap>(
-    threadGaps(thread, providerReportsCompactions),
-  );
+  const gaps = new Set<RecordedCompactionGap>(threadGaps(thread));
+  let lifecycleReported = false;
   const compactions: CompactionState[] = [];
   const byItemId = new Map<string, CompactionState>();
   const clears: Array<{ id: string; at: number; sequence: number }> = [];
@@ -163,6 +158,7 @@ export function buildRecordedCompactions(
       startedAt: null,
       completedAt: null,
       confirmed: false,
+      ended: false,
     };
     byItemId.set(itemId, created);
     compactions.push(created);
@@ -173,13 +169,27 @@ export function buildRecordedCompactions(
     const data = parseData(row);
     if (row.type === "item/started" && row.itemId) {
       lastClearSource = null;
+      lifecycleReported = true;
       const compaction = compactionForItem(row, row.itemId);
       compaction.startedAt ??= row.createdAt;
       continue;
     }
     if (row.type === "item/completed" && row.itemId) {
       lastClearSource = null;
-      compactionForItem(row, row.itemId);
+      lifecycleReported = true;
+      compactionForItem(row, row.itemId).ended = true;
+      continue;
+    }
+    if (row.type === "provider/error" || row.type === "provider/warning") {
+      const open = [...compactions]
+        .reverse()
+        .find(
+          (compaction) =>
+            compaction.turnId === row.turnId &&
+            !compaction.ended &&
+            !compaction.confirmed,
+        );
+      if (open) open.ended = true;
       continue;
     }
     if (row.type === "thread/compacted") {
@@ -209,6 +219,7 @@ export function buildRecordedCompactions(
             startedAt: null,
             completedAt: null,
             confirmed: false,
+            ended: true,
           };
           compactions.push(target);
         }
@@ -244,10 +255,13 @@ export function buildRecordedCompactions(
 
   const activeTurnId =
     thread.status === "active" ? getActiveStoredTurnId(db, thread.id) : null;
+  if (!lifecycleReported) gaps.add("provider-unverified");
   const statusOf = (compaction: CompactionState) =>
     compaction.confirmed
       ? ("completed" as const)
-      : activeTurnId !== null && compaction.turnId === activeTurnId
+      : !compaction.ended &&
+          activeTurnId !== null &&
+          compaction.turnId === activeTurnId
         ? ("in_progress" as const)
         : ("unconfirmed" as const);
 
