@@ -80,7 +80,7 @@ Results (`out/test-results.json`, `out/desktop-results.json`):
 | Preview that forbids framing → explained, Select disabled | ✅ | ✅ | ✅ | — |
 | Shell refuses to be framed by other sites | ✅ | ✅ | ✅ | — |
 
-99/99 browser checks and the Electron run pass in this sandbox. Two real bugs were found and fixed on the way: WebKit ignores SVG `viewBox` offsets for `foreignObject` (crop showed the wrong area), and WebKit's `-webkit-standard` font rendered as serif.
+99/99 browser checks and the Electron run pass in this sandbox. The desktop highlight is the Chromium inspector overlay (`Overlay.highlightNode`); it needs `DOM.getDocument` first or it silently draws nothing, and it is not included in `capturePage`, so it can't leak into crops. Evidence is a screen grab, `out/desktop-native-highlight.png`. Two real bugs were found and fixed on the way: WebKit ignores SVG `viewBox` offsets for `foreignObject` (crop showed the wrong area), and WebKit's `-webkit-standard` font rendered as serif.
 
 Evidence: `out/` (crops, uploaded images, highlight), `designs/` (renders below).
 

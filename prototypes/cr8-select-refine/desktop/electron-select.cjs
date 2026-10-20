@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, nativeImage } = require("electron");
+const { app, BrowserWindow, WebContentsView, nativeImage, desktopCapturer } = require("electron");
 const { readFileSync, writeFileSync, mkdirSync } = require("node:fs");
 const { join } = require("node:path");
 
@@ -28,6 +28,7 @@ function createSelector(contents) {
     if (dbg.isAttached()) throw new Error("busy: an agent is controlling this tab");
     dbg.attach("1.3");
     await send("DOM.enable");
+    await send("DOM.getDocument", { depth: 0 });
     await send("Overlay.enable");
     await send("Page.enable");
     await send("Runtime.enable");
@@ -107,7 +108,7 @@ function createSelector(contents) {
       burned.push({ ...m, x: m.x - area.x, y: m.y - area.y });
     }
     const png = nativeImage.createFromBitmap(bitmap, { width: size.width, height: size.height }).toPNG();
-    await send("Overlay.highlightNode", { backendNodeId, highlightConfig: { contentColor: { r: 191, g: 255, b: 0, a: 0.15 }, borderColor: { r: 191, g: 255, b: 0, a: 1 } } });
+    await send("Overlay.highlightNode", { backendNodeId, highlightConfig: { showInfo: true, contentColor: { r: 191, g: 255, b: 0, a: 0.25 }, paddingColor: { r: 191, g: 255, b: 0, a: 0.35 }, borderColor: { r: 191, g: 255, b: 0, a: 1 } } });
     return { element, crop: { kind: "native", png, area, scale, masks: burned, target: { x: r.x - area.x, y: r.y - area.y, width: r.width, height: r.height } } };
   }
 
@@ -172,8 +173,10 @@ app.whenReady().then(async () => {
     results.cropScale = crop.scale;
     results.rectMatches = Math.abs(element.rect.x - target.rect.x) < 1 && Math.abs(element.rect.y - target.rect.y) < 1 && Math.abs(element.rect.width - target.rect.width) < 1;
     writeFileSync(join(OUT, "desktop-crop-button.png"), crop.png);
-    const highlighted = await contents.capturePage();
-    writeFileSync(join(OUT, "desktop-native-highlight.png"), highlighted.toPNG());
+    await new Promise((r) => setTimeout(r, 300));
+    const [screen] = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1280, height: 860 } });
+    if (screen) writeFileSync(join(OUT, "desktop-native-highlight.png"), screen.thumbnail.crop({ x: 0, y: 0, width: 1280, height: 860 }).toPNG());
+    results.highlightCaptured = Boolean(screen);
     selector.stop();
 
     const loginTarget = await evalMain(contents, "(() => { const f = document.querySelector('form.login'); f.scrollIntoView({ block: 'center' }); const r = f.getBoundingClientRect(); return { x: Math.round(r.left + 6), y: Math.round(r.top + r.height / 2) }; })()");
