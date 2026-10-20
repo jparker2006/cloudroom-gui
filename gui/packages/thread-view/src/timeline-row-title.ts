@@ -114,6 +114,7 @@ export type TimelineTitleAction =
   | {
       kind: "open-image-preview";
       path: string;
+      cwd: string | null;
     };
 
 export interface TimelineTitle {
@@ -199,9 +200,12 @@ function segment(
   };
 }
 
-function imagePreviewAction(path: string | null): TimelineTitleAction | null {
+function imagePreviewAction(
+  path: string | null,
+  cwd: string | null = null,
+): TimelineTitleAction | null {
   return path !== null && /\.png$/iu.test(path)
-    ? { kind: "open-image-preview", path }
+    ? { kind: "open-image-preview", path, cwd }
     : null;
 }
 
@@ -215,9 +219,7 @@ function intentImagePreviewAction(
   if (intent.path.startsWith("/") || cwd === undefined) {
     return imagePreviewAction(intent.path);
   }
-  return cwd?.startsWith("/")
-    ? imagePreviewAction(`${cwd.replace(/\/+$/u, "")}/${intent.path}`)
-    : null;
+  return cwd?.startsWith("/") ? imagePreviewAction(intent.path, cwd) : null;
 }
 
 function explorationRowCwd(

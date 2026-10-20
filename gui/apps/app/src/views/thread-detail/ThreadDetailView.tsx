@@ -2265,6 +2265,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             return null;
           }
           const link = resolveOpenableTimelineImagePreviewLink({
+            cwd: action.cwd,
             hostFileLinksAvailable,
             path: action.path,
             relativeRootPath: imagePreviewWorkspaceRootPath,

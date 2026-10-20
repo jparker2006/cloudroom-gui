@@ -9,6 +9,7 @@ import { isRoutePath } from "./route-paths";
 
 const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =
   "Thread file links are only available when the thread has an environment.";
+const UNSAFE_PATH_CHARACTERS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\]/u;
 const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
   "Thread file links must use absolute file paths.";
 
@@ -29,6 +30,7 @@ interface ResolveTimelineImagePreviewRootPathArgs {
 }
 
 interface ResolveTimelineImagePreviewLinkArgs {
+  cwd?: string | null;
   path: string;
   workspaceRootPath: string | null;
 }
@@ -37,6 +39,7 @@ interface ResolveOpenableTimelineImagePreviewLinkArgs extends Omit<
   ResolveThreadLocalFileLinkArgs,
   "link"
 > {
+  cwd: string | null;
   path: string;
   relativeRootPath: string | null;
 }
@@ -211,18 +214,26 @@ export function resolveThreadLocalFileLink(
 }
 
 export function resolveTimelineImagePreviewLink({
+  cwd = null,
   path,
   workspaceRootPath,
 }: ResolveTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
   if (
     !/\.png$/iu.test(path) ||
-    /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\]/u.test(path) ||
+    UNSAFE_PATH_CHARACTERS.test(path) ||
+    (cwd !== null && UNSAFE_PATH_CHARACTERS.test(cwd)) ||
     /^(?:~|[a-z][a-z0-9+.-]*:)/iu.test(path)
   ) {
     return null;
   }
-  if (path.startsWith("/")) {
-    const absolutePath = normalizeAbsoluteFilePath({ path });
+  const baseDir = path.startsWith("/") ? null : cwd;
+  if (path.startsWith("/") || baseDir !== null) {
+    const absolutePath = normalizeAbsoluteFilePath({
+      path:
+        baseDir === null
+          ? path
+          : buildAbsoluteFilePath({ path, rootPath: baseDir }),
+    });
     return absolutePath === null || isRoutePath({ path: absolutePath })
       ? null
       : { lineRange: null, path: absolutePath };
@@ -255,11 +266,13 @@ export function resolveTimelineImagePreviewRootPath({
 }
 
 export function resolveOpenableTimelineImagePreviewLink({
+  cwd,
   path,
   relativeRootPath,
   ...routing
 }: ResolveOpenableTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
   const link = resolveTimelineImagePreviewLink({
+    cwd,
     path,
     workspaceRootPath: relativeRootPath,
   });

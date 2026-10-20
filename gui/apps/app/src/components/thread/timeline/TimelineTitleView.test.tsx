@@ -2,7 +2,10 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TimelineFileReadWorkRow } from "@cloudroom/server-contract";
+import type {
+  TimelineCommandWorkRow,
+  TimelineFileReadWorkRow,
+} from "@cloudroom/server-contract";
 import { buildTimelineRowTitle } from "@cloudroom/thread-view";
 import { resolveTimelineImagePreviewLink } from "@/lib/thread-local-file-links";
 import {
@@ -31,15 +34,46 @@ function fileReadRow(path: string): TimelineFileReadWorkRow {
   };
 }
 
-function renderFileReadTitle(path: string, open = vi.fn()) {
+function commandReadRow(path: string, cwd: string): TimelineCommandWorkRow {
+  return {
+    kind: "work",
+    workKind: "command",
+    id: `cmd:${path}`,
+    callId: `call:${path}`,
+    turnId: "turn-1",
+    threadId: "thr_one",
+    sourceSeqStart: 1,
+    sourceSeqEnd: 2,
+    startedAt: 1_000,
+    createdAt: 1_000,
+    completedAt: 2_000,
+    status: "completed",
+    command: `cat ${path}`,
+    cwd,
+    source: null,
+    output: "",
+    exitCode: 0,
+    approvalStatus: null,
+    activityIntents: [
+      { type: "read", command: `cat ${path}`, name: "cat", path },
+    ],
+  };
+}
+
+function renderFileReadTitle(
+  path: string,
+  open = vi.fn(),
+  row: TimelineFileReadWorkRow | TimelineCommandWorkRow = fileReadRow(path),
+) {
   const rowToggle = vi.fn();
-  const title = buildTimelineRowTitle(fileReadRow(path), {
+  const title = buildTimelineRowTitle(row, {
     summaryStyle: "bundle",
     workStyle: "default",
   });
   const onTitleAction: TimelineTitleActionResolver = (action) => {
     if (action.kind !== "open-image-preview") return null;
     const link = resolveTimelineImagePreviewLink({
+      cwd: action.cwd,
       path: action.path,
       workspaceRootPath: "/repo",
     });
@@ -107,6 +141,28 @@ describe("TimelineTitleView image previews", () => {
     expect(text.className).not.toContain("cursor-pointer");
     fireEvent.click(text);
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("opens command PNG reads relative to the command cwd", () => {
+    const { open } = renderFileReadTitle(
+      "chart.png",
+      vi.fn(),
+      commandReadRow("chart.png", "/repo/subdir"),
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "chart.png" }));
+
+    expect(open).toHaveBeenCalledWith("/repo/subdir/chart.png");
+  });
+
+  it("keeps unsafe command PNG reads plain even with a cwd", () => {
+    renderFileReadTitle(
+      "~/Desktop/shot.png",
+      vi.fn(),
+      commandReadRow("~/Desktop/shot.png", "/repo/subdir"),
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("keeps PNG reads plain on surfaces without a preview panel", () => {

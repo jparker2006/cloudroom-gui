@@ -232,6 +232,34 @@ describe("resolveTimelineImagePreviewLink", () => {
     ).toBeNull();
   });
 
+  it("resolves command reads against the command cwd", () => {
+    expect(
+      resolveTimelineImagePreviewLink({
+        cwd: "/home/me/project/sub",
+        path: "../shots/chart.png",
+        workspaceRootPath,
+      }),
+    ).toEqual({ lineRange: null, path: "/home/me/project/shots/chart.png" });
+    expect(
+      resolveTimelineImagePreviewLink({
+        cwd: "/home/me/project/sub",
+        path: "/tmp/abs.png",
+        workspaceRootPath,
+      }),
+    ).toEqual({ lineRange: null, path: "/tmp/abs.png" });
+  });
+
+  it.each([
+    ["home-relative paths", "/repo/subdir", "~/Desktop/shot.png"],
+    ["URL-shaped paths", "/repo/subdir", "https://example.com/shot.png"],
+    ["relative cwds", "subdir", "chart.png"],
+    ["cwds with control characters", "/repo/sub\ndir", "chart.png"],
+  ])("rejects %s before joining the command cwd", (_label, cwd, path) => {
+    expect(
+      resolveTimelineImagePreviewLink({ cwd, path, workspaceRootPath }),
+    ).toBeNull();
+  });
+
   it("rejects relative paths when the thread has no workspace", () => {
     expect(
       resolveTimelineImagePreviewLink({
@@ -405,6 +433,7 @@ describe("resolveOpenableTimelineImagePreviewLink", () => {
   it("keeps host-only PNGs plain when the thread has no host access", () => {
     expect(
       resolveOpenableTimelineImagePreviewLink({
+        cwd: null,
         hostFileLinksAvailable: false,
         path: "/tmp/shot.png",
         relativeRootPath: null,
@@ -417,6 +446,7 @@ describe("resolveOpenableTimelineImagePreviewLink", () => {
   it("still opens workspace PNGs without host access", () => {
     expect(
       resolveOpenableTimelineImagePreviewLink({
+        cwd: null,
         hostFileLinksAvailable: false,
         path: "assets/chart.png",
         relativeRootPath: "/home/me/project",

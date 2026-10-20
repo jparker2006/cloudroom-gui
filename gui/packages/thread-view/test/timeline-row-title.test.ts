@@ -1093,6 +1093,7 @@ describe("buildTimelineRowTitle", () => {
     expect(title.action).toEqual({
       kind: "open-image-preview",
       path: "/repo/assets/Chart.PNG",
+      cwd: null,
     });
     expect(title.segments[1]).toMatchObject({
       text: "Chart.PNG",
@@ -1115,6 +1116,7 @@ describe("buildTimelineRowTitle", () => {
     expect(title.action).toEqual({
       kind: "open-image-preview",
       path: "assets/chart.png",
+      cwd: null,
     });
   });
 
@@ -1140,7 +1142,7 @@ describe("buildTimelineRowTitle", () => {
     const titles = buildTimelineActivityIntentTitles(row);
 
     expect(titles.map((entry) => entry.title.action)).toEqual([
-      { kind: "open-image-preview", path: "/repo/sub/out/render.png" },
+      { kind: "open-image-preview", path: "out/render.png", cwd: "/repo/sub/" },
       null,
       null,
     ]);
@@ -1178,13 +1180,15 @@ describe("buildTimelineRowTitle", () => {
 
     expect(withCwd.action).toEqual({
       kind: "open-image-preview",
-      path: "/repo/subdir/chart.png",
+      path: "chart.png",
+      cwd: "/repo/subdir",
     });
     expect(withoutCwd.action).toBeNull();
     expect(withoutCwd.segments.some((s) => s.accent === "file")).toBe(false);
     expect(absoluteWithoutCwd.action).toEqual({
       kind: "open-image-preview",
       path: "/repo/chart.png",
+      cwd: null,
     });
   });
 
