@@ -1,12 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useQueryClient,
   type QueryObserverResult,
 } from "@tanstack/react-query";
-import type { ThreadTimelineResponse, TimelineRow } from "@cloudroom/server-contract";
+import type { ThreadQueuedMessage } from "@cloudroom/domain";
+import type {
+  ThreadQueuedMessageListResponse,
+  ThreadTimelineResponse,
+  TimelineRow,
+} from "@cloudroom/server-contract";
 import {
   areTimelinePaginationCursorsEqual,
   buildLoadedTimelineState,
+  isOptimisticTimelineRowId,
   mergeLoadedTimelineWithLatest,
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
@@ -16,7 +22,12 @@ import {
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
-import { useThreadTimeline } from "@/hooks/queries/thread-queries";
+import { buildPendingSteerTimelineRow } from "@/hooks/cache-owners/thread-runtime-cache-owner";
+import {
+  useThreadQueuedMessages,
+  useThreadTimeline,
+} from "@/hooks/queries/thread-queries";
+import { isPendingSteerQueuedMessage } from "@/lib/queued-message-wait";
 import { BbHttpError, sdk } from "@/lib/sdk";
 
 type TimelineQueryResultProp =
@@ -102,6 +113,95 @@ function reconcileLoadedTimeline({
     latestTimeline,
     surfaceKey,
   });
+}
+
+const PENDING_STEER_HANDOFF_MS = 2_000;
+
+interface PendingSteerState {
+  queuedMessages: ThreadQueuedMessageListResponse | undefined;
+  shown: readonly ThreadQueuedMessage[];
+  threadId: string;
+}
+
+export function nextShownPendingSteers(
+  previous: readonly ThreadQueuedMessage[],
+  queuedMessages: ThreadQueuedMessageListResponse | undefined,
+): readonly ThreadQueuedMessage[] {
+  if (queuedMessages === undefined) return previous;
+  const queuedIds = new Set(queuedMessages.map((message) => message.id));
+  return [
+    ...previous.filter((message) => !queuedIds.has(message.id)),
+    ...queuedMessages.filter(isPendingSteerQueuedMessage),
+  ].sort((left, right) => left.createdAt - right.createdAt);
+}
+
+export function appendPendingSteerRows(
+  rows: TimelineRow[],
+  pendingSteers: readonly ThreadQueuedMessage[],
+): TimelineRow[] {
+  if (pendingSteers.length === 0) return rows;
+  const claimedRowIds = new Set<string>();
+  const appendedRows: TimelineRow[] = [];
+  for (const pendingSteer of pendingSteers) {
+    const pendingRow = buildPendingSteerTimelineRow(pendingSteer);
+    const matchingRow = rows.find(
+      (row) =>
+        !claimedRowIds.has(row.id) &&
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        row.text === pendingRow.text &&
+        (isOptimisticTimelineRowId(row.id) ||
+          row.createdAt >= pendingSteer.createdAt),
+    );
+    if (matchingRow) {
+      claimedRowIds.add(matchingRow.id);
+    } else {
+      appendedRows.push(pendingRow);
+    }
+  }
+  return appendedRows.length === 0 ? rows : [...rows, ...appendedRows];
+}
+
+export function usePendingSteerHandoff(
+  threadId: string,
+  queuedMessages: ThreadQueuedMessageListResponse | undefined,
+): readonly ThreadQueuedMessage[] {
+  const [state, setState] = useState<PendingSteerState>(() => ({
+    queuedMessages,
+    shown: nextShownPendingSteers([], queuedMessages),
+    threadId,
+  }));
+  let shown = state.shown;
+  if (state.threadId !== threadId || state.queuedMessages !== queuedMessages) {
+    shown = nextShownPendingSteers(
+      state.threadId === threadId ? state.shown : [],
+      queuedMessages,
+    );
+    setState({ queuedMessages, shown, threadId });
+  }
+  const departedSteerIds =
+    queuedMessages === undefined
+      ? ""
+      : shown
+          .filter(
+            (message) =>
+              !queuedMessages.some((queued) => queued.id === message.id),
+          )
+          .map((message) => message.id)
+          .join(",");
+  useEffect(() => {
+    if (departedSteerIds === "") return;
+    const timer = setTimeout(() => {
+      setState((current) => ({
+        ...current,
+        shown: current.shown.filter((message) =>
+          current.queuedMessages?.some((queued) => queued.id === message.id),
+        ),
+      }));
+    }, PENDING_STEER_HANDOFF_MS);
+    return () => clearTimeout(timer);
+  }, [departedSteerIds]);
+  return shown;
 }
 
 export function useThreadTimelineController({
@@ -244,21 +344,29 @@ export function useThreadTimelineController({
     threadId,
     updateLoadedTimeline,
   ]);
-  const timelineRows =
+  const loadedTimelineRows =
     loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
       ? loadedTimeline.rows
       : (latestTimeline?.rows ?? []);
+  const { data: queuedMessages } = useThreadQueuedMessages(threadId, {
+    enabled,
+  });
+  const pendingSteers = usePendingSteerHandoff(threadId, queuedMessages);
+  const timelineRows = useMemo(
+    () => appendPendingSteerRows(loadedTimelineRows, pendingSteers),
+    [loadedTimelineRows, pendingSteers],
+  );
   const timelineQueryState = useConnectionAwareQueryState({
     hasResolvedData:
-      latestTimelineQuery.data !== undefined || timelineRows.length > 0,
+      latestTimelineQuery.data !== undefined || loadedTimelineRows.length > 0,
     isFetching: latestTimelineQuery.isFetching,
     isLoadingError: latestTimelineQuery.isLoadingError,
     isRecoverableLoadingError: isTransientReadError(latestTimelineQuery.error),
   });
   const timelineLoading =
     latestTimelineQuery.isLoading ||
-    (timelineQueryState.status === "loading" && timelineRows.length === 0) ||
-    (latestTimelineQuery.isFetching && timelineRows.length === 0);
+    (timelineQueryState.status === "loading" && loadedTimelineRows.length === 0) ||
+    (latestTimelineQuery.isFetching && loadedTimelineRows.length === 0);
   const timelineError =
     timelineLoading || timelineQueryState.status !== "unavailable"
       ? null

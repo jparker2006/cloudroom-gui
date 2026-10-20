@@ -18,7 +18,7 @@ import type {
   ThreadSearchResponse,
   ThreadTimelineResponse,
   TimelineConversationAttachments,
-  TimelineRow,
+  TimelineUserConversationRow,
   UpdateQueuedMessageRequest,
 } from "@cloudroom/server-contract";
 import type { AppCreateThreadRequest } from "@cloudroom/client-core";
@@ -218,6 +218,7 @@ interface BuildAcceptedPromptHistoryEntryArgs {
 
 interface BuildOptimisticUserMessageRowParams {
   createdAt: number;
+  id?: string;
   input: SendThreadMessageMutationRequest["input"];
   mode: SendThreadMessageMutationRequest["mode"];
   threadId: string;
@@ -578,12 +579,12 @@ function requestWillOptimisticallyQueue(
 
 function buildOptimisticUserMessageRow({
   createdAt,
+  id = `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}${nanoid()}`,
   input,
   mode,
   threadId,
   threadStatus,
-}: BuildOptimisticUserMessageRowParams): TimelineRow {
-  const id = `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}${nanoid()}`;
+}: BuildOptimisticUserMessageRowParams): TimelineUserConversationRow {
   const text = input
     .filter(
       (entry): entry is Extract<typeof entry, { type: "text" }> =>
@@ -626,6 +627,19 @@ function buildOptimisticUserMessageRow({
       status: "pending",
     },
   };
+}
+
+export function buildPendingSteerTimelineRow(
+  queuedMessage: ThreadQueuedMessage,
+): TimelineUserConversationRow {
+  return buildOptimisticUserMessageRow({
+    createdAt: queuedMessage.createdAt,
+    id: `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}queued-${queuedMessage.id}`,
+    input: queuedMessage.content,
+    mode: "steer",
+    threadId: queuedMessage.threadId,
+    threadStatus: "active",
+  });
 }
 
 function applyOptimisticAcceptedTurnThreadState({

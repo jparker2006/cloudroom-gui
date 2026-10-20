@@ -125,6 +125,7 @@ import {
   showMutationErrorToast,
 } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
+import { isPendingSteerQueuedMessage } from "@/lib/queued-message-wait";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import {
   emptyPromptDraftState,
@@ -500,7 +501,13 @@ export function ThreadDetailPromptArea({
   const queuedMessagesQuery = useThreadQueuedMessages(thread.id, {
     enabled: true,
   });
-  const queuedMessages = queuedMessagesQuery.data ?? EMPTY_QUEUED_MESSAGES;
+  const queuedMessages = useMemo(
+    () =>
+      queuedMessagesQuery.data?.filter(
+        (message) => !isPendingSteerQueuedMessage(message),
+      ) ?? EMPTY_QUEUED_MESSAGES,
+    [queuedMessagesQuery.data],
+  );
   const queuedMessagesPending =
     queuedMessagesQuery.data === undefined && queuedMessageCount > 0;
   const queuedMessagesRef =

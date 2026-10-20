@@ -64,6 +64,7 @@ import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
+import { isPendingSteerQueuedMessage } from "@/lib/queued-message-wait";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -262,7 +263,14 @@ function EmbeddedThreadChatWithComposer({
     markThreadRead,
     thread: threadQuery.data,
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId);
+  const { data: threadQueuedMessages } = useThreadQueuedMessages(threadId);
+  const queuedMessages = useMemo(
+    () =>
+      threadQueuedMessages?.filter(
+        (message) => !isPendingSteerQueuedMessage(message),
+      ) ?? [],
+    [threadQueuedMessages],
+  );
 
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     composer.executionDefaultsThreadId,

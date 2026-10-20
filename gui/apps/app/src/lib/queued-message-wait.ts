@@ -1,4 +1,8 @@
-import type { QueuedMessagePayload, QueuedMessageWaitingOn } from "@cloudroom/domain";
+import type {
+  QueuedMessagePayload,
+  QueuedMessageWaitingOn,
+  ThreadQueuedMessage,
+} from "@cloudroom/domain";
 import type { IconName } from "@cloudroom/shared-ui/icon";
 import { formatScheduledTime } from "@/lib/relative-time";
 
@@ -39,6 +43,16 @@ export function isQueuedMessageSendNowAllowed(
     case "thread-busy":
       return true;
   }
+}
+
+export function isPendingSteerQueuedMessage(
+  message: Pick<ThreadQueuedMessage, "failureReason" | "initiator" | "waitingOn">,
+): boolean {
+  return (
+    message.initiator === "user" &&
+    message.failureReason === null &&
+    message.waitingOn?.kind === "turn-starting"
+  );
 }
 
 export function queuedMessageHasWaitLine(args: {
