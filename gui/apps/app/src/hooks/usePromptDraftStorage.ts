@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@cloudroom/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@cloudroom/client-core";
 import type {
@@ -300,6 +300,15 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     ),
     useCallback(() => readPromptDraft(storageKey), [storageKey]),
     () => EMPTY_PROMPT_DRAFT,
+  );
+
+  useEffect(
+    () => () => {
+      if (pendingPromptDraftStorageKeys.has(storageKey)) {
+        persistPromptDraftCache(storageKey);
+      }
+    },
+    [storageKey],
   );
 
   const setDraftAndPersist = useCallback(

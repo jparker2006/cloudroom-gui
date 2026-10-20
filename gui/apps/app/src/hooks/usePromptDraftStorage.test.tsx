@@ -400,3 +400,25 @@ describe("project-scoped new-thread drafts", () => {
     expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toContain("alpha text");
   });
 });
+
+describe("switching projects in the new-thread composer", () => {
+  it("saves the origin draft at the switch and shows the destination draft", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem(
+      "bb.promptbox.contents-new-thread-proj_beta-3",
+      storedDraft("beta text"),
+    );
+    const { result, rerender } = renderHook(
+      ({ projectId }) => usePromptDraftStorage({ kind: "new-thread", projectId }),
+      { initialProps: { projectId: "proj_alpha" } },
+    );
+
+    act(() => result.current.setTextAndMentions("alpha typed", []));
+    rerender({ projectId: "proj_beta" });
+
+    expect(result.current.text).toBe("beta text");
+    expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toBe(
+      storedDraft("alpha typed"),
+    );
+  });
+});
