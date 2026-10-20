@@ -147,7 +147,9 @@ Rules:
   failure offers **Copy draft** (clipboard).
 - Accessibility: the switch note is a polite live region, and warnings use the
   existing alert role. Focus is not moved to a banner, because it can appear
-  while the user is typing.
+  while the user is typing. Banners render in the existing banner slot, which comes
+  before the editor in DOM order, so their buttons are reachable by Tab and by
+  screen readers.
 
 ## Failures
 
