@@ -5,7 +5,7 @@ import {
   providerUsageWindowSchema,
 } from "../src/index.js";
 
-const legacyWindowSchema = z
+const preRawPassthroughWindowSchema = z
   .object({
     label: z.string().min(1),
     usedPercent: z.number().min(0).max(100),
@@ -44,9 +44,9 @@ describe("provider usage window reportedUsedPercent", () => {
     ).toBe(false);
   });
 
-  it("survives an older parser and the provider.usage result parse unchanged", () => {
+  it("survives a passthrough copy of the pre-raw window schema and the provider.usage result parse", () => {
     const current = { ...window, reportedUsedPercent: 130 };
-    expect(legacyWindowSchema.parse(current)).toMatchObject({
+    expect(preRawPassthroughWindowSchema.parse(current)).toMatchObject({
       reportedUsedPercent: 130,
     });
     const result = providerUsageResultSchema.parse({

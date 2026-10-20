@@ -26,9 +26,11 @@ source.
 Local Claude Code, Codex, ACP and cloud Claude usage arrives through the
 provider bridge contract, whose `usedPercent` is rounded and capped at 100.
 Current producers also send the raw `reportedUsedPercent`, which the source
-plugins prefer, so over-limit amounts and pace stay exact. A value from an older
-producer without that field is marked capped: 100 reads "At or over limit", and
-pace is unavailable because the exact value is unknown.
+plugins prefer, so over-limit amounts and pace stay exact. Producers send it
+only for a measured value; missing usage stays unavailable. A window whose raw
+value is absent, null or not a finite nonnegative number is marked capped: 100
+reads "At or over limit", and pace is unavailable because the exact value is
+unknown.
 
 Known limits: Codex accounts kept by the website
 report no measurement time, window type or length: they show their reported

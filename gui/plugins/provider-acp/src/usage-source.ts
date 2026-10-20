@@ -19,6 +19,11 @@ const windowMetadataSchema = z.object({
   kind: usageWindowKindSchema.catch("custom"),
   model: z.string().nullable().catch(null),
 });
+const reportedUsedPercentSchema = z
+  .number()
+  .nonnegative()
+  .optional()
+  .catch(undefined);
 
 export function registerUsageSource(bb: BbPluginApi) {
   const cache = new Map<string, UsageMeasurement>();
@@ -82,14 +87,19 @@ export function registerUsageSource(bb: BbPluginApi) {
             plan: metadata.plan,
             ...(usage.status === "ok"
               ? {
-                  windows: usage.windows.map((window, index) => ({
-                    ...window,
-                    usedPercent: window.reportedUsedPercent ?? window.usedPercent,
-                    usedPercentCapped: window.reportedUsedPercent === undefined,
-                    ...windowMetadataSchema.parse(window),
-                    id: `${index}:${window.label}`,
-                    cost: window.cost ?? null,
-                  })),
+                  windows: usage.windows.map((window, index) => {
+                    const reported = reportedUsedPercentSchema.parse(
+                      window.reportedUsedPercent,
+                    );
+                    return {
+                      ...window,
+                      usedPercent: reported ?? window.usedPercent,
+                      usedPercentCapped: reported === undefined,
+                      ...windowMetadataSchema.parse(window),
+                      id: `${index}:${window.label}`,
+                      cost: window.cost ?? null,
+                    };
+                  }),
                 }
               : {}),
           },

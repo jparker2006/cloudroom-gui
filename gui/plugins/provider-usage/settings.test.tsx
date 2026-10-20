@@ -379,29 +379,38 @@ it("shows even-window pacing as of each account's own measurement without leakin
   expect(slot.getAllByText(/As of/).length).toBe(2);
 });
 
-it("ignores a usage-details request that expired before the page opened", async () => {
-  const { requestUsageDetailsMachine } = await import("./settings.js");
-  const app = await loadPluginApp(() => import("./app"));
-  const start = Date.now();
-  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
-  requestUsageDetailsMachine("source:second");
-  clock.mockReturnValue(start + 61_000);
-  const result = {
-    machines: [
-      { ...machine("source:first", [account("one")]), displayName: "First" },
-      { ...machine("source:second", [account("two")]), displayName: "Second" },
-    ],
-  };
-  try {
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      { rpc: { getUsage: () => result } },
-    );
-    expect(
-      (await slot.findByRole("button", { name: "Usage source" })).textContent,
-    ).toContain("First");
-  } finally {
-    clock.mockRestore();
-  }
-});
+it.each([
+  [9_000, "Second"],
+  [11_000, "First"],
+])(
+  "applies a usage-details request only within 10 seconds (%i ms)",
+  async (elapsed, selected) => {
+    const { requestUsageDetailsMachine } = await import("./settings.js");
+    const app = await loadPluginApp(() => import("./app"));
+    const start = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+    requestUsageDetailsMachine("source:second");
+    clock.mockReturnValue(start + elapsed);
+    const result = {
+      machines: [
+        { ...machine("source:first", [account("one")]), displayName: "First" },
+        {
+          ...machine("source:second", [account("two")]),
+          displayName: "Second",
+        },
+      ],
+    };
+    try {
+      const slot = renderSlot(
+        app.settingsSections[0]!,
+        {},
+        { rpc: { getUsage: () => result } },
+      );
+      expect(
+        (await slot.findByRole("button", { name: "Usage source" })).textContent,
+      ).toContain(selected);
+    } finally {
+      clock.mockRestore();
+    }
+  },
+);

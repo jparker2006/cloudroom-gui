@@ -212,7 +212,9 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
   }
 });
 
-it("prefers raw reported usage and marks a legacy capped value as capped", async () => {
+it("selects and marks raw reported usage only from a finite nonnegative number", async () => {
+  const legacy = { kind: "custom", usedPercent: 100, resetsAt: null };
+  const raw = [130, 100, 0, undefined, null, "130", -5, Number.NaN, Infinity];
   const { bb, harness } = createFakePluginHost({
     sdk: {
       hosts: {
@@ -222,7 +224,7 @@ it("prefers raw reported usage and marks a legacy capped value as capped", async
       },
       providers: {
         list: async () => [
-          { id: "codex", displayName: "Codex", pluginId: "provider-codex" },
+          { id: "codex", displayName: "Provider", pluginId: "provider-codex" },
         ],
       },
       system: {
@@ -231,28 +233,13 @@ it("prefers raw reported usage and marks a legacy capped value as capped", async
             status: "ok",
             accountEmail: null,
             planLabel: null,
-            windows: [
-              {
-                label: "5h",
-                kind: "five-hour",
-                usedPercent: 100,
-                reportedUsedPercent: 130,
-                resetsAt: null,
-              },
-              {
-                label: "7d",
-                kind: "weekly",
-                usedPercent: 0,
-                reportedUsedPercent: 0,
-                resetsAt: null,
-              },
-              {
-                label: "Legacy",
-                kind: "custom",
-                usedPercent: 100,
-                resetsAt: null,
-              },
-            ],
+            windows: raw.map((reportedUsedPercent, index) => ({
+              ...legacy,
+              label: `w${index}`,
+              ...(reportedUsedPercent === undefined
+                ? {}
+                : { reportedUsedPercent }),
+            })),
           },
         }),
       },
@@ -266,13 +253,23 @@ it("prefers raw reported usage and marks a legacy capped value as capped", async
         refresh: true,
       }),
     );
-    expect(value.usage).toMatchObject({
-      windows: [
-        { usedPercent: 130, usedPercentCapped: false },
-        { usedPercent: 0, usedPercentCapped: false },
-        { usedPercent: 100, usedPercentCapped: true },
-      ],
-    });
+    expect(
+      value.usage.status === "ok" &&
+        value.usage.windows.map(({ usedPercent, usedPercentCapped }) => [
+          usedPercent,
+          usedPercentCapped,
+        ]),
+    ).toEqual([
+      [130, false],
+      [100, false],
+      [0, false],
+      [100, true],
+      [100, true],
+      [100, true],
+      [100, true],
+      [100, true],
+      [100, true],
+    ]);
   } finally {
     await harness.lifecycle.dispose();
   }
