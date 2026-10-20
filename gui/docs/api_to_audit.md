@@ -1103,7 +1103,8 @@ actions: `experimental_npmGlobalInstallCommand` (`npm install -g
 arguments single-quoted). `experimental_clampPercent` rounds a usage
 percentage into 0–100. Usage windows also carry an optional
 `reportedUsedPercent`: the provider's finite, nonnegative value before that
-rounding and cap, which may exceed 100. `usedPercent` keeps its 0–100 meaning
+rounding and cap, which may exceed 100. Any other value parses as absent, so
+the window keeps its capped reading. `usedPercent` keeps its 0–100 meaning
 for older readers. Every usage schema level is passthrough, so older daemons,
 servers and SDK clients keep the field without parsing it; producers that do
 not set it leave consumers on the capped value. The change is additive and

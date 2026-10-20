@@ -32,12 +32,24 @@ describe("provider usage window reportedUsedPercent", () => {
     ).toMatchObject({ usedPercent: 0, reportedUsedPercent: 0 });
   });
 
-  it("rejects invalid raw values and keeps the capped field bounded", () => {
-    for (const reportedUsedPercent of [-1, Number.NaN, Infinity])
-      expect(
-        providerUsageWindowSchema.safeParse({ ...window, reportedUsedPercent })
-          .success,
-      ).toBe(false);
+  it("drops invalid raw values, keeps the capped reading and keeps it bounded", () => {
+    for (const reportedUsedPercent of [null, "130", -1, Number.NaN, Infinity]) {
+      const result = providerUsageResultSchema.parse({
+        supported: true,
+        usage: {
+          status: "ok",
+          accountEmail: null,
+          planLabel: null,
+          windows: [{ ...window, reportedUsedPercent }],
+        },
+      });
+      const parsed =
+        result.supported && result.usage.status === "ok"
+          ? result.usage.windows[0]
+          : null;
+      expect(parsed?.usedPercent).toBe(100);
+      expect(parsed?.reportedUsedPercent).toBeUndefined();
+    }
     expect(
       providerUsageWindowSchema.safeParse({ ...window, usedPercent: 130 })
         .success,

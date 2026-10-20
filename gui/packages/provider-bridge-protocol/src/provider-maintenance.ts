@@ -56,8 +56,9 @@ export const providerUsageWindowSchema = z
       .number()
       .nonnegative()
       .optional()
+      .catch(undefined)
       .describe(
-        "Provider-reported usage before display capping and rounding; may exceed 100. Absent when the producer does not report it.",
+        "Provider-reported usage before display capping and rounding; may exceed 100. Absent when the producer does not report it or reports a value that is not a finite nonnegative number.",
       ),
     resetsAt: z.string().min(1).nullable(),
     cost: z
