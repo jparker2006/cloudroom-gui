@@ -99,6 +99,7 @@ interface HostFilePreviewTabContentProps {
   onOpenInEditor?: (path: string) => void;
   onRevealInFinder?: (path: string) => void;
   onDownload?: (path: string) => void;
+  scope?: "workspace";
   threadId: string;
 }
 
@@ -383,7 +384,6 @@ export function WorkspaceFilePreviewTabContent({
 
   return (
     <SecondaryPanelFilePreview
-      allowImageDownload
       {...filePreviewQueryProps(workspaceFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
@@ -474,6 +474,7 @@ export function HostFilePreviewTabContent({
   onOpenInEditor,
   onRevealInFinder,
   onDownload,
+  scope,
   threadId,
 }: HostFilePreviewTabContentProps) {
   const hostFilePreviewQuery = useThreadHostFilePreview(
@@ -481,6 +482,7 @@ export function HostFilePreviewTabContent({
     environmentId,
     activePath,
     { enabled: isPanelOpen },
+    scope,
   );
   const resolvedMarkdownLinkRouting = useMemo(() => {
     return buildMarkdownFileImageRouting({
@@ -499,8 +501,13 @@ export function HostFilePreviewTabContent({
     <SecondaryPanelFilePreview
       {...filePreviewQueryProps(hostFilePreviewQuery)}
       activePath={activePath}
+      allowImageDownload={scope === "workspace" && onDownload === undefined}
       copyPath={copyPath}
-      htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
+      htmlPreviewUrl={
+        scope === undefined
+          ? buildRawFilesystemHtmlContentUrl(threadId, activePath)
+          : null
+      }
       lineRange={lineRange}
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}

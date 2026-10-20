@@ -64,7 +64,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { installFakeEnvironmentProvider } from "../helpers/environment-provider.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const queuedMessageIdResponseSchema = z.object({
   id: z.string(),
@@ -4333,6 +4333,95 @@ describe("public thread data routes", () => {
       expect(new Uint8Array(await fileResponse.arrayBuffer())).toEqual(
         fileBytes,
       );
+    });
+  });
+
+  describe("workspace-scoped host file content", () => {
+    async function requestScoped(
+      harness: TestAppHarness,
+      probe: "outside-storage" | "inside-storage",
+    ) {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        environment: { path: "/Users/me/project" },
+      });
+      const filePath = "/Users/me/project/shots/chart.png";
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/host-files/content?path=${encodeURIComponent(filePath)}&scope=workspace`,
+      );
+      const probeCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.file_metadata" && command.path === filePath,
+      );
+      expect(probeCommand.command).toEqual({
+        type: "host.file_metadata",
+        path: filePath,
+        rootPath: `/tmp/bb-host-data/${host.id}/thread-storage`,
+      });
+      if (probe === "inside-storage") {
+        await reportQueuedCommandSuccess(harness, probeCommand, {
+          path: filePath,
+          modifiedAtMs: 1,
+          sizeBytes: 4,
+        });
+        return { environment, filePath, response: await responsePromise };
+      }
+      await reportQueuedCommandError(harness, probeCommand, {
+        errorCode: "invalid_path",
+        errorMessage: `Path "${filePath}" escapes read root`,
+      });
+      const readCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" && command.path === filePath,
+      );
+      expect(readCommand.command).toEqual({
+        type: "host.read_file",
+        path: filePath,
+        rootPath: environment.path,
+      });
+      await reportQueuedCommandSuccess(harness, readCommand, {
+        path: filePath,
+        content: Buffer.from("png!").toString("base64"),
+        contentEncoding: "base64",
+        mimeType: "image/png",
+        sizeBytes: 4,
+        sha256: "0".repeat(64),
+      });
+      return { environment, filePath, response: await responsePromise };
+    }
+
+    it("reads workspace files with workspace containment", async () => {
+      await withTestHarness(async (harness) => {
+        const { response } = await requestScoped(harness, "outside-storage");
+
+        expect(response.status).toBe(200);
+        expect(Buffer.from(await response.arrayBuffer()).toString()).toBe(
+          "png!",
+        );
+      });
+    });
+
+    it("rejects files that resolve into thread storage without reading them", async () => {
+      await withTestHarness(async (harness) => {
+        const { filePath, response } = await requestScoped(
+          harness,
+          "inside-storage",
+        );
+
+        expect(response.status).toBe(403);
+        await expect(readJson(response)).resolves.toMatchObject({
+          code: "outside_thread_workspace",
+        });
+        await expect(
+          waitForQueuedCommand(
+            harness,
+            ({ command }) =>
+              command.type === "host.read_file" && command.path === filePath,
+            50,
+          ),
+        ).rejects.toThrow("Timed out");
+      });
     });
   });
 

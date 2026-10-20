@@ -95,6 +95,7 @@ export interface WorkspaceFileTabState {
 export interface HostFileTabState {
   lineRange: FilePreviewLineRange | null;
   path: string;
+  scope?: "workspace";
 }
 
 export interface ThreadStorageFileTabState {

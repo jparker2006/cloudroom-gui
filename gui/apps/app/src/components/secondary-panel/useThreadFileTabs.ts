@@ -519,6 +519,7 @@ export function useThreadFileTabs({
             tab: {
               lineRange: tab.lineRange,
               path: tab.path,
+              ...(tab.scope !== undefined ? { scope: tab.scope } : {}),
             },
             threadId: resolvedFileOwnerThreadId,
           });

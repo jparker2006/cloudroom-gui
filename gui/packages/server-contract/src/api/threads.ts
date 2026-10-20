@@ -1022,6 +1022,7 @@ export type ThreadStorageLocationResponse = z.infer<
 
 export const threadHostFileContentQuerySchema = z.object({
   path: z.string().min(1),
+  scope: z.literal("workspace").optional(),
 });
 export type ThreadHostFileContentQuery = z.infer<
   typeof threadHostFileContentQuerySchema

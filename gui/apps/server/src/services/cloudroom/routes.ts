@@ -87,8 +87,8 @@ export function installCloudroomRoutes(app: Hono, deps: AppDeps): void {
     return context.json(await continueShare(deps, link));
   });
   app.post("/api/v1/cloudroom/threads/:id/open-file", async context => {
-    const input = z.object({ path: z.string().regex(/^\/[^\0]*$/).max(4096) }).strict().parse(await context.req.json());
-    return context.json(await openOnMac(deps, context.req.param("id"), input.path));
+    const input = z.object({ path: z.string().regex(/^\/[^\0]*$/).max(4096), scope: z.literal("workspace").optional() }).strict().parse(await context.req.json());
+    return context.json(await openOnMac(deps, context.req.param("id"), input.path, input.scope));
   });
   app.post("/api/v1/cloudroom/import/bb", async context => {
     const problem = browserRequestProblem(context, deps, { requireJsonForMutation: true });

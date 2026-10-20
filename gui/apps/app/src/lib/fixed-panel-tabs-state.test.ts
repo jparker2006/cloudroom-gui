@@ -326,6 +326,34 @@ describe("workspace file preview fixed panel tabs", () => {
 });
 
 describe("thread-owned file preview fixed panel tabs", () => {
+  it("keeps workspace-scoped host previews separate from unscoped ones and persists the scope", () => {
+    const unscoped = createHostFilePreviewFixedPanelTab({
+      environmentId: "env_app",
+      tab: { lineRange: null, path: "/repo/chart.png" },
+      threadId: "thr_app",
+    });
+    const scoped = createHostFilePreviewFixedPanelTab({
+      environmentId: "env_app",
+      tab: { lineRange: null, path: "/repo/chart.png", scope: "workspace" },
+      threadId: "thr_app",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: { activeTabId: scoped.id, isOpen: true, tabs: [unscoped, scoped] },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(scoped.id).not.toBe(unscoped.id);
+    expect(areFixedPanelTabsEquivalent(scoped, unscoped)).toBe(false);
+    expect(parsed.secondary.tabs).toEqual([unscoped, scoped]);
+    expect(threadTabsSchema.parse([scoped])).toEqual([scoped]);
+  });
+
   it("round-trips active host and storage preview tabs with their owner thread", () => {
     const hostTab = createHostFilePreviewFixedPanelTab({
       environmentId: "env_app",

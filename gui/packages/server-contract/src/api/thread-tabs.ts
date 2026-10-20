@@ -56,6 +56,7 @@ export const threadTabFileOpenerOwnerSchema = z.discriminatedUnion("kind", [
         .object({
           lineRange: threadTabLineRangeSchema.nullable(),
           path: threadTabPathSchema,
+          scope: z.literal("workspace").optional(),
         })
         .strict(),
       threadId: z.string().min(1).nullable().default(null),
@@ -119,6 +120,7 @@ export const threadTabSchema = z.discriminatedUnion("kind", [
       kind: z.literal("host-file-preview"),
       lineRange: threadTabLineRangeSchema.nullable(),
       path: threadTabPathSchema,
+      scope: z.literal("workspace").optional(),
       threadId: z.string().min(1).nullable(),
     })
     .strict(),

@@ -2258,13 +2258,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       const options = { viewer: "builtin" } as const;
       switch (target.kind) {
         case "workspace":
-          openWorkspaceFile(
-            {
-              lineRange: null,
-              path: target.relativePath,
-              source: { kind: "working-tree" },
-              statusLabel: null,
-            },
+          openHostFile(
+            { lineRange: null, path: target.path, scope: "workspace" },
             options,
           );
           return;
@@ -2273,9 +2268,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             { lineRange: null, path: target.relativePath },
             options,
           );
-          return;
-        case "cloud-workspace":
-          openHostFile({ lineRange: null, path: target.path }, options);
           return;
         case "rejected":
           appToast.error("Can't preview this image", {
@@ -2286,7 +2278,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           assertNever(target);
       }
     },
-    [openHostFile, openStorageFile, openWorkspaceFile],
+    [openHostFile, openStorageFile],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -2868,8 +2860,16 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             })}
             onOpenInEditor={handleOpenHostFileInEditor}
             onRevealInFinder={handleRevealInFinder}
-            onDownload={isCloudThread ? openCloudFile : undefined}
+            onDownload={
+              !isCloudThread
+                ? undefined
+                : tab.scope === "workspace"
+                  ? (path: string) =>
+                      openCloudFile({ path, scope: "workspace" })
+                  : openCloudFile
+            }
             onSelectionAddToChat={handleSelectionAddToChat}
+            scope={tab.scope}
             threadId={thread.id}
           />
         );

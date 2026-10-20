@@ -297,6 +297,7 @@ type ThreadHostFilePreviewQueryKey = readonly [
   string,
   string | null | undefined,
   string | null,
+  ...([] | ["workspace"]),
 ];
 type AllThreadHostFilePreviewQueryKeyPrefix = readonly [
   typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
@@ -853,8 +854,11 @@ export function threadHostFilePreviewQueryKey(
   threadId: string,
   environmentId: string | null | undefined,
   path: string | null,
+  scope?: "workspace",
 ): ThreadHostFilePreviewQueryKey {
-  return [THREAD_HOST_FILE_PREVIEW_QUERY_KEY, threadId, environmentId, path];
+  return scope === undefined
+    ? [THREAD_HOST_FILE_PREVIEW_QUERY_KEY, threadId, environmentId, path]
+    : [THREAD_HOST_FILE_PREVIEW_QUERY_KEY, threadId, environmentId, path, scope];
 }
 
 export function hostFilePreviewQueryKey(

@@ -17,8 +17,6 @@ const IMAGE_PREVIEW_OUTSIDE_REASON =
   "Only images in this thread's workspace or storage can be previewed.";
 const IMAGE_PREVIEW_OTHER_THREAD_REASON =
   "This image belongs to another thread's storage.";
-const IMAGE_PREVIEW_OVERLAP_REASON =
-  "This workspace contains Cloudroom's thread storage, so only this thread's storage can be previewed.";
 const IMAGE_PREVIEW_UNKNOWN_ROOT_REASON =
   "This thread's files aren't available yet. Try again in a moment.";
 const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
@@ -49,9 +47,8 @@ interface ResolveTimelineImagePreviewTargetArgs {
 }
 
 export type TimelineImagePreviewTarget =
-  | { kind: "workspace"; path: string; relativePath: string }
+  | { kind: "workspace"; path: string }
   | { kind: "thread-storage"; path: string; relativePath: string }
-  | { kind: "cloud-workspace"; path: string }
   | { kind: "rejected"; reason: string };
 
 interface ThreadWorkspaceFileLinkOpenRequest {
@@ -281,7 +278,7 @@ export function resolveTimelineImagePreviewTarget({
     });
     return checkoutPath === null
       ? rejectImagePreview(IMAGE_PREVIEW_OUTSIDE_REASON)
-      : { kind: "cloud-workspace", path: checkoutPath.path };
+      : { kind: "workspace", path: checkoutPath.path };
   }
 
   if (threadStorageRootPath === null) {
@@ -312,23 +309,11 @@ export function resolveTimelineImagePreviewTarget({
   if (workspaceRootPath === null) {
     return rejectImagePreview(IMAGE_PREVIEW_OUTSIDE_REASON);
   }
-  if (
-    isAbsoluteFilePathWithinRoot({
-      candidatePath: allThreadStoragePath,
-      rootPath: workspaceRootPath,
-    })
-  ) {
-    return rejectImagePreview(IMAGE_PREVIEW_OVERLAP_REASON);
-  }
   const workspacePath = normalizeLocalFilePathWithinRoot({
     linkPath: absolutePath,
     rootPath: workspaceRootPath,
   });
   return workspacePath === null
     ? rejectImagePreview(IMAGE_PREVIEW_OUTSIDE_REASON)
-    : {
-        kind: "workspace",
-        path: workspacePath.path,
-        relativePath: workspacePath.relativePath,
-      };
+    : { kind: "workspace", path: workspacePath.path };
 }

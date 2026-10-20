@@ -271,7 +271,6 @@ describe("resolveTimelineImagePreviewTarget", () => {
       expect(resolve(local, path, cwd)).toEqual({
         kind: "workspace",
         path: `${workspace}/${relative}`,
-        relativePath: relative,
       });
     });
 
@@ -285,7 +284,7 @@ describe("resolveTimelineImagePreviewTarget", () => {
 
     it("opens a cloud checkout PNG through the thread's own sandbox", () => {
       expect(resolve(cloud, "out/render.png", "/code/app")).toEqual({
-        kind: "cloud-workspace",
+        kind: "workspace",
         path: "/code/app/out/render.png",
       });
     });
@@ -332,10 +331,11 @@ describe("resolveTimelineImagePreviewTarget", () => {
       ).toMatchObject({ kind: "rejected" });
     });
 
-    it("allows only this thread's storage when the workspace contains all thread storage", () => {
+    it("keeps other threads' storage out when the workspace contains all thread storage", () => {
       const home = { ...local, workspaceRootPath: "/home/me" };
-      expect(resolve(home, "/home/me/project/a.png")).toMatchObject({
-        kind: "rejected",
+      expect(resolve(home, "/home/me/project/a.png")).toEqual({
+        kind: "workspace",
+        path: "/home/me/project/a.png",
       });
       expect(
         resolve(home, "/home/me/.bb/thread-storage/thr_two/a.png"),

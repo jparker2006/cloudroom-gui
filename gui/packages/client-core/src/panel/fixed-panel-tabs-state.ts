@@ -100,6 +100,7 @@ const hostFilePreviewFixedPanelTabSchema = z
     kind: z.literal("host-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    scope: z.literal("workspace").optional(),
     threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
@@ -245,6 +246,7 @@ export interface HostFilePreviewFixedPanelTab {
   kind: "host-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  scope?: "workspace";
   threadId: string | null;
 }
 
@@ -413,6 +415,7 @@ interface BuildHostFilePreviewTabIdArgs {
   environmentId: string | null;
   hostId: string | null;
   path: string;
+  scope: "workspace" | undefined;
   threadId: string | null;
 }
 
@@ -465,11 +468,19 @@ function buildWorkspaceFilePreviewTabId({
 }
 
 function buildHostFilePreviewTabId({
+  scope,
+  ...args
+}: BuildHostFilePreviewTabIdArgs): string {
+  const id = buildUnscopedHostFilePreviewTabId(args);
+  return scope === undefined ? id : `${id}:scope:${scope}`;
+}
+
+function buildUnscopedHostFilePreviewTabId({
   environmentId,
   hostId,
   path,
   threadId,
-}: BuildHostFilePreviewTabIdArgs): string {
+}: Omit<BuildHostFilePreviewTabIdArgs, "scope">): string {
   if (hostId !== null) {
     return buildFixedPanelTabId({
       environmentId: `host:${hostId}`,
@@ -588,11 +599,13 @@ export function createHostFilePreviewFixedPanelTab({
       environmentId,
       hostId,
       path: tab.path,
+      scope: tab.scope,
       threadId,
     }),
     kind: "host-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    ...(tab.scope !== undefined ? { scope: tab.scope } : {}),
     threadId,
   };
 }
@@ -712,6 +725,7 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
         environmentId: tab.environmentId,
         hostId: tab.hostId,
         path: tab.path,
+        scope: tab.scope,
         threadId: tab.threadId,
       });
       return tab.id === id ? tab : { ...tab, id };
@@ -1070,6 +1084,7 @@ export function areFixedPanelTabsEquivalent(
           b: b.lineRange,
         }) &&
         a.path === b.path &&
+        a.scope === b.scope &&
         a.threadId === b.threadId
       );
     case "browser":

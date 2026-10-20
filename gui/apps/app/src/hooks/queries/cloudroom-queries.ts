@@ -225,7 +225,10 @@ export function useCopyToMac(threadId: string) {
 
 export function useOpenCloudFile(threadId: string) {
   return useMutation({
-    mutationFn: (path: string) => sdk.cloudroom.openCloudFile(threadId, path),
+    mutationFn: (input: string | { path: string; scope: "workspace" }) =>
+      typeof input === "string"
+        ? sdk.cloudroom.openCloudFile(threadId, input)
+        : sdk.cloudroom.openCloudFile(threadId, input.path, input.scope),
     onMutate: () => appToast.loading("Downloading from the cloud"),
     onSuccess: ({ path }, _path, toastId) => appToast.success(`Saved to ${path.replace(/^\/Users\/[^/]+/, "~")}`, { id: toastId }),
     onError: (error, _path, toastId) => appToast.error("Could not save the cloud file", { id: toastId, description: getMutationErrorMessage({ error, fallbackMessage: "The download failed." }) }),

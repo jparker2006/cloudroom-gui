@@ -205,12 +205,13 @@ export async function getThreadHostFilePreview(
   id: string,
   path: string,
   signal?: AbortSignal,
+  scope?: "workspace",
 ): Promise<FilePreview> {
   return loadFilePreview(
     {
       name: path.split("/").at(-1),
       path,
-      url: buildThreadHostFileContentUrl(id, path),
+      url: buildThreadHostFileContentUrl(id, path, scope),
     },
     signal,
   );

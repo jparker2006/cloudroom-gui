@@ -837,6 +837,7 @@ export function useThreadHostFilePreview(
   environmentId: string | null | undefined,
   path: string | null,
   options?: QueryOptions,
+  scope?: "workspace",
 ) {
   const enabled =
     (options?.enabled ?? true) &&
@@ -845,12 +846,13 @@ export function useThreadHostFilePreview(
   useThreadDetailRealtimeSubscription(id, { enabled });
 
   return useQuery<FilePreview>({
-    queryKey: threadHostFilePreviewQueryKey(id, environmentId, path),
+    queryKey: threadHostFilePreviewQueryKey(id, environmentId, path, scope),
     queryFn: ({ signal }) =>
       api.getThreadHostFilePreview(
         requireThreadId(id, "useThreadHostFilePreview"),
         path ?? "",
         signal,
+        scope,
       ),
     enabled,
     ...RESUME_REFETCH_QUERY_POLICY,

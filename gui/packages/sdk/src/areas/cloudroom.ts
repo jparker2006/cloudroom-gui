@@ -255,7 +255,7 @@ export interface CloudroomArea {
   /** Copies a cloud thread's branch into the Mac project without stopping its agent. */
   copyToMac(threadId: string): Promise<{ branch: string }>;
   /** Downloads a file from a cloud thread's machine into ~/Downloads and opens it. */
-  openCloudFile(threadId: string, path: string): Promise<{ path: string }>;
+  openCloudFile(threadId: string, path: string, scope?: "workspace"): Promise<{ path: string }>;
   /** Moves a thread from the cloud VM into its own sandbox (moving off the VM). Returns Teleport progress. */
   moveToSandbox(threadId: string): Promise<TeleportProgress>;
   /** Copies open BB threads into idle Local threads by forking their native sessions. Sends no prompts. */
@@ -365,7 +365,7 @@ export function createCloudroomArea({ transport }: CreateSdkAreaArgs): Cloudroom
     teleportLocal: (threadId) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}/teleport`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "local" }) })) as Promise<{ conflicts: number }>,
     moveToSandbox: (threadId) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}/teleport`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "move" }) })) as Promise<TeleportProgress>,
     copyToMac: (threadId) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}/teleport`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "copy" }) })) as Promise<{ branch: string }>,
-    openCloudFile: (threadId, path) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}/open-file`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) })) as Promise<{ path: string }>,
+    openCloudFile: (threadId, path, scope) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}/open-file`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scope === undefined ? { path } : { path, scope }) })) as Promise<{ path: string }>,
     importBb: (hostId) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/import/bb`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hostId }) })) as Promise<BbImportResult>,
     nativeSessions: (signal) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/import/sessions`, { signal })) as Promise<{ sessions: NativeSession[] }>,
     importSessions: (hostId, sessions) => transport.readJson(transport.fetch(`${transport.baseUrl}/api/v1/cloudroom/import/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hostId, sessions }) })) as Promise<SessionImportResult>,

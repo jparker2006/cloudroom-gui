@@ -56,11 +56,12 @@ export function buildThreadStorageRawContentUrl(
 export function buildThreadHostFileContentUrl(
   threadId: string,
   path: string,
+  scope?: "workspace",
 ): string {
   return toRelativeUrl(
     apiClient.threads[":id"]["host-files"].content.$url({
       param: { id: threadId },
-      query: { path },
+      query: scope === undefined ? { path } : { path, scope },
     }),
   );
 }

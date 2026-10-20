@@ -175,11 +175,42 @@ export async function copyToMac(deps: AppDeps, threadId: string): Promise<{ bran
   }
 }
 
+export type CloudFileScope = "workspace";
+
+async function cloudWorkspaceRoot(deps: AppDeps, threadId: string): Promise<string> {
+  const workspace = await cloudroom(deps).threadWorkspace(threadId);
+  const root = workspace && typeof workspace === "object" && "path" in workspace ? workspace.path : null;
+  if (typeof root !== "string" || !isAbsolute(root))
+    throw new ApiError(409, "cloud_workspace_unavailable", "This thread's cloud checkout isn't available yet.");
+  return root;
+}
+
+export async function downloadWithinRoot(client: CloudroomClient, root: string, path: string, maxMb: number): Promise<Buffer> {
+  const locate = `r=$(realpath -e -- ${quote(root)} 2>/dev/null) && p=$(realpath -e -- ${quote(path)} 2>/dev/null) && case "$p" in "$r"/*) true ;; *) false ;; esac`;
+  const probe = `if ${locate}; then if [ -f "$p" ]; then wc -c < "$p"; else echo -1; fi; elif [ -z "$r" ]; then echo -3; elif [ -z "$p" ]; then echo -1; else echo -2; fi`;
+  const size = Number((await vm(client, probe)).toString().trim());
+  if (size === -3) throw new ApiError(409, "cloud_workspace_unavailable", "This thread's cloud checkout isn't available yet.");
+  if (size === -2) throw new ApiError(403, "outside_thread_workspace", `${path} resolves outside this thread's cloud checkout.`);
+  if (size < 0) throw new ApiError(404, "cloud_file_missing", `${path} is not a file in the cloud.`);
+  if (size > maxMb * 1024 * 1024) throw new ApiError(413, "cloud_file_too_large", `${basename(path)} is over the ${maxMb} MB limit.`);
+  const parts: Buffer[] = [];
+  for (let offset = 0; offset < size; offset += CHUNK) {
+    const chunk = await vm(client, `${locate} || exit 3; tail -c +${offset + 1} "$p" | head -c ${CHUNK}`).catch(() => {
+      throw new ApiError(403, "outside_thread_workspace", `${path} changed while it was being read from the cloud.`);
+    });
+    parts.push(chunk);
+  }
+  return Buffer.concat(parts);
+}
+
 /** Save to Downloads: copies a cloud file into ~/Downloads under a free name and shows it, never opens it. */
-export async function openOnMac(deps: AppDeps, threadId: string, path: string): Promise<{ path: string }> {
+export async function openOnMac(deps: AppDeps, threadId: string, path: string, scope?: CloudFileScope): Promise<{ path: string }> {
   if (getThread(deps.db, threadId)?.executionTarget !== "cloud")
     throw new ApiError(409, "open_unavailable", "Only cloud threads have cloud files.");
-  const data = await download(await cloudroom(deps).threadClient(threadId), path, DOWNLOAD_MB);
+  const client = await cloudroom(deps).threadClient(threadId);
+  const data = scope === "workspace"
+    ? await downloadWithinRoot(client, await cloudWorkspaceRoot(deps, threadId), path, DOWNLOAD_MB)
+    : await download(client, path, DOWNLOAD_MB);
   const folder = join(homedir(), "Downloads");
   await mkdir(folder, { recursive: true });
   const name = basename(path);
@@ -192,8 +223,10 @@ export async function openOnMac(deps: AppDeps, threadId: string, path: string): 
   return { path: target };
 }
 
-export async function cloudFile(deps: AppDeps, threadId: string, path: string): Promise<Buffer> {
+export async function cloudFile(deps: AppDeps, threadId: string, path: string, scope?: CloudFileScope): Promise<Buffer> {
   if (!isAbsolute(path)) throw new ApiError(400, "invalid_path", "Cloud file paths must be absolute.");
+  if (scope === "workspace")
+    return downloadWithinRoot(await cloudroom(deps).threadClient(threadId), await cloudWorkspaceRoot(deps, threadId), path, PREVIEW_MB);
   const hostId = resolvePrimaryHostId(deps);
   if (!hostId) throw new ApiError(409, "host_unavailable", "This computer's local host is not ready.");
   const saved = join(await requireThreadStoragePath(deps, { hostId, threadId }), "Cloud files", normalize(path));
