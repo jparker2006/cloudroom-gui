@@ -57,3 +57,19 @@ describe("new-thread Cloud request evidence", () => {
     expect(window.localStorage.getItem(fresh.recordKey)).toBeNull();
   });
 });
+
+describe("new-thread Cloud request evidence when the lock fails", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "locks");
+  });
+
+  it("still finds or issues an ID when the lock is refused", async () => {
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: { request: () => Promise.reject(new DOMException("timed out", "AbortError")) },
+    });
+    window.localStorage.setItem(LEGACY_RECORD_KEY, `${await fingerprintOf(request)}:legacy-id`);
+
+    expect((await newThreadCloudroomRequest(BETA_DRAFT_KEY, request)).id).toBe("legacy-id");
+  });
+});

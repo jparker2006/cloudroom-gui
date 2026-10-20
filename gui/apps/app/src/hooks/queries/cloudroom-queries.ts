@@ -350,7 +350,9 @@ async function requestFingerprint(input: unknown): Promise<string> {
 function withNewThreadRequestLock<T>(run: () => T): Promise<T> {
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
   if (!locks) return Promise.resolve(run());
-  return locks.request("bb.promptbox.request", () => run());
+  return locks
+    .request("bb.promptbox.request", { signal: AbortSignal.timeout(2000) }, () => run())
+    .catch(() => run());
 }
 
 function newThreadRequestRecordKeys(draftKey: string): string[] {
