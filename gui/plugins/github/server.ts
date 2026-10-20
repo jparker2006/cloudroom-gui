@@ -1354,6 +1354,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   async function mergeByIdentity(
     list: PullCandidate[],
+    failures: PullFailure[],
   ): Promise<PullCandidate[]> {
     const needsId = list.filter((candidate) => candidate.id === null);
     const otherIds = list.some((candidate) => candidate.id !== null);
@@ -1373,11 +1374,20 @@ export default async function plugin(bb: BbPluginApi) {
             15_000,
           );
           const id = (JSON.parse(raw) as { id?: unknown }).id;
-          if (typeof id === "string" && id.length > 0) candidate.id = id;
+          if (typeof id === "string" && id.length > 0) {
+            candidate.id = id;
+          } else {
+            failures.push({
+              source: candidate.sources[0],
+              reason: "lookup",
+              message: `GitHub returned no id for ${candidate.repo}#${candidate.number}, so it can't be matched with other links.`,
+            });
+          }
         } catch (error) {
-          bb.log.warn(
-            `could not confirm ${candidate.repo}#${candidate.number}: ${errorMessage(error)}`,
-          );
+          failures.push({
+            ...failureFrom(candidate.sources[0], error),
+            message: `Couldn't confirm ${candidate.repo}#${candidate.number}: ${errorMessage(error)}`,
+          });
         }
       }
     }
@@ -1504,7 +1514,10 @@ export default async function plugin(bb: BbPluginApi) {
       failures.push(failureFrom("review", error));
     }
 
-    const candidateList = await mergeByIdentity([...candidates.values()]);
+    const candidateList = await mergeByIdentity(
+      [...candidates.values()],
+      failures,
+    );
     return {
       threadId,
       environmentId,

@@ -408,38 +408,65 @@ esac
     });
   });
 
-  it("keeps renamed matches separate when their identity can't be confirmed", async () => {
-    const world = newWorld();
-    world.environments.thr_a = "env-a";
-    world.workspace["env-a"] = {
-      outcome: "available",
-      pullRequest: {
-        number: 42,
-        url: "https://github.com/acme/renamed/pull/42",
-      },
-    };
-    writeGh({}, ["42"]);
-    const host = await loadPlugin(world);
-    await host.bb.storage.kv.set("link:pr:acme/widgets#42", [
-      {
-        kind: "pr",
-        repo: "acme/widgets",
-        number: 42,
-        threadId: "thr_a",
-        createdAt: "2026-10-01T00:00:00Z",
-        pullId: "PR_node_42",
-      },
-    ]);
-
-    await expect(
-      host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
-    ).resolves.toMatchObject({
-      candidates: [
-        { repo: "acme/renamed", id: null },
-        { repo: "acme/widgets", id: "PR_node_42" },
+  it("reports a failed identity check instead of plain ambiguity", async () => {
+    for (const [ghLine, reason] of [
+      [
+        `"pr view 42 -R acme/renamed --json id") echo "HTTP 503 Service Unavailable" >&2; exit 1;;`,
+        "unavailable",
       ],
-      resolution: { kind: "ambiguous" },
-    });
+      [
+        `"pr view 42 -R acme/renamed --json id") echo "gh: not logged in to any GitHub hosts" >&2; exit 1;;`,
+        "auth",
+      ],
+      [
+        `"pr view 42 -R acme/renamed --json id") printf '%s\\n' '{}';;`,
+        "lookup",
+      ],
+    ] as const) {
+      const world = newWorld();
+      world.environments.thr_a = "env-a";
+      world.workspace["env-a"] = {
+        outcome: "available",
+        pullRequest: {
+          number: 42,
+          url: "https://github.com/acme/renamed/pull/42",
+        },
+      };
+      writeFileSync(
+        join(binDir, "gh"),
+        `#!/usr/bin/env bash
+case "$*" in
+  "--version") echo "gh version 2.96.0 (fake)";;
+  "auth status --hostname github.com --active") echo "authenticated";;
+  ${ghLine}
+  *) printf '%s\\n' '[]';;
+esac
+`,
+      );
+      chmodSync(join(binDir, "gh"), 0o755);
+      const host = await loadPlugin(world);
+      await host.bb.storage.kv.set("link:pr:acme/widgets#42", [
+        {
+          kind: "pr",
+          repo: "acme/widgets",
+          number: 42,
+          threadId: "thr_a",
+          createdAt: "2026-10-01T00:00:00Z",
+          pullId: "PR_node_42",
+        },
+      ]);
+
+      await expect(
+        host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
+      ).resolves.toMatchObject({
+        candidates: [
+          { repo: "acme/renamed", id: null },
+          { repo: "acme/widgets", id: "PR_node_42" },
+        ],
+        failures: [{ source: "workspace", reason }],
+        resolution: { kind: "failed", reason },
+      });
+    }
   });
 
   it("does not auto-show a legacy review link without an id", async () => {
