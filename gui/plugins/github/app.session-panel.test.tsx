@@ -605,6 +605,7 @@ describe("session PR panel round-3 corrections", () => {
             failures: [
               {
                 source: "workspace",
+                runsOn: "workspace",
                 reason: "auth",
                 message:
                   "HTTP 403: Resource protected by organization SAML enforcement",
@@ -703,6 +704,56 @@ describe("session PR panel round-3 corrections", () => {
     expect(slot.container.textContent).toContain("Cached title");
     expect(slot.container.textContent).toContain("GitHub access needed");
     expect(slot.container.textContent).not.toContain("GitHub sign-in needed");
+    slot.lifecycle.unmount();
+  });
+
+  it("sends identity-check sign-in recovery to the Cloudroom server, not the workspace", async () => {
+    const slot = render({
+      pullForThread: () =>
+        association(
+          "thr-1",
+          {
+            kind: "failed",
+            reason: "auth",
+            message:
+              "Couldn’t confirm acme/renamed#42: gh: not logged in to any GitHub hosts",
+          },
+          {
+            candidates: [
+              {
+                repo: "acme/renamed",
+                number: 42,
+                id: null,
+                sources: ["workspace"],
+              },
+              {
+                repo: "acme/widgets",
+                number: 42,
+                id: "PR_42",
+                sources: ["review"],
+              },
+            ],
+            failures: [
+              {
+                source: "workspace",
+                runsOn: "server",
+                reason: "auth",
+                message:
+                  "Couldn’t confirm acme/renamed#42: gh: not logged in to any GitHub hosts",
+              },
+            ],
+          },
+        ),
+    });
+    await settle();
+
+    const text = slot.container.textContent ?? "";
+    expect(text).toContain("GitHub sign-in needed");
+    expect(text).toContain("the machine running the Cloudroom server");
+    expect(text).not.toContain("hosts this thread’s workspace");
+    expect(text).toContain("acme/renamed#42");
+    expect(text).toContain("acme/widgets#42");
+    expect(slot.rpcCalls.map((call) => call.method)).not.toContain("getPull");
     slot.lifecycle.unmount();
   });
 

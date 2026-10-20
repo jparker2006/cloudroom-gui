@@ -161,6 +161,7 @@ const pullAssociationSchema = z
       z
         .object({
           source: z.enum(["selection", "workspace", "review"]),
+          runsOn: z.enum(["workspace", "server"]),
           reason: failureReasonSchema,
           message: z.string(),
         })
@@ -1302,10 +1303,11 @@ export default async function plugin(bb: BbPluginApi) {
 
   function failureFrom(
     source: PullFailure["source"],
+    runsOn: PullFailure["runsOn"],
     error: unknown,
   ): PullFailure {
     const message = errorMessage(error);
-    return { source, reason: classifyGhFailure(message), message };
+    return { source, runsOn, reason: classifyGhFailure(message), message };
   }
 
   async function verifyPull(
@@ -1379,13 +1381,14 @@ export default async function plugin(bb: BbPluginApi) {
           } else {
             failures.push({
               source: candidate.sources[0],
+              runsOn: "server",
               reason: "lookup",
               message: `GitHub returned no id for ${candidate.repo}#${candidate.number}, so it can't be matched with other links.`,
             });
           }
         } catch (error) {
           failures.push({
-            ...failureFrom(candidate.sources[0], error),
+            ...failureFrom(candidate.sources[0], "server", error),
             message: `Couldn't confirm ${candidate.repo}#${candidate.number}: ${errorMessage(error)}`,
           });
         }
@@ -1435,6 +1438,7 @@ export default async function plugin(bb: BbPluginApi) {
       } else if (id !== null && id !== existing.id) {
         failures.push({
           source: "review",
+          runsOn: "server",
           reason: "lookup",
           message: `Review threads link ${repo}#${number} to different GitHub pull requests.`,
         });
@@ -1451,6 +1455,7 @@ export default async function plugin(bb: BbPluginApi) {
         } else {
           failures.push({
             source: "selection",
+            runsOn: "server",
             reason: "lookup",
             message:
               "The saved pull request choice for this thread is unreadable. Choose again or clear it.",
@@ -1458,7 +1463,7 @@ export default async function plugin(bb: BbPluginApi) {
         }
       }
     } catch (error) {
-      failures.push(failureFrom("selection", error));
+      failures.push(failureFrom("selection", "server", error));
     }
 
     let environmentId: string | null = null;
@@ -1475,6 +1480,7 @@ export default async function plugin(bb: BbPluginApi) {
           ) {
             failures.push({
               source: "workspace",
+              runsOn: "workspace",
               reason: "lookup",
               message: `The workspace branch reported an unrecognized pull request URL: ${result.pullRequest.url}`,
             });
@@ -1484,13 +1490,14 @@ export default async function plugin(bb: BbPluginApi) {
         } else if (result.outcome === "unavailable") {
           failures.push({
             source: "workspace",
+            runsOn: "workspace",
             reason: classifyGhFailure(result.message, "unavailable"),
             message: result.message,
           });
         }
       }
     } catch (error) {
-      failures.push(failureFrom("workspace", error));
+      failures.push(failureFrom("workspace", "workspace", error));
     }
 
     try {
@@ -1511,7 +1518,7 @@ export default async function plugin(bb: BbPluginApi) {
         }
       }
     } catch (error) {
-      failures.push(failureFrom("review", error));
+      failures.push(failureFrom("review", "server", error));
     }
 
     const candidateList = await mergeByIdentity(

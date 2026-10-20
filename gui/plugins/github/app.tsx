@@ -2488,7 +2488,7 @@ function failureLocation(
   const failure = association?.failures.find(
     (entry) => entry.reason === reason,
   );
-  return failure?.source === "workspace" ? "workspace" : "plugin";
+  return failure?.runsOn === "workspace" ? "workspace" : "plugin";
 }
 
 function PullPanelTab({ threadId }: PluginThreadPanelProps) {

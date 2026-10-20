@@ -463,7 +463,7 @@ esac
           { repo: "acme/renamed", id: null },
           { repo: "acme/widgets", id: "PR_node_42" },
         ],
-        failures: [{ source: "workspace", reason }],
+        failures: [{ source: "workspace", runsOn: "server", reason }],
         resolution: { kind: "failed", reason },
       });
     }
@@ -568,7 +568,9 @@ describe("explicit pull request selection", () => {
     await expect(
       host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
     ).resolves.toMatchObject({
-      failures: [{ source: "workspace", reason: "unavailable" }],
+      failures: [
+        { source: "workspace", runsOn: "workspace", reason: "unavailable" },
+      ],
       resolution: { kind: "selected", number: 43 },
     });
   });
