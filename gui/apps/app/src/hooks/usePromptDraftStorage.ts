@@ -175,6 +175,9 @@ function persistPromptDraftCache(storageKey: string): void {
   }
 
   try {
+    if (isNewThreadProjectDraftKey(storageKey)) {
+      window.localStorage.setItem(newThreadRecoveryKey(storageKey), serialized);
+    }
     window.localStorage.setItem(storageKey, serialized);
     unsavedPromptDraftKeys.delete(storageKey);
   } catch (error) {
@@ -187,12 +190,36 @@ function persistPromptDraftCache(storageKey: string): void {
   }
 }
 
-function newThreadConflictKey(storageKey: string, rev: string): string {
-  const projectSegment = storageKey.slice(
+let promptDraftWindowId: string | null = null;
+
+function newThreadProjectSegment(storageKey: string): string {
+  return storageKey.slice(
     NEW_THREAD_DRAFT_KEY_PREFIX.length,
     -`-${PROMPT_DRAFT_STORAGE_VERSION}`.length,
   );
-  return `bb.promptbox.conflict-new-thread-${projectSegment}-${rev}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+function newThreadRecoveryPrefix(storageKey: string): string {
+  return `bb.promptbox.recovery-new-thread-${newThreadProjectSegment(storageKey)}-`;
+}
+
+function newThreadRecoveryKey(storageKey: string): string {
+  promptDraftWindowId ??= createDraftRev();
+  return `${newThreadRecoveryPrefix(storageKey)}${promptDraftWindowId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+function removeRecoveryCopiesWithRev(storageKey: string, rev: string): void {
+  const prefix = newThreadRecoveryPrefix(storageKey);
+  for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(prefix) && readStoredRev(window.localStorage.getItem(key)) === rev) {
+      window.localStorage.removeItem(key);
+    }
+  }
+}
+
+function newThreadConflictKey(storageKey: string, rev: string): string {
+  return `bb.promptbox.conflict-new-thread-${newThreadProjectSegment(storageKey)}-${rev}-${PROMPT_DRAFT_STORAGE_VERSION}`;
 }
 
 function reconcileWithStoredNewThreadDraft(
@@ -210,6 +237,7 @@ function reconcileWithStoredNewThreadDraft(
   }
   if (record.kind === "missing") return true;
   const storedRev = record.rev;
+  if (storedRev) removeRecoveryCopiesWithRev(storageKey, storedRev);
   if (!storedRev || storedRev === newThreadDraftRevs.get(storageKey)) {
     return true;
   }

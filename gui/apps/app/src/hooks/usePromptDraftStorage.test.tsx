@@ -751,3 +751,54 @@ describe("another window's new-thread change arriving", () => {
     expect(conflictCopies()).toEqual([]);
   });
 });
+
+describe("new-thread recovery copies", () => {
+  function recoveryKeys(): string[] {
+    return Object.keys(window.localStorage).filter((key) =>
+      key.startsWith(`bb.promptbox.recovery-new-thread-${alphaId()}-`),
+    );
+  }
+
+  it("saves this tab's content to its own recovery copy with the shared draft's revision", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+
+    const [recoveryKey] = recoveryKeys();
+    expect(recoveryKeys()).toHaveLength(1);
+    expect(recoveryKey).toMatch(/-[0-9a-f]{16}-3$/);
+    expect(JSON.parse(window.localStorage.getItem(recoveryKey!) ?? "null")).toMatchObject({
+      text: "mine",
+      rev: storedRecord(alphaKey()).rev,
+    });
+  });
+
+  it("keeps the recovery copy when another tab overwrites the draft without seeing it", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+    const mine = storedRecord(alphaKey());
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({ text: "theirs", attachments: [], rev: "9999999999999999", base: "0000000000000000" }),
+    );
+
+    expect(recoveryKeys().map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null"))).toEqual([
+      expect.objectContaining({ text: "mine", rev: mine.rev }),
+    ]);
+  });
+
+  it("removes a recovery copy once a later save has read its revision", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+    const firstRev = storedRecord(alphaKey()).rev;
+    window.localStorage.setItem(
+      `bb.promptbox.recovery-new-thread-${alphaId()}-abcdefabcdefabcd-3`,
+      JSON.stringify({ text: "mine", attachments: [], rev: firstRev }),
+    );
+
+    alpha.setDraft({ text: "mine, edited", mentions: [], attachments: [] });
+
+    const remaining = recoveryKeys().map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null"));
+    expect(remaining.some((record) => record.rev === firstRev)).toBe(false);
+  });
+});
