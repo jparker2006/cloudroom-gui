@@ -1856,3 +1856,25 @@ describe("third-round review fixes", () => {
     ).toEqual(["not saved yet", "save failed"]);
   });
 });
+
+describe("listing when storage can't be enumerated", () => {
+  it("still lists drafts held only in memory", () => {
+    window.localStorage.setItem("unrelated", "x");
+    const unlisted = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}m` });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const key = vi.spyOn(Storage.prototype, "key").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    try {
+      unlisted.setDraft({ text: "memory only", mentions: [], attachments: [] });
+      expect(listedNotShown([alphaId()]).map((row) => row.draft?.text)).toEqual(["memory only"]);
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+      key.mockRestore();
+    }
+  });
+});

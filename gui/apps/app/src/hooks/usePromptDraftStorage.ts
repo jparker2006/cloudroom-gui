@@ -913,11 +913,13 @@ export function listNewThreadDraftsNotShown(
 ): NewThreadDraftNotShown[] {
   if (typeof window === "undefined") return [];
   const rows: NewThreadDraftNotShown[] = [];
+  const known = new Set([...knownProjectIds, "proj_personal"]);
   try {
-    collectNewThreadDraftsNotShown(rows, new Set([...knownProjectIds, "proj_personal"]));
+    collectNewThreadDraftsNotShown(rows, known);
   } catch (error) {
     console.warn("[prompt-draft] could not read saved drafts", error);
   }
+  collectNewThreadDraftsInMemory(rows, known);
   return rows;
 }
 
@@ -976,6 +978,12 @@ function collectNewThreadDraftsNotShown(
       rows.push({ kind: "unlisted-project", key, projectId: recoveryProject, draft: record.draft });
     }
   }
+}
+
+function collectNewThreadDraftsInMemory(
+  rows: NewThreadDraftNotShown[],
+  known: ReadonlySet<string>,
+): void {
   for (const storageKey of new Set([...unsavedPromptDraftKeys, ...pendingPromptDraftStorageKeys])) {
     const draft = promptDraftCache.get(storageKey)?.draft;
     if (!isNewThreadProjectDraftKey(storageKey) || !draft || isPromptDraftEmpty(draft)) continue;
