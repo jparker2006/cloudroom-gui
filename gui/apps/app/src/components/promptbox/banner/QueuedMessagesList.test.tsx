@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
+import { MemoryRouter } from "react-router-dom";
 import {
   act,
   cleanup,
   fireEvent,
   render,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { useContext, useLayoutEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -1728,3 +1730,710 @@ describe("queued row affordances", () => {
     expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
   });
 });
+
+function queueProps(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  overrides: Partial<QueuedMessagesListProps> = {},
+): QueuedMessagesListProps {
+  return {
+    attachedToComposer: true,
+    queuedMessages,
+    sendAction: "send-now",
+    sendDisabled: false,
+    actionDisabled: false,
+    processingMessageId: null,
+    processingAction: null,
+    onSend: noop,
+    onReorder: noop,
+    onEdit: noop,
+    onDelete: noop,
+    ...overrides,
+  };
+}
+
+function threeQueuedMessages() {
+  return [
+    makeQueuedMessage("q_alpha", "Alpha"),
+    makeQueuedMessage("q_bravo", "Bravo"),
+    makeQueuedMessage("q_charlie", "Charlie"),
+  ];
+}
+
+function queueMode(container: HTMLElement) {
+  return container
+    .querySelector("[data-queued-messages-mode]")
+    ?.getAttribute("data-queued-messages-mode");
+}
+
+function queueHeight(container: HTMLElement) {
+  return container.querySelector<HTMLElement>(
+    'section[aria-label="Queued messages"]',
+  )?.style.height;
+}
+
+function summaryOf(container: HTMLElement, variant: "strip" | "stack") {
+  return container.querySelector<HTMLElement>(
+    `[data-queued-messages-summary="${variant}"]`,
+  );
+}
+
+function summaryTriggerOf(container: HTMLElement, variant: "strip" | "stack") {
+  return summaryOf(container, variant)?.querySelector<HTMLElement>(
+    "[data-queued-messages-summary-trigger]",
+  ) as HTMLElement;
+}
+
+function ordinalsOf(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll("[data-queued-message-ordinal]"),
+    (ordinal) => ordinal.textContent,
+  );
+}
+
+describe("queue summary, ordinals, and pending states", () => {
+  it("summarizes the first message in queue order with the total count", () => {
+    const view = renderQueue(queueProps(threeQueuedMessages()));
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    const summary = summaryOf(view.container, "strip");
+    expect(summary?.textContent).toContain("Alpha");
+    expect(summary?.textContent).not.toContain("Bravo");
+    expect(
+      summary?.querySelector("[data-queued-messages-count]")?.textContent,
+    ).toBe("3 queued");
+  });
+
+  it("keeps head mention links out of the summary trigger", () => {
+    const text = "Ask @thread:thr_other about it";
+    const start = text.indexOf("@thread:thr_other");
+    const view = render(
+      <MemoryRouter>
+        <QueuedMessagesList
+          {...queueProps([
+            makeThreadQueuedMessage({
+              id: "q_mention",
+              threadId: "thr_prompt_pills",
+              content: [
+                {
+                  type: "text",
+                  text,
+                  mentions: [
+                    {
+                      start,
+                      end: start + "@thread:thr_other".length,
+                      resource: {
+                        kind: "thread",
+                        threadId: "thr_other",
+                        label: "Other",
+                        projectId: "prj_1",
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ])}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    const summary = summaryOf(view.container, "strip") as HTMLElement;
+    const trigger = summaryTriggerOf(view.container, "strip");
+    expect(trigger.querySelector("a, [role=link], button")).toBeNull();
+    expect(trigger.getAttribute("aria-label")).toContain(
+      "First in queue: Ask @thread:thr_other about it",
+    );
+    expect(
+      summary
+        .querySelector("[inert]")
+        ?.contains(summary.querySelector("a, [role=link]")),
+    ).toBe(true);
+  });
+
+  it("shows the new head after a reorder rerenders the queue", () => {
+    const [alpha, bravo, charlie] = threeQueuedMessages();
+    const view = renderQueue(queueProps([alpha, bravo, charlie]));
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    view.rerender(
+      <QueuedMessagesList {...queueProps([charlie, alpha, bravo])} />,
+    );
+
+    const summary = summaryOf(view.container, "strip");
+    expect(summary?.textContent).toContain("Charlie");
+    expect(summary?.textContent).not.toContain("Alpha");
+    expect(
+      summary?.querySelector("[data-queued-messages-count]")?.textContent,
+    ).toBe("3 queued");
+  });
+
+  it("counts failures across the whole queue and shows the head's failure line", () => {
+    const [alpha, bravo, charlie] = threeQueuedMessages();
+    const view = renderQueue(
+      queueProps([
+        {
+          ...bravo,
+          failureReason: "Thread stopped before the message could dispatch",
+        },
+        alpha,
+        { ...charlie, failureReason: "Host went away" },
+      ]),
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    const summary = summaryOf(view.container, "strip");
+    expect(
+      summary?.querySelector("[data-queued-messages-failed-count]")
+        ?.textContent,
+    ).toBe("2 failed");
+    expect(summary?.textContent).toContain(
+      "Thread stopped before the message could dispatch",
+    );
+  });
+
+  it("counts only confirmed rows as queued and reports optimistic rows as queuing", () => {
+    const [alpha, bravo] = threeQueuedMessages();
+    const optimistic = makeQueuedMessage(
+      "optimistic-queued-1",
+      "Still being queued",
+    );
+    const view = renderQueue(queueProps([alpha, bravo, optimistic]));
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    const summary = summaryOf(view.container, "strip");
+    expect(
+      summary?.querySelector("[data-queued-messages-count]")?.textContent,
+    ).toBe("2 queued");
+    expect(
+      summary?.querySelector("[data-queued-messages-unconfirmed-count]")
+        ?.textContent,
+    ).toBe("1 queuing…");
+  });
+
+  it("omits the queued count while every row is still queuing", () => {
+    const view = renderQueue(
+      queueProps([
+        makeQueuedMessage("optimistic-queued-1", "Still being queued"),
+      ]),
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    const summary = summaryOf(view.container, "strip");
+    expect(summary?.querySelector("[data-queued-messages-count]")).toBeNull();
+    expect(
+      summary?.querySelector("[data-queued-messages-unconfirmed-count]")
+        ?.textContent,
+    ).toBe("1 queuing…");
+  });
+
+  it("keeps the stack queue order header to confirmed and queuing counts", () => {
+    const [alpha, bravo] = threeQueuedMessages();
+    const view = renderQueue(
+      queueProps(
+        [
+          alpha,
+          bravo,
+          makeQueuedMessage("optimistic-queued-1", "Still being queued"),
+        ],
+        { summaryVariant: "stack" },
+      ),
+    );
+
+    const header = view.container.querySelector(
+      "[data-queued-messages-header]",
+    );
+    expect(
+      header?.querySelector("[data-queued-messages-count]")?.textContent,
+    ).toBe("2 queued");
+    expect(
+      header?.querySelector("[data-queued-messages-unconfirmed-count]")
+        ?.textContent,
+    ).toBe("1 queuing…");
+  });
+
+  it("hides only the strip head's wait label on narrow cards, keeping it in the DOM", () => {
+    const waiting = {
+      ...makeQueuedMessage("q_alpha", "Alpha"),
+      waitingOn: { kind: "provisioning" as const },
+    };
+    const strip = renderQueue(
+      queueProps([waiting, makeQueuedMessage("q_bravo", "Bravo")]),
+    );
+    fireEvent.click(
+      strip.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    const stripLabel = within(
+      summaryOf(strip.container, "strip") as HTMLElement,
+    ).getByText("Waiting for workspace");
+    expect(stripLabel.classList.contains("@max-md/queue:sr-only")).toBe(true);
+    cleanup();
+
+    const stack = renderQueue(
+      queueProps([waiting, makeQueuedMessage("q_bravo", "Bravo")], {
+        summaryVariant: "stack",
+      }),
+    );
+    fireEvent.click(
+      stack.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    const stackLabel = within(
+      summaryOf(stack.container, "stack") as HTMLElement,
+    ).getByText("Waiting for workspace");
+    expect(stackLabel.classList.contains("@max-md/queue:sr-only")).toBe(false);
+  });
+
+  it("labels a pending send as Sending or Steering and never as sent or running", () => {
+    const [alpha, bravo] = threeQueuedMessages();
+    const messages = [alpha, bravo];
+    const view = renderQueue(
+      queueProps(messages, {
+        pendingSend: { queuedMessageId: "q_alpha", mode: "auto" },
+      }),
+    );
+    expect(
+      view.container.querySelector(
+        '[data-queued-messages-status] [data-queued-messages-pending-send="auto"]',
+      )?.textContent,
+    ).toContain("Sending…");
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    const pending = () =>
+      summaryOf(view.container, "strip")?.querySelector(
+        "[data-queued-messages-pending-send]",
+      );
+    expect(pending()?.textContent).toContain("Sending…");
+
+    view.rerender(
+      <QueuedMessagesList
+        {...queueProps(messages, {
+          pendingSend: { queuedMessageId: "q_alpha", mode: "steer" },
+        })}
+      />,
+    );
+    expect(pending()?.getAttribute("data-queued-messages-pending-send")).toBe(
+      "steer",
+    );
+    expect(pending()?.textContent).toContain("Steering…");
+    expect(view.container.textContent).not.toMatch(
+      /\bsent\b|running|accepted|next to send/iu,
+    );
+  });
+
+  it("shows only the pending send when the queue is empty", () => {
+    const view = renderQueue(
+      queueProps([], {
+        pendingSend: { queuedMessageId: "q_gone", mode: "steer" },
+      }),
+    );
+
+    expect(view.getByText("Steering…")).toBeDefined();
+    expect(queueHeight(view.container)).toBe("54px");
+    expect(
+      view.container.querySelector("[data-queued-message-row]"),
+    ).toBeNull();
+    expect(
+      view.container.querySelector("[data-queued-messages-summary]"),
+    ).toBeNull();
+    expect(
+      view.container
+        .querySelector("[data-queued-messages-mode]")
+        ?.classList.contains("hidden"),
+    ).toBe(true);
+    expect(view.container.textContent).not.toMatch(
+      /\bsent\b|running|accepted|next to send/iu,
+    );
+  });
+
+  it("renders nothing for an empty queue with no pending send", () => {
+    const { container } = renderQueue(queueProps([]));
+    expect(
+      container.querySelector('section[aria-label="Queued messages"]'),
+    ).toBeNull();
+  });
+
+  it("labels an optimistic row as unconfirmed and gates its actions on actionDisabled", () => {
+    const optimistic = makeQueuedMessage(
+      "optimistic-queued-1",
+      "Still being queued",
+    );
+    const actionNames = [
+      "Send queued message 1 now",
+      "Edit queued message 1",
+      "Delete queued message 1",
+      "Queued message 1 actions",
+    ];
+    const view = renderQueue(
+      queueProps([optimistic], { actionDisabled: true }),
+    );
+
+    const row = view.container.querySelector(
+      '[data-queued-message-id="optimistic-queued-1"]',
+    );
+    expect(
+      row?.querySelector("[data-queued-message-unconfirmed]")?.textContent,
+    ).toBe("Queuing… waiting for server");
+    expect(row?.querySelector("[data-queued-message-wait]")).toBeNull();
+    for (const name of actionNames) {
+      expect((view.getByLabelText(name) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    }
+
+    view.rerender(<QueuedMessagesList {...queueProps([optimistic])} />);
+    for (const name of actionNames) {
+      expect((view.getByLabelText(name) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    }
+  });
+
+  it("disables only send while sendDisabled, leaving edit and delete live", () => {
+    const view = renderQueue(
+      queueProps([makeQueuedMessage("q_one", "One")], { sendDisabled: true }),
+    );
+
+    expect(
+      (view.getByLabelText("Send queued message 1 now") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (view.getByLabelText("Edit queued message 1") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (view.getByLabelText("Delete queued message 1") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it.each<[string, ThreadQueuedMessage["waitingOn"]]>([
+    ["time", { kind: "time" }],
+    ["thread-busy", { kind: "thread-busy" }],
+    [
+      "plugin",
+      {
+        kind: "plugin",
+        pluginId: "concurrency-limit",
+        reason: "4 of 4 running",
+      },
+    ],
+  ])("offers send-now on a %s wait", (_, waitingOn) => {
+    const { queryByLabelText } = renderQueue(
+      queueProps([{ ...makeQueuedMessage("q_one", "One"), waitingOn }]),
+    );
+    expect(queryByLabelText("Send queued message 1 now")).not.toBeNull();
+  });
+
+  it.each<[string, ThreadQueuedMessage["waitingOn"]]>([
+    ["provisioning", { kind: "provisioning" }],
+    ["host-offline", { kind: "host-offline", hostName: "M4" }],
+    ["interaction", { kind: "interaction" }],
+    ["turn-starting", { kind: "turn-starting" }],
+    ["stopping", { kind: "stopping" }],
+  ])(
+    "withholds send-now on a %s wait but keeps edit and delete",
+    (_, waitingOn) => {
+      const { queryByLabelText } = renderQueue(
+        queueProps([{ ...makeQueuedMessage("q_one", "One"), waitingOn }]),
+      );
+      expect(queryByLabelText("Send queued message 1 now")).toBeNull();
+      expect(queryByLabelText("Edit queued message 1")).not.toBeNull();
+      expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
+    },
+  );
+
+  it("keeps steer-when-ready on a blocked wait, named as steering", () => {
+    const blocked = {
+      ...makeQueuedMessage("q_one", "One"),
+      waitingOn: { kind: "interaction" as const },
+    };
+    const view = renderQueue(
+      queueProps([blocked], {
+        sendAction: "steer-when-ready",
+        sendDisabled: true,
+      }),
+    );
+    expect(
+      (
+        view.getByLabelText(
+          "Steer queued message 1 when ready",
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    view.rerender(
+      <QueuedMessagesList
+        {...queueProps([blocked], { sendAction: "steer-when-ready" })}
+      />,
+    );
+    expect(
+      (
+        view.getByLabelText(
+          "Steer queued message 1 when ready",
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("numbers strip rows 1 to N in queue order and drops the numbers in stack", () => {
+    const [alpha, bravo, charlie] = threeQueuedMessages();
+    const view = renderQueue(queueProps([alpha, bravo, charlie]));
+    expect(ordinalsOf(view.container)).toEqual(["1", "2", "3"]);
+
+    view.rerender(
+      <QueuedMessagesList {...queueProps([charlie, alpha, bravo])} />,
+    );
+    expect(ordinalsOf(view.container)).toEqual(["1", "2", "3"]);
+    expect(
+      view.container.querySelector(
+        '[data-queued-message-id="q_charlie"] [data-queued-message-ordinal]',
+      )?.textContent,
+    ).toBe("1");
+
+    cleanup();
+    const stack = renderQueue(
+      queueProps(threeQueuedMessages(), { summaryVariant: "stack" }),
+    );
+    expect(ordinalsOf(stack.container)).toEqual([]);
+  });
+
+  it("adds a queue order header and one stack edge for two messages, two for three", () => {
+    const [alpha, bravo, charlie] = threeQueuedMessages();
+    const view = renderQueue(
+      queueProps([alpha, bravo], { summaryVariant: "stack" }),
+    );
+
+    const header = view.container.querySelector(
+      "[data-queued-messages-header]",
+    );
+    expect(header?.textContent).toContain("Queue order");
+    expect(header?.textContent).toContain("2 queued");
+    expect(queueHeight(view.container)).toBe("94px");
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    expect(
+      view.container.querySelector("[data-queued-messages-header]"),
+    ).toBeNull();
+    expect(
+      view.container.querySelectorAll("[data-queued-messages-stack-edge]"),
+    ).toHaveLength(1);
+
+    cleanup();
+    const threeMessageStack = renderQueue(
+      queueProps([alpha, bravo, charlie], { summaryVariant: "stack" }),
+    );
+    fireEvent.click(
+      threeMessageStack.getByRole("button", {
+        name: "Collapse queued messages",
+      }),
+    );
+    expect(
+      threeMessageStack.container.querySelectorAll(
+        "[data-queued-messages-stack-edge]",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("adds the stack header height to the drawer and the workspace", () => {
+    const messages = threeQueuedMessages();
+    const strip = renderQueue(queueProps(messages.slice(0, 2)));
+    expect(queueHeight(strip.container)).toBe("74px");
+    cleanup();
+
+    const stack = renderQueue(
+      queueProps(messages.slice(0, 2), { summaryVariant: "stack" }),
+    );
+    expect(queueHeight(stack.container)).toBe("94px");
+    cleanup();
+
+    const longQueue = Array.from({ length: 5 }, (_, index) =>
+      makeQueuedMessage(`q_${index}`, `Queued message ${index + 1}`),
+    );
+    const stripWorkspace = renderQueue(queueProps(longQueue));
+    fireEvent.click(
+      stripWorkspace.getByRole("button", { name: "Expand queued messages" }),
+    );
+    const stripHeight = Number.parseFloat(
+      queueHeight(stripWorkspace.container) ?? "",
+    );
+    cleanup();
+
+    const stackWorkspace = renderQueue(
+      queueProps(longQueue, { summaryVariant: "stack" }),
+    );
+    fireEvent.click(
+      stackWorkspace.getByRole("button", { name: "Expand queued messages" }),
+    );
+    expect(
+      Number.parseFloat(queueHeight(stackWorkspace.container) ?? "") -
+        stripHeight,
+    ).toBe(20);
+  });
+
+  it.each<["strip" | "stack", string]>([
+    ["strip", "54px"],
+    ["stack", "72px"],
+  ])("collapses the %s variant to %s", (summaryVariant, height) => {
+    const view = renderQueue(
+      queueProps(threeQueuedMessages().slice(0, 2), { summaryVariant }),
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    expect(queueHeight(view.container)).toBe(height);
+  });
+
+  it("names the head in the stack summary and counts the messages behind it", () => {
+    const [alpha] = threeQueuedMessages();
+    const single = renderQueue(
+      queueProps([alpha], { summaryVariant: "stack" }),
+    );
+    fireEvent.click(
+      single.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    const onlySummary = summaryOf(single.container, "stack");
+    expect(onlySummary?.textContent).toContain("Alpha");
+    expect(onlySummary?.textContent).toContain("Only message");
+    cleanup();
+
+    const queue = renderQueue(
+      queueProps(threeQueuedMessages(), { summaryVariant: "stack" }),
+    );
+    fireEvent.click(
+      queue.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    const summary = summaryOf(queue.container, "stack");
+    expect(summary?.textContent).toContain("First in queue");
+    expect(summary?.textContent).toContain("+2 more");
+  });
+
+  it.each<["strip" | "stack"]>([["strip"], ["stack"]])(
+    "opens the drawer from a collapsed %s summary when the queue fits",
+    (summaryVariant) => {
+      const view = renderQueue(
+        queueProps(threeQueuedMessages(), { summaryVariant }),
+      );
+      fireEvent.click(
+        view.getByRole("button", { name: "Collapse queued messages" }),
+      );
+
+      fireEvent.click(summaryTriggerOf(view.container, summaryVariant), {
+        detail: 1,
+      });
+      expect(queueMode(view.container)).toBe("drawer");
+    },
+  );
+
+  it.each<["strip" | "stack"]>([["strip"], ["stack"]])(
+    "opens the workspace from a collapsed %s summary above three messages",
+    (summaryVariant) => {
+      const view = renderQueue(
+        queueProps(
+          [...threeQueuedMessages(), makeQueuedMessage("q_delta", "Delta")],
+          { summaryVariant },
+        ),
+      );
+      fireEvent.click(
+        view.getByRole("button", { name: "Expand queued messages" }),
+      );
+      fireEvent.click(
+        view.getByRole("button", { name: "Collapse queued messages" }),
+      );
+      expect(queueMode(view.container)).toBe("collapsed");
+
+      fireEvent.click(summaryTriggerOf(view.container, summaryVariant), {
+        detail: 1,
+      });
+      expect(queueMode(view.container)).toBe("workspace");
+    },
+  );
+
+  it("moves focus to the caret after a keyboard-activated summary expands", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const view = renderQueue(queueProps(threeQueuedMessages()));
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    const summary = summaryTriggerOf(view.container, "strip");
+    summary.focus();
+
+    fireEvent.click(summary);
+    expect(queueMode(view.container)).toBe("drawer");
+    const caret = view.getByRole("button", {
+      name: "Collapse queued messages",
+    });
+    expect(document.activeElement).not.toBe(caret);
+
+    act(() => {
+      for (const frame of frames.splice(0)) frame(0);
+    });
+    expect(document.activeElement).toBe(caret);
+  });
+
+  it("keeps composer focus when the summary is pressed", () => {
+    const view = renderQueue(queueProps(threeQueuedMessages()));
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse queued messages" }),
+    );
+
+    expect(fireEvent.mouseDown(summaryTriggerOf(view.container, "strip"))).toBe(
+      false,
+    );
+  });
+
+  it("keeps send, edit, and delete bound to each row's message after a reorder", () => {
+    const onSend = vi.fn();
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const [alpha, bravo, charlie] = threeQueuedMessages();
+    const view = renderQueue(
+      queueProps([alpha, bravo, charlie], { onSend, onEdit, onDelete }),
+    );
+
+    fireEvent.click(view.getByLabelText("Delete queued message 2"));
+    expect(onDelete).toHaveBeenCalledWith("q_bravo");
+    fireEvent.click(view.getByLabelText("Edit queued message 2"));
+    expect(onEdit).toHaveBeenLastCalledWith({
+      queuedMessageId: "q_bravo",
+      queuedMessageIndex: 1,
+    });
+
+    view.rerender(
+      <QueuedMessagesList
+        {...queueProps([charlie, alpha, bravo], { onSend, onEdit, onDelete })}
+      />,
+    );
+    fireEvent.click(view.getByLabelText("Send queued message 1 now"));
+    expect(onSend).toHaveBeenCalledWith("q_charlie");
+    fireEvent.click(view.getByLabelText("Edit queued message 1"));
+    expect(onEdit).toHaveBeenLastCalledWith({
+      queuedMessageId: "q_charlie",
+      queuedMessageIndex: 0,
+    });
+  });
+});
+
+function renderQueue(props: QueuedMessagesListProps) {
+  return render(<QueuedMessagesList {...props} />);
+}

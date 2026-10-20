@@ -144,6 +144,7 @@ interface QueuedMessagesSummaryProps {
   headMessage: ThreadQueuedMessage;
   attachmentProjectId?: string;
   queuedMessageCount: number;
+  unconfirmedCount: number;
   failedCount: number;
   pendingSend: QueuedMessagePendingSend | null;
   expandLabel: string;
@@ -608,9 +609,11 @@ function QueuedMessagePreview({
 }
 
 function QueuedMessageWaitLine({
+  labelClassName,
   pluginDisplayName,
   queuedMessage,
 }: {
+  labelClassName?: string;
   pluginDisplayName: string;
   queuedMessage: ThreadQueuedMessage;
 }) {
@@ -650,7 +653,7 @@ function QueuedMessageWaitLine({
           className="size-3"
         />
       ) : null}
-      <span className="min-w-0 truncate">{label}</span>
+      <span className={cn("min-w-0 truncate", labelClassName)}>{label}</span>
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
       )}
@@ -660,9 +663,11 @@ function QueuedMessageWaitLine({
 
 function QueuedMessageProcessingLine({
   label,
+  labelClassName,
   unconfirmed = false,
 }: {
   label: string;
+  labelClassName?: string;
   unconfirmed?: boolean;
 }) {
   return (
@@ -676,7 +681,7 @@ function QueuedMessageProcessingLine({
         className="size-3 shrink-0 animate-spin"
         aria-hidden
       />
-      <span className="min-w-0 truncate">{label}</span>
+      <span className={cn("min-w-0 truncate", labelClassName)}>{label}</span>
     </div>
   );
 }
@@ -1153,10 +1158,12 @@ function QueuedMessagesStatus({
   failedCount,
   pendingSend,
   queuedMessageCount,
+  unconfirmedCount,
 }: {
   failedCount: number;
   pendingSend: QueuedMessagePendingSend | null;
   queuedMessageCount: number | null;
+  unconfirmedCount: number;
 }) {
   return (
     <span
@@ -1187,9 +1194,18 @@ function QueuedMessagesStatus({
           {failedCount} failed
         </span>
       )}
-      {queuedMessageCount === null ? null : (
+      {queuedMessageCount === null || queuedMessageCount === 0 ? null : (
         <span data-queued-messages-count="" className="shrink-0">
           {queuedMessageCount} queued
+        </span>
+      )}
+      {unconfirmedCount === 0 ? null : (
+        <span
+          data-queued-messages-unconfirmed-count=""
+          className="shrink-0"
+          title="Waiting for the server to confirm"
+        >
+          {unconfirmedCount} queuing…
         </span>
       )}
     </span>
@@ -1198,9 +1214,11 @@ function QueuedMessagesStatus({
 
 function QueuedMessageHeadStatus({
   fallback,
+  labelClassName,
   queuedMessage,
 }: {
   fallback: string | null;
+  labelClassName?: string;
   queuedMessage: ThreadQueuedMessage;
 }) {
   const pluginDisplayName = usePluginDisplayName(
@@ -1212,6 +1230,7 @@ function QueuedMessageHeadStatus({
     return (
       <QueuedMessageProcessingLine
         label={UNCONFIRMED_QUEUED_MESSAGE_LABEL}
+        labelClassName={labelClassName}
         unconfirmed
       />
     );
@@ -1219,6 +1238,7 @@ function QueuedMessageHeadStatus({
   if (queuedMessageHasWaitLine(queuedMessage)) {
     return (
       <QueuedMessageWaitLine
+        labelClassName={labelClassName}
         pluginDisplayName={pluginDisplayName}
         queuedMessage={queuedMessage}
       />
@@ -1236,6 +1256,7 @@ function QueuedMessagesSummary({
   headMessage,
   attachmentProjectId,
   queuedMessageCount,
+  unconfirmedCount,
   failedCount,
   pendingSend,
   expandLabel,
@@ -1272,72 +1293,122 @@ function QueuedMessagesSummary({
       </span>
     ) : null;
   const laterCount = queuedMessageCount - 1;
+  const pluginDisplayName = usePluginDisplayName(
+    headMessage.waitingOn?.kind === "plugin"
+      ? headMessage.waitingOn.pluginId
+      : "",
+  );
+  const triggerLabel = [
+    `${expandLabel}. First in queue: ${
+      headMessage.payload.kind === "retry"
+        ? queuedMessageFallbackTitle({
+            createdAt: headMessage.createdAt,
+            now: Date.now(),
+            payload: headMessage.payload,
+          })
+        : formatQueuedMessagePreview(headMessage.content)
+    }`,
+    isOptimisticQueuedMessageId(headMessage.id)
+      ? UNCONFIRMED_QUEUED_MESSAGE_LABEL
+      : describeQueuedMessageWait({
+          failureReason: headMessage.failureReason,
+          now: Date.now(),
+          payload: headMessage.payload,
+          pluginDisplayName,
+          sendAt: headMessage.sendAt,
+          waitingOn: headMessage.waitingOn,
+        }),
+    `${queuedMessageCount - unconfirmedCount} queued`,
+    unconfirmedCount > 0 ? `${unconfirmedCount} queuing` : null,
+    failedCount > 0 ? `${failedCount} failed` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(". ");
 
   return (
-    <button
-      type="button"
+    <div
       data-queued-messages-summary={variant}
-      className={cn(
-        "mx-1 mb-2 mt-1 flex min-h-0 min-w-0 flex-1 cursor-pointer rounded-lg px-2 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        variant === "strip"
-          ? "items-center gap-1.5"
-          : "flex-col items-stretch justify-center gap-0.5",
-      )}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => onExpand(event.detail === 0)}
+      className="relative mx-1 mb-2 mt-1 flex min-h-0 min-w-0 flex-1 rounded-lg transition-colors has-[[data-queued-messages-summary-trigger]:hover]:bg-state-hover"
     >
-      <span className="sr-only">{expandLabel}. First in queue:</span>
-      {variant === "strip" ? (
-        <>
-          <span
-            aria-hidden
-            className="min-w-3 shrink-0 text-right text-2xs tabular-nums text-subtle-foreground"
-          >
-            1
-          </span>
-          {thumbnail}
-          <QueuedMessagePreview compact queuedMessage={headMessage} />
-          {attachmentBadge}
-          <span className="flex min-w-0 max-w-[40%] shrink-0 empty:hidden">
-            <QueuedMessageHeadStatus
-              fallback={null}
-              queuedMessage={headMessage}
-            />
-          </span>
-          <span className="shrink-0 rounded-full bg-surface-recessed px-1.5 py-px">
-            <QueuedMessagesStatus
-              failedCount={failedCount}
-              pendingSend={pendingSend}
-              queuedMessageCount={queuedMessageCount}
-            />
-          </span>
-        </>
-      ) : (
-        <>
-          <span className="flex min-w-0 items-center gap-1">
+      <button
+        type="button"
+        data-queued-messages-summary-trigger=""
+        aria-label={triggerLabel}
+        className="absolute inset-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => onExpand(event.detail === 0)}
+      />
+      <span role="status" className="sr-only">
+        {pendingSend === null
+          ? ""
+          : pendingSend.mode === "steer"
+            ? "Steering…"
+            : "Sending…"}
+      </span>
+      <div
+        inert
+        className={cn(
+          "pointer-events-none relative flex min-w-0 flex-1 px-2",
+          variant === "strip"
+            ? "items-center gap-1.5"
+            : "flex-col items-stretch justify-center gap-0.5",
+        )}
+      >
+        {variant === "strip" ? (
+          <>
+            <span
+              aria-hidden
+              className="min-w-3 shrink-0 text-right text-2xs tabular-nums text-subtle-foreground"
+            >
+              1
+            </span>
             {thumbnail}
             <QueuedMessagePreview compact queuedMessage={headMessage} />
             {attachmentBadge}
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="flex min-w-0 flex-1">
+            <span className="flex min-w-0 max-w-[40%] shrink-0 empty:hidden">
               <QueuedMessageHeadStatus
-                fallback="First in queue"
+                fallback={null}
+                labelClassName="@max-md/queue:sr-only"
                 queuedMessage={headMessage}
               />
             </span>
-            <QueuedMessagesStatus
-              failedCount={failedCount}
-              pendingSend={pendingSend}
-              queuedMessageCount={null}
-            />
-            <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
-              {laterCount > 0 ? `+${laterCount} more` : "Only message"}
+            <span className="shrink-0 rounded-full bg-surface-recessed px-1.5 py-px">
+              <QueuedMessagesStatus
+                failedCount={failedCount}
+                pendingSend={pendingSend}
+                queuedMessageCount={queuedMessageCount - unconfirmedCount}
+                unconfirmedCount={unconfirmedCount}
+              />
             </span>
-          </span>
-        </>
-      )}
-    </button>
+          </>
+        ) : (
+          <>
+            <span className="flex min-w-0 items-center gap-1">
+              {thumbnail}
+              <QueuedMessagePreview compact queuedMessage={headMessage} />
+              {attachmentBadge}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="flex min-w-0 flex-1">
+                <QueuedMessageHeadStatus
+                  fallback="First in queue"
+                  queuedMessage={headMessage}
+                />
+              </span>
+              <QueuedMessagesStatus
+                failedCount={failedCount}
+                pendingSend={pendingSend}
+                queuedMessageCount={null}
+                unconfirmedCount={0}
+              />
+              <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
+                {laterCount > 0 ? `+${laterCount} more` : "Only message"}
+              </span>
+            </span>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1876,6 +1947,11 @@ export function QueuedMessagesList({
       queuedMessage.failureReason === null ? count : count + 1,
     0,
   );
+  const unconfirmedCount = orderedMessages.reduce(
+    (count, queuedMessage) =>
+      isOptimisticQueuedMessageId(queuedMessage.id) ? count + 1 : count,
+    0,
+  );
   const collapsed = mode === "collapsed" || showPendingSendOnly;
   const showEdgeStatus =
     !showPendingSendOnly &&
@@ -1913,7 +1989,7 @@ export function QueuedMessagesList({
       ariaLabel="Queued messages"
       style={{ height: surfaceHeight }}
       className={cn(
-        "relative z-10 mx-3 flex min-h-0 flex-col border-muted-foreground/15 bg-surface-raised-solid sm:mx-4",
+        "@container/queue relative z-10 mx-3 flex min-h-0 flex-col border-muted-foreground/15 bg-surface-raised-solid sm:mx-4",
         inlineEditor || !attachedToComposer
           ? "mb-0 rounded-xl pb-4"
           : "-mb-5 rounded-xl rounded-b-none border-b-0 pb-3",
@@ -1955,7 +2031,8 @@ export function QueuedMessagesList({
               <QueuedMessagesStatus
                 failedCount={summaryVariant === "strip" ? failedCount : 0}
                 pendingSend={summaryVariant === "strip" ? pendingSend : null}
-                queuedMessageCount={queuedMessages.length}
+                queuedMessageCount={queuedMessages.length - unconfirmedCount}
+                unconfirmedCount={unconfirmedCount}
               />
             </span>
           ) : null}
@@ -1998,6 +2075,7 @@ export function QueuedMessagesList({
             failedCount={0}
             pendingSend={pendingSend}
             queuedMessageCount={null}
+            unconfirmedCount={0}
           />
         </div>
       ) : collapsed && headMessage !== undefined && !inlineEditor ? (
@@ -2006,6 +2084,7 @@ export function QueuedMessagesList({
           headMessage={headMessage}
           attachmentProjectId={attachmentProjectId}
           queuedMessageCount={queuedMessages.length}
+          unconfirmedCount={unconfirmedCount}
           failedCount={failedCount}
           pendingSend={pendingSend}
           expandLabel={caretLabel}
@@ -2024,7 +2103,8 @@ export function QueuedMessagesList({
           <QueuedMessagesStatus
             failedCount={failedCount}
             pendingSend={pendingSend}
-            queuedMessageCount={queuedMessages.length}
+            queuedMessageCount={queuedMessages.length - unconfirmedCount}
+            unconfirmedCount={unconfirmedCount}
           />
         </div>
       ) : null}

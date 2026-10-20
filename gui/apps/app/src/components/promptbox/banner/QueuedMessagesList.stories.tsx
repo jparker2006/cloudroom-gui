@@ -1,4 +1,11 @@
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import type { ThreadQueuedMessage } from "@cloudroom/domain";
@@ -10,7 +17,13 @@ import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
-import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
+import {
+  QueuedMessagesList,
+  type QueuedMessagePendingSend,
+  type QueuedMessagesSummaryVariant,
+} from "@/components/promptbox/banner/QueuedMessagesList";
+import { isOptimisticQueuedMessageId } from "@cloudroom/client-core";
+import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -31,10 +44,18 @@ function PromptStage({ children, size }: PromptStageProps) {
     <div
       data-promptbox-shell=""
       className={
-        size === "desktop" ? "min-w-0 flex-1 pb-5" : "w-[20rem] shrink-0 pb-5"
+        size === "desktop"
+          ? "min-w-0 flex-1 pt-4 pb-5"
+          : "w-[20rem] shrink-0 pt-4 pb-5"
       }
     >
       {children}
+      <div
+        aria-hidden
+        className="relative z-20 flex h-20 items-start rounded-2xl border border-border bg-background px-4 py-3 text-sm text-subtle-foreground shadow-sm"
+      >
+        Composer (stand-in)
+      </div>
     </div>
   );
 }
@@ -326,6 +347,8 @@ interface StaticQueuedMessagesListProps {
   actionDisabled?: boolean;
   processingMessageId?: string;
   processingAction?: "send" | "edit" | "delete";
+  pendingSend?: QueuedMessagePendingSend | null;
+  summaryVariant?: QueuedMessagesSummaryVariant;
 }
 
 function StaticQueuedMessagesList({
@@ -334,6 +357,8 @@ function StaticQueuedMessagesList({
   actionDisabled = false,
   processingMessageId,
   processingAction,
+  pendingSend,
+  summaryVariant,
 }: StaticQueuedMessagesListProps) {
   return (
     <QueuedMessagesList
@@ -344,6 +369,8 @@ function StaticQueuedMessagesList({
       actionDisabled={actionDisabled}
       processingMessageId={processingMessageId ?? null}
       processingAction={processingAction ?? null}
+      pendingSend={pendingSend ?? null}
+      summaryVariant={summaryVariant}
       onSend={noop}
       onReorder={noop}
       onEdit={noop}
@@ -743,5 +770,415 @@ export function SenderMetadata() {
         </StoryRow>
       </StoryCard>
     </QueryClientProvider>
+  );
+}
+
+const SUMMARY_VARIANTS: readonly QueuedMessagesSummaryVariant[] = [
+  "strip",
+  "stack",
+];
+
+const SUMMARY_PENDING_AUTO: QueuedMessagePendingSend = {
+  queuedMessageId: "q_a",
+  mode: "auto",
+};
+
+const SUMMARY_PENDING_STEER: QueuedMessagePendingSend = {
+  queuedMessageId: "q_a",
+  mode: "steer",
+};
+
+const oneBehind: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "sum_behind",
+    text: "Then post the summary in the thread.",
+    waitingOn: threadBusy,
+  }),
+];
+
+interface SummaryScenario {
+  label: string;
+  hint: string;
+  queuedMessages: readonly ThreadQueuedMessage[];
+  pendingSend?: QueuedMessagePendingSend;
+}
+
+const summaryScenarios: readonly SummaryScenario[] = [
+  {
+    label: "3 waiting",
+    hint: "the first row previews; the count covers the rest",
+    queuedMessages: multipleMessages,
+  },
+  {
+    label: "9 waiting",
+    hint: "a long queue still shows one head row and the total",
+    queuedMessages: manyMessages,
+  },
+  {
+    label: "long text head",
+    hint: "the head preview truncates on one line",
+    queuedMessages: [...longMessage, ...oneBehind],
+  },
+  {
+    label: "image head",
+    hint: "the thumbnail stands in for the icon, with a +N badge",
+    queuedMessages: [
+      makeQueuedMessage({
+        id: "sum_img",
+        text: "Three screenshots from the design review.",
+        attachments: 3,
+      }),
+      ...oneBehind,
+    ],
+  },
+  {
+    label: "file-only head",
+    hint: "no image: the file name previews and the attachment count shows",
+    queuedMessages: [
+      makeQueuedMessage({
+        id: "sum_file",
+        content: [
+          {
+            type: "localFile",
+            path: "/workspace/logs/trace-2026-10-19.zip",
+            name: "trace-2026-10-19.zip",
+            mimeType: "application/zip",
+            sizeBytes: 2_400_000,
+          },
+        ],
+      }),
+      ...oneBehind,
+    ],
+  },
+  {
+    label: "blocked · scheduled",
+    hint: "the head shows its wait and countdown",
+    queuedMessages: [...scheduled, ...oneBehind],
+  },
+  {
+    label: "blocked · host offline",
+    hint: "the head names the host that cannot be reached",
+    queuedMessages: [...waitingForHost, ...oneBehind],
+  },
+  {
+    label: "blocked · pending reply",
+    hint: "the head waits on the user's answer",
+    queuedMessages: [...waitingForReply, ...oneBehind],
+  },
+  {
+    label: "blocked · plugin hold",
+    hint: "the head names the plugin that holds it",
+    queuedMessages: [...pluginWait, ...oneBehind],
+  },
+  {
+    label: "failed head",
+    hint: "the failure replaces the head status and the pill counts it",
+    queuedMessages: [...failed, ...oneBehind],
+  },
+  {
+    label: "failed mid-queue",
+    hint: "the head stays calm; the pill still counts the failed row",
+    queuedMessages: [...multipleMessages.slice(0, 1), ...failed, ...oneBehind],
+  },
+  {
+    label: "unconfirmed tail",
+    hint: "the optimistic row says it is waiting for the server",
+    queuedMessages: [
+      ...multipleMessages,
+      makeQueuedMessage({
+        id: "optimistic-queued-demo",
+        text: "Typed just now, waiting for the server to confirm.",
+      }),
+    ],
+  },
+  {
+    label: "pending auto · 2 left",
+    hint: "the send request is in flight; the removed row is not in the list",
+    queuedMessages: multipleMessages.slice(1),
+    pendingSend: SUMMARY_PENDING_AUTO,
+  },
+  {
+    label: "pending steer · 2 left",
+    hint: "the steer request is in flight with the rest of the queue",
+    queuedMessages: multipleMessages.slice(1),
+    pendingSend: SUMMARY_PENDING_STEER,
+  },
+  {
+    label: "pending · empty queue",
+    hint: "no caret or rows: the card only shows the send status",
+    queuedMessages: [],
+    pendingSend: SUMMARY_PENDING_AUTO,
+  },
+];
+
+const SUMMARY_CARET_SELECTOR =
+  'button[aria-label="Collapse queued messages"], button[aria-label="Expand queued messages"]';
+
+function CollapsedOnMount({ children }: { children: ReactNode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    let frame = 0;
+    const pressCaret = (presses: number) => {
+      if (
+        !wrapper ||
+        presses === 0 ||
+        wrapper.querySelector("[data-queued-messages-summary]")
+      ) {
+        return;
+      }
+      wrapper.querySelector<HTMLButtonElement>(SUMMARY_CARET_SELECTOR)?.click();
+      frame = window.requestAnimationFrame(() => pressCaret(presses - 1));
+    };
+    pressCaret(2);
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+  return <div ref={wrapperRef}>{children}</div>;
+}
+
+function SummaryScenarioRow({
+  summaryVariant,
+  scenario,
+  collapsed,
+}: {
+  summaryVariant: QueuedMessagesSummaryVariant;
+  scenario: SummaryScenario;
+  collapsed: boolean;
+}) {
+  const list = (
+    <StaticQueuedMessagesList
+      queuedMessages={scenario.queuedMessages}
+      pendingSend={scenario.pendingSend ?? null}
+      summaryVariant={summaryVariant}
+    />
+  );
+  return (
+    <StoryRow
+      label={`${summaryVariant} · ${collapsed ? "collapsed" : "expanded"}`}
+      hint={`${scenario.label}: ${scenario.hint}`}
+    >
+      <ResponsivePromptStage>
+        {collapsed ? <CollapsedOnMount>{list}</CollapsedOnMount> : list}
+      </ResponsivePromptStage>
+    </StoryRow>
+  );
+}
+
+export function SummaryOptions() {
+  return (
+    <>
+      {SUMMARY_VARIANTS.map((summaryVariant) => (
+        <StoryCard key={summaryVariant}>
+          {summaryScenarios.map((scenario) => (
+            <Fragment key={scenario.label}>
+              <SummaryScenarioRow
+                summaryVariant={summaryVariant}
+                scenario={scenario}
+                collapsed={true}
+              />
+              {scenario.queuedMessages.length === 0 ? null : (
+                <SummaryScenarioRow
+                  summaryVariant={summaryVariant}
+                  scenario={scenario}
+                  collapsed={false}
+                />
+              )}
+            </Fragment>
+          ))}
+        </StoryCard>
+      ))}
+    </>
+  );
+}
+
+interface SummaryTransitionState {
+  queuedMessages: readonly ThreadQueuedMessage[];
+  pendingSend: QueuedMessagePendingSend | null;
+  sentMessage: ThreadQueuedMessage | null;
+  nextId: number;
+}
+
+const initialSummaryTransitionState: SummaryTransitionState = {
+  queuedMessages: multipleMessages,
+  pendingSend: null,
+  sentMessage: null,
+  nextId: 1,
+};
+
+const transitionButtonClass =
+  "rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-state-hover disabled:pointer-events-none disabled:opacity-40";
+
+export function SummaryTransitions() {
+  const [summaryVariant, setSummaryVariant] =
+    useState<QueuedMessagesSummaryVariant>("strip");
+  const [state, setState] = useState(initialSummaryTransitionState);
+  const hasPendingSend = state.pendingSend !== null;
+  const hasOptimistic = state.queuedMessages.some((queuedMessage) =>
+    isOptimisticQueuedMessageId(queuedMessage.id),
+  );
+
+  const sendFirst = () =>
+    setState((current) => {
+      const [head, ...rest] = current.queuedMessages;
+      if (head === undefined || current.pendingSend !== null) return current;
+      return {
+        ...current,
+        queuedMessages: rest,
+        pendingSend: { queuedMessageId: head.id, mode: "auto" },
+        sentMessage: head,
+      };
+    });
+  const serverDelivered = () =>
+    setState((current) => ({
+      ...current,
+      pendingSend: null,
+      sentMessage: null,
+    }));
+  const restoreSent = (
+    restore: (sentMessage: ThreadQueuedMessage) => ThreadQueuedMessage,
+  ) =>
+    setState((current) =>
+      current.sentMessage === null
+        ? current
+        : {
+            ...current,
+            queuedMessages: [
+              restore(current.sentMessage),
+              ...current.queuedMessages,
+            ],
+            pendingSend: null,
+            sentMessage: null,
+          },
+    );
+  const serverRequeued = () =>
+    restoreSent((sentMessage) => ({
+      ...sentMessage,
+      waitingOn: threadBusy,
+    }));
+  const serverError = () => restoreSent((sentMessage) => sentMessage);
+  const addMessage = () =>
+    setState((current) => ({
+      ...current,
+      queuedMessages: [
+        ...current.queuedMessages,
+        makeQueuedMessage({
+          id: `optimistic-queued-${current.nextId}`,
+          text: "Follow-up typed while the thread runs.",
+        }),
+      ],
+      nextId: current.nextId + 1,
+    }));
+  const serverConfirmCreate = () =>
+    setState((current) => ({
+      ...current,
+      queuedMessages: current.queuedMessages.map((queuedMessage) =>
+        isOptimisticQueuedMessageId(queuedMessage.id)
+          ? {
+              ...queuedMessage,
+              id: queuedMessage.id.replace("optimistic-queued-", "q_"),
+            }
+          : queuedMessage,
+      ),
+    }));
+
+  return (
+    <StoryCard>
+      <StoryRow label="variant" hint="the summary option under test">
+        <div className="flex gap-2">
+          {SUMMARY_VARIANTS.map((variant) => (
+            <button
+              key={variant}
+              type="button"
+              aria-pressed={summaryVariant === variant}
+              className={cn(
+                transitionButtonClass,
+                summaryVariant === variant && "bg-muted",
+              )}
+              onClick={() => setSummaryVariant(variant)}
+            >
+              {variant}
+            </button>
+          ))}
+        </div>
+      </StoryRow>
+      <StoryRow label="client" hint="local actions that change the queue">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={transitionButtonClass}
+            disabled={state.queuedMessages.length === 0 || hasPendingSend}
+            onClick={sendFirst}
+          >
+            Send first
+          </button>
+          <button
+            type="button"
+            className={transitionButtonClass}
+            disabled={hasOptimistic}
+            onClick={addMessage}
+          >
+            Add message
+          </button>
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="server"
+        hint="the outcome of the pending send or create; each one clears it"
+      >
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={transitionButtonClass}
+            disabled={!hasPendingSend}
+            onClick={serverDelivered}
+          >
+            Server: delivered
+          </button>
+          <button
+            type="button"
+            className={transitionButtonClass}
+            disabled={!hasPendingSend}
+            onClick={serverRequeued}
+          >
+            Server: re-queued
+          </button>
+          <button
+            type="button"
+            className={transitionButtonClass}
+            disabled={!hasPendingSend}
+            onClick={serverError}
+          >
+            Server: error
+          </button>
+          <button
+            type="button"
+            className={transitionButtonClass}
+            disabled={!hasOptimistic}
+            onClick={serverConfirmCreate}
+          >
+            Server: confirm create
+          </button>
+          <button
+            type="button"
+            className={transitionButtonClass}
+            onClick={() => setState(initialSummaryTransitionState)}
+          >
+            Reset
+          </button>
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="queue"
+        hint="the list the summary reads from; first in queue order is the head"
+      >
+        <ResponsivePromptStage>
+          <StaticQueuedMessagesList
+            queuedMessages={state.queuedMessages}
+            pendingSend={state.pendingSend}
+            summaryVariant={summaryVariant}
+          />
+        </ResponsivePromptStage>
+      </StoryRow>
+    </StoryCard>
   );
 }
