@@ -537,6 +537,56 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     ).toBeTruthy();
   });
 
+  it("moves a Summary card's source link out of the crowded header and above the summary", () => {
+    const source = { href: "/threads/thr_child", title: "Install tools" };
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadPendingInteractionBanner
+            interaction={commandApproval}
+            sourceThread={source}
+            threadId="thr_child"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const headerRow = () =>
+      screen.getByRole("button", { name: /details/ }).parentElement;
+    const link = () => screen.getByRole("link", { name: "From Install tools" });
+    const summary = () => screen.getByTestId("approval-summary");
+
+    for (const expand of [false, true]) {
+      if (expand) expandBanner();
+      expect(
+        screen.getAllByRole("link", { name: "From Install tools" }),
+      ).toHaveLength(1);
+      expect(headerRow()?.contains(link())).toBe(false);
+      expect(
+        link().compareDocumentPosition(summary()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
+    view.unmount();
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadPendingInteractionBanner
+            interaction={planReview}
+            sourceThread={source}
+            threadId="thr_child"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.queryByRole("link", { name: "From Install tools" }),
+    ).toBeNull();
+    expandBanner();
+    expect(headerRow()?.contains(link())).toBe(true);
+  });
+
   it("renders a user question open by default and keeps draft answers across collapse", () => {
     const question: PendingInteraction = {
       ...planReview,

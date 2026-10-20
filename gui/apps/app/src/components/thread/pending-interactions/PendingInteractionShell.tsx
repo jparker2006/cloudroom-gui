@@ -99,7 +99,10 @@ export function PendingInteractionShell({
     <NavLink
       to={sourceThread.href}
       title={sourceThread.title}
-      className="min-w-0 max-w-[40%] shrink-[3] truncate text-xs text-subtle-foreground no-underline hover:underline"
+      className={cn(
+        "min-w-0 truncate text-xs text-subtle-foreground no-underline hover:underline",
+        summary ? "mb-1.5 block" : "max-w-[40%] shrink-[3]",
+      )}
     >
       From {sourceThread.title}
     </NavLink>
@@ -148,11 +151,12 @@ export function PendingInteractionShell({
           </span>
         </button>
         {status}
-        {isExpanded || summary ? sourceThreadLink : null}
+        {isExpanded && !summary ? sourceThreadLink : null}
         {toggle}
       </div>
       {summary ? (
         <div className="px-3 pb-3 pt-1">
+          {sourceThreadLink}
           {summary}
           {errorNode}
         </div>
