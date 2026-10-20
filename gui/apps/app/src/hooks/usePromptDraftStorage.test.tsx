@@ -2118,3 +2118,45 @@ describe("keeping a copy over unsaved typing", () => {
     expect(result.current.text).toBe("new live typing");
   });
 });
+
+describe("reading finished drafts in the composer", () => {
+  it("shows a moved draft with leftovers as empty, and typing doesn't save the leftovers back", () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({
+        text: "",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+        rev: "a5a5a5a5a5a5a5a5",
+        moved: true,
+      }),
+    );
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+
+    expect(result.current.attachments).toEqual([]);
+    act(() => result.current.setTextAndMentions("x", []));
+    act(() => result.current.setDraft(result.current.getCurrent()));
+    expect(storedRecord(alphaKey()).attachments).toEqual([]);
+  });
+
+  it("holds this window's text when it re-reads a move before the storage event arrives", () => {
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+    act(() => result.current.setDraft({ text: "moved text", mentions: [], attachments: [] }));
+    const savedRev = String(storedRecord(alphaKey()).rev);
+    const marker = JSON.stringify({ rev: "b6b6b6b6b6b6b6b6", base: savedRev, moved: true });
+    window.localStorage.setItem(alphaKey(), marker);
+
+    act(() => result.current.setTextAndMentions(`${result.current.getCurrent().text},`, []));
+    act(() => result.current.setDraft(result.current.getCurrent()));
+
+    expect(window.localStorage.getItem(alphaKey())).toBe(marker);
+    expect(result.current.notice).toBe("moved-elsewhere");
+  });
+
+  it("only keeps copies built on a finished draft", async () => {
+    const sourceId = `${alphaId()}src`;
+    const conflictKey = `bb.promptbox.conflict-new-thread-${sourceId}-c7c7c7c7c7c7c7c7-3`;
+    window.localStorage.setItem(conflictKey, JSON.stringify({ text: "live conflict", attachments: [], rev: "c7c7c7c7c7c7c7c7" }));
+
+    expect(await keepNewThreadDraftCopy(conflictKey)).toBe("nothing-to-keep");
+  });
+});

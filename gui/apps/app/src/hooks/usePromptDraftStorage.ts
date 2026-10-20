@@ -141,8 +141,28 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     return cachedEntry.draft;
   }
 
-  const draft = parsePromptDraftStorage(rawValue);
+  let draft = parsePromptDraftStorage(rawValue);
   if (isNewThreadProjectDraftKey(storageKey)) {
+    const record = readNewThreadRecord(rawValue);
+    const finished =
+      record.kind === "moved" || record.kind === "discarded" || record.kind === "sent";
+    if (
+      finished &&
+      rawValue !== null &&
+      cachedEntry &&
+      !isPromptDraftEmpty(cachedEntry.draft) &&
+      record.rev !== newThreadDraftRevs.get(storageKey)
+    ) {
+      if (record.kind === "sent") {
+        newThreadDraftNotices.set(storageKey, "sent-elsewhere");
+        newThreadDraftRevs.set(storageKey, record.rev);
+        cachedEntry.rawValue = rawValue;
+      } else {
+        holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
+      }
+      return cachedEntry.draft;
+    }
+    if (finished) draft = EMPTY_PROMPT_DRAFT;
     const rev = readStoredRev(rawValue);
     if (rev) newThreadDraftRevs.set(storageKey, rev);
     const recovered = cachedEntry ? null : findCloseTimeRecoveryCopy(storageKey, rev);
@@ -723,6 +743,7 @@ export function keepNewThreadDraftCopy(
   const storageKey = getPromptDraftStorageKey({ kind: "new-thread", projectId });
   return withDraftWriteLock(storageKey, () => {
     const side = readNewThreadRecord(readStoredPromptDraftValue(sideKey));
+    if (!finishedDraftKind(sideKey)) return "nothing-to-keep";
     if (side.kind !== "draft" || isPromptDraftEmpty(side.draft)) return "nothing-to-keep";
     const held = promptDraftCache.get(storageKey)?.draft;
     if (
