@@ -241,14 +241,13 @@ async function requireThreadStorageTarget(
   };
 }
 
-async function requireThreadWorkspaceReadRoot(
+async function requireThreadWorkspaceReadScope(
   deps: WorkSessionDeps,
   args: {
     environment: { hostId: string; path: string | null };
-    path: string;
     threadId: string;
   },
-): Promise<string> {
+): Promise<{ excludeRootPath: string; rootPath: string }> {
   const rootPath = args.environment.path;
   if (rootPath === null) {
     throw new ApiError(
@@ -257,36 +256,15 @@ async function requireThreadWorkspaceReadRoot(
       "This thread's workspace isn't available.",
     );
   }
-  const allThreadStoragePath = path.dirname(
-    await requireThreadStoragePath(deps, {
-      hostId: args.environment.hostId,
-      threadId: args.threadId,
-    }),
-  );
-  try {
-    await callHostRetryableOnlineRpc(deps, {
-      hostId: args.environment.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.file_metadata",
-        path: args.path,
-        rootPath: allThreadStoragePath,
-      },
-    });
-  } catch (error) {
-    if (
-      error instanceof ApiError &&
-      (error.body.code === "invalid_path" || error.body.code === "ENOENT")
-    ) {
-      return rootPath;
-    }
-    throw error;
-  }
-  throw new ApiError(
-    403,
-    "outside_thread_workspace",
-    "This file is in Cloudroom's thread storage, not this thread's workspace.",
-  );
+  return {
+    excludeRootPath: path.dirname(
+      await requireThreadStoragePath(deps, {
+        hostId: args.environment.hostId,
+        threadId: args.threadId,
+      }),
+    ),
+    rootPath,
+  };
 }
 
 function isHtmlPreviewPath(relativePath: string): boolean {
@@ -876,14 +854,13 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     const environment = requireEnvironment(deps.db, thread.environmentId);
-    const rootPath =
+    const scope =
       query.scope === "workspace"
-        ? await requireThreadWorkspaceReadRoot(deps, {
+        ? await requireThreadWorkspaceReadScope(deps, {
             environment,
-            path: query.path,
             threadId: thread.id,
           })
-        : undefined;
+        : {};
 
     return serveDaemonFileContent(
       deps,
@@ -891,7 +868,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         hostId: environment.hostId,
         ifNoneMatch: context.req.header("if-none-match"),
         path: query.path,
-        ...(rootPath !== undefined ? { rootPath } : {}),
+        ...scope,
       },
       (result) =>
         createDaemonFileContentResponse(result, {

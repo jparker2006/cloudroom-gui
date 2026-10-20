@@ -239,6 +239,9 @@ export async function readHostFile(
     resolvedPath: command.path,
     resultPath: command.path,
     ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
+    ...(command.excludeRootPath !== undefined
+      ? { excludeRootPath: command.excludeRootPath }
+      : {}),
   });
 }
 

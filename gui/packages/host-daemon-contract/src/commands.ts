@@ -459,6 +459,7 @@ const hostReadFileCommandSchema = z
     type: z.literal("host.read_file"),
     path: z.string().min(1),
     rootPath: z.string().min(1).optional(),
+    excludeRootPath: z.string().min(1).optional(),
     ref: z.string().min(1).optional(),
     ifNoneMatch: hostReadFileIfNoneMatchSchema.optional(),
   })
@@ -468,6 +469,13 @@ const hostReadFileCommandSchema = z
         code: "custom",
         path: ["rootPath"],
         message: "rootPath is required when ref is set",
+      });
+    }
+    if (command.ref !== undefined && command.excludeRootPath !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["excludeRootPath"],
+        message: "excludeRootPath is not supported when ref is set",
       });
     }
   });

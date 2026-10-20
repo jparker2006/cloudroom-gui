@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -93,7 +93,10 @@ it("never serves a cached copy for scoped reads", async () => {
 
   await expect(read(escape)).rejects.toMatchObject({ status: 403 });
   sandbox.offline = true;
-  await expect(read(escape)).rejects.toThrow("sandbox unreachable");
+  await expect(read(escape)).rejects.toMatchObject({
+    status: 502,
+    body: { code: "cloud_sandbox_unavailable" },
+  });
 });
 
 it("fails closed while the checkout is unknown", async () => {
@@ -107,4 +110,24 @@ it("fails closed while the checkout is unknown", async () => {
 
 it("keeps unscoped chat-link reads unchanged", async () => {
   expect((await cloudFile(deps, "thr_cloud", join(checkout, "escape.png"))).toString()).toBe("outside");
+});
+
+it("reports an unreadable checkout file clearly", async () => {
+  const locked = join(checkout, "locked.png");
+  writeFileSync(locked, "secret");
+  chmodSync(locked, 0o000);
+
+  await expect(read(locked)).rejects.toMatchObject({
+    status: 403,
+    body: { code: "cloud_file_unreadable" },
+  });
+});
+
+it("reports an unreachable sandbox clearly", async () => {
+  sandbox.offline = true;
+
+  await expect(read(join(checkout, "shots", "chart.png"))).rejects.toMatchObject({
+    status: 502,
+    body: { code: "cloud_sandbox_unavailable" },
+  });
 });

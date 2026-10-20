@@ -53,6 +53,7 @@ interface ReadFileMetadataForTransportResult {
 }
 
 interface ReadFileForTransportArgs {
+  excludeRootPath?: string;
   ifNoneMatch?: HostReadFileIfNoneMatch;
   resolvedPath: string;
   resultPath: string;
@@ -253,6 +254,41 @@ async function throwMissingTargetOrRethrow(
 }
 
 async function resolveReadablePath(
+  args: ReadFileForTransportArgs,
+): Promise<string> {
+  const readablePath = await resolveRootedReadablePath(args);
+  if (args.excludeRootPath === undefined) {
+    return readablePath;
+  }
+  const realReadablePath = args.rootPath
+    ? readablePath
+    : await fs
+        .realpath(readablePath)
+        .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
+  const realExcludedRootPath = await fs
+    .realpath(args.excludeRootPath)
+    .catch((error: unknown) => {
+      if (isFsErrorWithCode(error, "ENOENT")) {
+        return null;
+      }
+      throw new CommandDispatchError(
+        "excluded_root_unverified",
+        `Could not verify excluded folder "${args.excludeRootPath}"`,
+      );
+    });
+  if (
+    realExcludedRootPath !== null &&
+    isPathWithinDirectory(realExcludedRootPath, realReadablePath)
+  ) {
+    throw new CommandDispatchError(
+      "excluded_path",
+      `Path "${args.resultPath}" is inside an excluded folder`,
+    );
+  }
+  return realReadablePath;
+}
+
+async function resolveRootedReadablePath(
   args: ReadFileForTransportArgs,
 ): Promise<string> {
   const rootPath = args.rootPath;

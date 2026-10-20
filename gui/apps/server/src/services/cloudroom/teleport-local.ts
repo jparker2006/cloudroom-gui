@@ -177,8 +177,13 @@ export async function copyToMac(deps: AppDeps, threadId: string): Promise<{ bran
 
 export type CloudFileScope = "workspace";
 
+function cloudSandboxUnavailable(error: unknown): never {
+  if (error instanceof ApiError) throw error;
+  throw new ApiError(502, "cloud_sandbox_unavailable", "Couldn't reach this thread's cloud sandbox. Try again in a moment.");
+}
+
 async function cloudWorkspaceRoot(deps: AppDeps, threadId: string): Promise<string> {
-  const workspace = await cloudroom(deps).threadWorkspace(threadId);
+  const workspace = await cloudroom(deps).threadWorkspace(threadId).catch(cloudSandboxUnavailable);
   const root = workspace && typeof workspace === "object" && "path" in workspace ? workspace.path : null;
   if (typeof root !== "string" || !isAbsolute(root))
     throw new ApiError(409, "cloud_workspace_unavailable", "This thread's cloud checkout isn't available yet.");
@@ -187,16 +192,17 @@ async function cloudWorkspaceRoot(deps: AppDeps, threadId: string): Promise<stri
 
 export async function downloadWithinRoot(client: CloudroomClient, root: string, path: string, maxMb: number): Promise<Buffer> {
   const locate = `r=$(realpath -e -- ${quote(root)} 2>/dev/null) && p=$(realpath -e -- ${quote(path)} 2>/dev/null) && case "$p" in "$r"/*) true ;; *) false ;; esac`;
-  const probe = `if ${locate}; then if [ -f "$p" ]; then wc -c < "$p"; else echo -1; fi; elif [ -z "$r" ]; then echo -3; elif [ -z "$p" ]; then echo -1; else echo -2; fi`;
-  const size = Number((await vm(client, probe)).toString().trim());
+  const probe = `if ${locate}; then if [ -f "$p" ] && [ -r "$p" ]; then wc -c < "$p"; elif [ -f "$p" ]; then echo -4; else echo -1; fi; elif [ -z "$r" ]; then echo -3; elif [ -z "$p" ]; then echo -1; else echo -2; fi`;
+  const size = Number((await vm(client, probe).catch(cloudSandboxUnavailable)).toString().trim());
   if (size === -3) throw new ApiError(409, "cloud_workspace_unavailable", "This thread's cloud checkout isn't available yet.");
   if (size === -2) throw new ApiError(403, "outside_thread_workspace", `${path} resolves outside this thread's cloud checkout.`);
+  if (size === -4) throw new ApiError(403, "cloud_file_unreadable", `${path} exists in the cloud but can't be read.`);
   if (size < 0) throw new ApiError(404, "cloud_file_missing", `${path} is not a file in the cloud.`);
   if (size > maxMb * 1024 * 1024) throw new ApiError(413, "cloud_file_too_large", `${basename(path)} is over the ${maxMb} MB limit.`);
   const parts: Buffer[] = [];
   for (let offset = 0; offset < size; offset += CHUNK) {
-    const chunk = await vm(client, `${locate} || exit 3; tail -c +${offset + 1} "$p" | head -c ${CHUNK}`).catch(() => {
-      throw new ApiError(403, "outside_thread_workspace", `${path} changed while it was being read from the cloud.`);
+    const chunk = await vm(client, `${locate} || exit 3; [ "$(wc -c < "$p")" -eq ${size} ] || exit 4; tail -c +${offset + 1} "$p" | head -c ${CHUNK}`).catch(() => {
+      throw new ApiError(409, "cloud_file_changed", `${path} changed while it was being read from the cloud. Try again.`);
     });
     parts.push(chunk);
   }

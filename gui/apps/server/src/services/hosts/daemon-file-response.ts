@@ -25,6 +25,7 @@ interface CreateDaemonFileContentResponseOptions {
 export async function serveDaemonFileContent(
   deps: LoggedWorkSessionDeps,
   target: {
+    excludeRootPath?: string;
     hostId: string;
     ifNoneMatch?: string | undefined;
     path: string;
@@ -174,6 +175,17 @@ export function remapDaemonFileRouteError(error: unknown): never {
       404,
       error.body.code,
       error.body.message,
+      error.body.retryable,
+    );
+  }
+  if (
+    error.body.code === "excluded_path" ||
+    error.body.code === "excluded_root_unverified"
+  ) {
+    throw new ApiError(
+      403,
+      "outside_thread_workspace",
+      "This file is in Cloudroom's thread storage, not this thread's workspace.",
       error.body.retryable,
     );
   }

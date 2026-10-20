@@ -236,6 +236,125 @@ describe("readHostFile (no ref — disk read)", () => {
   });
 });
 
+describe("readHostFile with an excluded root", () => {
+  async function makeWorkspace() {
+    const workspace = await makeTempDir("bb-host-files-exclude-");
+    await fs.mkdir(path.join(workspace, "shots"));
+    await fs.writeFile(path.join(workspace, "shots", "chart.png"), "mine");
+    return workspace;
+  }
+
+  async function readScoped(
+    workspace: string,
+    filePath: string,
+    excludeRootPath: string,
+  ) {
+    return readHostFile({
+      type: "host.read_file",
+      path: filePath,
+      rootPath: workspace,
+      excludeRootPath,
+    });
+  }
+
+  async function expectCode(promise: Promise<unknown>, code: string) {
+    const error = await promise.then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(CommandDispatchError);
+    expect((error as CommandDispatchError).code).toBe(code);
+  }
+
+  it("reads a workspace file when thread storage is elsewhere", async () => {
+    const workspace = await makeWorkspace();
+    const storage = await makeTempDir("bb-host-files-storage-");
+
+    const result = await readScoped(
+      workspace,
+      path.join(workspace, "shots", "chart.png"),
+      storage,
+    );
+
+    expect(result).toMatchObject({
+      content: Buffer.from("mine").toString("base64"),
+    });
+  });
+
+  it("reads a workspace file when the excluded root does not exist", async () => {
+    const workspace = await makeWorkspace();
+
+    const result = await readScoped(
+      workspace,
+      path.join(workspace, "shots", "chart.png"),
+      path.join(workspace, "missing-thread-storage"),
+    );
+
+    expect(result).toMatchObject({
+      content: Buffer.from("mine").toString("base64"),
+    });
+  });
+
+  it("rejects a file inside thread storage that the workspace contains", async () => {
+    const workspace = await makeWorkspace();
+    const storage = path.join(workspace, ".bb", "thread-storage");
+    await fs.mkdir(path.join(storage, "thr_two"), { recursive: true });
+    await fs.writeFile(path.join(storage, "thr_two", "a.png"), "theirs");
+
+    await expectCode(
+      readScoped(workspace, path.join(storage, "thr_two", "a.png"), storage),
+      "excluded_path",
+    );
+  });
+
+  it("rejects a workspace symlink that points into thread storage", async () => {
+    const workspace = await makeWorkspace();
+    const storage = path.join(workspace, "data", "thread-storage");
+    await fs.mkdir(path.join(storage, "thr_two"), { recursive: true });
+    await fs.writeFile(path.join(storage, "thr_two", "a.png"), "theirs");
+    await fs.symlink(
+      path.join(storage, "thr_two", "a.png"),
+      path.join(workspace, "shots", "link.png"),
+    );
+
+    await expectCode(
+      readScoped(workspace, path.join(workspace, "shots", "link.png"), storage),
+      "excluded_path",
+    );
+  });
+
+  it("rejects files under a symlinked thread storage root", async () => {
+    const workspace = await makeWorkspace();
+    const realStorage = path.join(workspace, "real-storage");
+    await fs.mkdir(path.join(realStorage, "thr_two"), { recursive: true });
+    await fs.writeFile(path.join(realStorage, "thr_two", "a.png"), "theirs");
+    const dataDir = await makeTempDir("bb-host-files-data-");
+    const storage = path.join(dataDir, "thread-storage");
+    await fs.symlink(realStorage, storage);
+
+    await expectCode(
+      readScoped(
+        workspace,
+        path.join(realStorage, "thr_two", "a.png"),
+        storage,
+      ),
+      "excluded_path",
+    );
+  });
+
+  it("fails closed when the excluded root cannot be verified", async () => {
+    const workspace = await makeWorkspace();
+    const dataDir = await makeTempDir("bb-host-files-data-");
+    const storage = path.join(dataDir, "thread-storage");
+    await fs.symlink(storage, storage);
+
+    await expectCode(
+      readScoped(workspace, path.join(workspace, "shots", "chart.png"), storage),
+      "excluded_root_unverified",
+    );
+  });
+});
+
 describe("readHostFileMetadata", () => {
   it("returns host-side file metadata without reading contents", async () => {
     const repoPath = await initRepo();
