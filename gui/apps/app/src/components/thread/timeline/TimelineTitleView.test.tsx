@@ -7,7 +7,7 @@ import type {
   TimelineFileReadWorkRow,
 } from "@cloudroom/server-contract";
 import { buildTimelineRowTitle } from "@cloudroom/thread-view";
-import { resolveTimelineImagePreviewLink } from "@/lib/thread-local-file-links";
+import { resolveTimelineImagePreviewTarget } from "@/lib/thread-local-file-links";
 import {
   TimelineTitleView,
   type TimelineTitleActionResolver,
@@ -66,25 +66,30 @@ function renderFileReadTitle(
   row: TimelineFileReadWorkRow | TimelineCommandWorkRow = fileReadRow(path),
 ) {
   const rowToggle = vi.fn();
+  const reject = vi.fn();
   const title = buildTimelineRowTitle(row, {
     summaryStyle: "bundle",
     workStyle: "default",
   });
   const onTitleAction: TimelineTitleActionResolver = (action) => {
     if (action.kind !== "open-image-preview") return null;
-    const link = resolveTimelineImagePreviewLink({
+    const target = resolveTimelineImagePreviewTarget({
       cwd: action.cwd,
+      isCloudThread: false,
       path: action.path,
+      threadStorageRootPath: "/data/thread-storage/thr_one",
       workspaceRootPath: "/repo",
     });
-    return link === null ? null : () => open(link.path);
+    if (target === null) return null;
+    return () =>
+      target.kind === "rejected" ? reject(target.reason) : open(target.path);
   };
   render(
     <div onClick={rowToggle} onKeyDown={rowToggle}>
       <TimelineTitleView title={title} onTitleAction={onTitleAction} />
     </div>,
   );
-  return { open, rowToggle };
+  return { open, reject, rowToggle };
 }
 
 describe("TimelineTitleView image previews", () => {
@@ -98,7 +103,7 @@ describe("TimelineTitleView image previews", () => {
   });
 
   it("opens the PNG from the keyboard", () => {
-    const { open, rowToggle } = renderFileReadTitle("assets/chart.png");
+    const { open, rowToggle } = renderFileReadTitle("/repo/assets/chart.png");
     const link = screen.getByRole("link", { name: "chart.png" });
 
     expect(link.tabIndex).toBe(0);
@@ -118,7 +123,7 @@ describe("TimelineTitleView image previews", () => {
   });
 
   it("ignores key repeats so one held key opens one preview", () => {
-    const { open } = renderFileReadTitle("assets/chart.png");
+    const { open } = renderFileReadTitle("/repo/assets/chart.png");
     const link = screen.getByRole("link", { name: "chart.png" });
 
     fireEvent.keyDown(link, { key: "Enter" });
@@ -128,7 +133,27 @@ describe("TimelineTitleView image previews", () => {
   });
 
   it.each([
-    ["../secret.png", "secret.png"],
+    ["/data/thread-storage/thr_two/a.png", "This image belongs to another thread's storage."],
+    ["/tmp/shot.png", "Only images in this thread's workspace or storage can be previewed."],
+    ["assets/chart.png", "The agent didn't report which folder this path is relative to."],
+  ])("explains why %s can't be previewed", (path, reason) => {
+    const { open, reject } = renderFileReadTitle(path);
+
+    fireEvent.click(screen.getByRole("link"));
+
+    expect(reject).toHaveBeenCalledWith(reason);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("opens this thread's storage", () => {
+    const { open } = renderFileReadTitle("/data/thread-storage/thr_one/a.png");
+
+    fireEvent.click(screen.getByRole("link", { name: "a.png" }));
+
+    expect(open).toHaveBeenCalledWith("/data/thread-storage/thr_one/a.png");
+  });
+
+  it.each([
     ["~/Desktop/shot.png", "shot.png"],
     ["file:///tmp/shot.png", "shot.png"],
     ["assets\\..\\..\\shot.png", /shot\.png$/u],

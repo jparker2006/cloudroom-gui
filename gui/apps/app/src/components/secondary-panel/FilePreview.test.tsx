@@ -1011,4 +1011,55 @@ describe("FilePreview", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("[aria-busy]")).not.toBeNull();
   });
+
+  it("saves an allowed local image preview to Downloads", () => {
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        expect(this.getAttribute("href")).toBe("/api/v1/preview/chart.png");
+        expect(this.download).toBe("chart.png");
+      });
+    render(
+      <SecondaryPanelFilePreview
+        activePath="assets/chart.png"
+        allowImageDownload
+        filePreview={{
+          kind: "image",
+          mimeType: "image/png",
+          path: "assets/chart.png",
+          url: "/api/v1/preview/chart.png",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save to Downloads" }));
+
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockRestore();
+  });
+
+  it.each([
+    [
+      "image previews that do not allow it",
+      false,
+      { kind: "image" as const, mimeType: "image/png", path: "a.png", url: "/p/a.png" },
+    ],
+    [
+      "local text previews",
+      true,
+      { kind: "text" as const, content: "x", mimeType: "text/plain", path: "a.png", url: "/p/a.png" },
+    ],
+  ])("offers no Download for %s", (_label, allowImageDownload, filePreview) => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="a.png"
+        allowImageDownload={allowImageDownload}
+        filePreview={filePreview}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Save to Downloads" })).toBeNull();
+  });
 });

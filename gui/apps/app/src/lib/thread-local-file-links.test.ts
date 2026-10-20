@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  resolveOpenableTimelineImagePreviewLink,
   resolveThreadLocalFileLink,
-  resolveTimelineImagePreviewLink,
   resolveTimelineImagePreviewRootPath,
+  resolveTimelineImagePreviewTarget,
 } from "./thread-local-file-links";
 
 describe("resolveThreadLocalFileLink", () => {
@@ -165,202 +164,6 @@ describe("resolveThreadLocalFileLink", () => {
   });
 });
 
-describe("resolveTimelineImagePreviewLink", () => {
-  const workspaceRootPath = "/home/me/project";
-
-  function routeImage(args: {
-    hostFileLinksAvailable: boolean;
-    path: string;
-    relativeRootPath?: string | null;
-    threadStorageRootPath: string | null;
-    workspaceRootPath: string | null;
-  }) {
-    const link = resolveTimelineImagePreviewLink({
-      path: args.path,
-      workspaceRootPath: args.relativeRootPath ?? args.workspaceRootPath,
-    });
-    return link === null
-      ? null
-      : resolveThreadLocalFileLink({
-          hostFileLinksAvailable: args.hostFileLinksAvailable,
-          link,
-          threadStorageRootPath: args.threadStorageRootPath,
-          workspaceRootPath: args.workspaceRootPath,
-        });
-  }
-
-  it("resolves relative PNG paths against the thread workspace", () => {
-    expect(
-      resolveTimelineImagePreviewLink({
-        path: "./assets/../assets/chart.PNG",
-        workspaceRootPath,
-      }),
-    ).toEqual({ lineRange: null, path: "/home/me/project/assets/chart.PNG" });
-  });
-
-  it("keeps absolute PNG paths exact", () => {
-    expect(
-      resolveTimelineImagePreviewLink({
-        path: "/tmp/screens/#1 shot.png",
-        workspaceRootPath,
-      }),
-    ).toEqual({ lineRange: null, path: "/tmp/screens/#1 shot.png" });
-  });
-
-  it.each([
-    ["relative traversal out of the workspace", "../other/secret.png"],
-    ["deep relative traversal", "assets/../../../etc/passwd.png"],
-    ["home-relative paths", "~/Desktop/shot.png"],
-    ["file URLs", "file:///tmp/shot.png"],
-    ["remote URLs", "https://example.com/shot.png"],
-    ["Windows paths", "C:\\Users\\me\\shot.png"],
-    ["backslash separators", "assets\\..\\..\\shot.png"],
-    ["control characters", "assets/shot\u0000.png"],
-    ["newlines", "assets/shot\n.png"],
-    ["bidi overrides", "assets/a\u202Egnp.png"],
-    ["bidi isolates", "assets/\u2066shot\u2069.png"],
-    ["Arabic letter marks", "assets/\u061Cphoto.png"],
-    ["zero-width characters", "assets/sh\u200Bot.png"],
-    ["byte order marks", "\uFEFFassets/shot.png"],
-    ["line separators", "assets/sh\u2028ot.png"],
-    ["non-PNG files", "assets/notes.txt"],
-    ["PNG-looking directories", "assets/png/"],
-    ["app routes", "/settings/general.png"],
-  ])("rejects %s", (_label, path) => {
-    expect(
-      resolveTimelineImagePreviewLink({ path, workspaceRootPath }),
-    ).toBeNull();
-  });
-
-  it("resolves command reads against the command cwd", () => {
-    expect(
-      resolveTimelineImagePreviewLink({
-        cwd: "/home/me/project/sub",
-        path: "../shots/chart.png",
-        workspaceRootPath,
-      }),
-    ).toEqual({ lineRange: null, path: "/home/me/project/shots/chart.png" });
-    expect(
-      resolveTimelineImagePreviewLink({
-        cwd: "/home/me/project/sub",
-        path: "/tmp/abs.png",
-        workspaceRootPath,
-      }),
-    ).toEqual({ lineRange: null, path: "/tmp/abs.png" });
-  });
-
-  it.each([
-    ["home-relative paths", "/repo/subdir", "~/Desktop/shot.png"],
-    ["URL-shaped paths", "/repo/subdir", "https://example.com/shot.png"],
-    ["relative cwds", "subdir", "chart.png"],
-    ["cwds with control characters", "/repo/sub\ndir", "chart.png"],
-  ])("rejects %s before joining the command cwd", (_label, cwd, path) => {
-    expect(
-      resolveTimelineImagePreviewLink({ cwd, path, workspaceRootPath }),
-    ).toBeNull();
-  });
-
-  it("rejects relative paths when the thread has no workspace", () => {
-    expect(
-      resolveTimelineImagePreviewLink({
-        path: "assets/chart.png",
-        workspaceRootPath: null,
-      }),
-    ).toBeNull();
-  });
-
-  it("routes a local workspace PNG to the workspace file preview", () => {
-    expect(
-      routeImage({
-        hostFileLinksAvailable: true,
-        path: "assets/chart.png",
-        threadStorageRootPath: "/home/me/.bb/thread-storage/thr_one",
-        workspaceRootPath,
-      }),
-    ).toEqual({
-      kind: "open-workspace-path",
-      request: {
-        lineRange: null,
-        path: "/home/me/project/assets/chart.png",
-        relativePath: "assets/chart.png",
-        workspaceRootPath,
-      },
-    });
-  });
-
-  it("routes a relative cloud PNG through the thread's sandbox checkout", () => {
-    expect(
-      routeImage({
-        hostFileLinksAvailable: true,
-        path: "out/render.png",
-        relativeRootPath: "/code/app",
-        threadStorageRootPath: null,
-        workspaceRootPath: null,
-      }),
-    ).toEqual({
-      kind: "open-host-path",
-      request: { lineRange: null, path: "/code/app/out/render.png" },
-    });
-  });
-
-  it("does not open a relative PNG before the cloud checkout is known", () => {
-    expect(
-      routeImage({
-        hostFileLinksAvailable: true,
-        path: "out/render.png",
-        relativeRootPath: null,
-        threadStorageRootPath: null,
-        workspaceRootPath: null,
-      }),
-    ).toBeNull();
-  });
-
-  it("routes thread storage PNGs to thread storage", () => {
-    expect(
-      routeImage({
-        hostFileLinksAvailable: true,
-        path: "/home/me/.bb/thread-storage/thr_one/shots/a.png",
-        threadStorageRootPath: "/home/me/.bb/thread-storage/thr_one",
-        workspaceRootPath,
-      }),
-    ).toMatchObject({
-      kind: "open-thread-storage-path",
-      request: { relativePath: "shots/a.png" },
-    });
-  });
-
-  it("never treats another thread's storage as this thread's storage", () => {
-    const path = "/home/me/.bb/thread-storage/thr_two/shots/a.png";
-    const args = {
-      path,
-      threadStorageRootPath: "/home/me/.bb/thread-storage/thr_one",
-      workspaceRootPath,
-    };
-
-    expect(routeImage({ ...args, hostFileLinksAvailable: true })).toEqual({
-      kind: "open-host-path",
-      request: { lineRange: null, path },
-    });
-    expect(
-      routeImage({ ...args, hostFileLinksAvailable: false }),
-    ).toMatchObject({ kind: "error" });
-  });
-
-  it("opens other absolute PNGs on the thread's own host", () => {
-    expect(
-      routeImage({
-        hostFileLinksAvailable: true,
-        path: "/tmp/shot.png",
-        threadStorageRootPath: null,
-        workspaceRootPath,
-      }),
-    ).toEqual({
-      kind: "open-host-path",
-      request: { lineRange: null, path: "/tmp/shot.png" },
-    });
-  });
-});
-
 describe("resolveTimelineImagePreviewRootPath", () => {
   const environment = { id: "env_one", path: "/home/me/project" };
   const localThread = {
@@ -429,30 +232,155 @@ describe("resolveTimelineImagePreviewRootPath", () => {
   });
 });
 
-describe("resolveOpenableTimelineImagePreviewLink", () => {
-  it("keeps host-only PNGs plain when the thread has no host access", () => {
-    expect(
-      resolveOpenableTimelineImagePreviewLink({
-        cwd: null,
-        hostFileLinksAvailable: false,
-        path: "/tmp/shot.png",
-        relativeRootPath: null,
-        threadStorageRootPath: null,
-        workspaceRootPath: null,
-      }),
-    ).toBeNull();
+describe("resolveTimelineImagePreviewTarget", () => {
+  const workspace = "/home/me/project";
+  const storage = "/home/me/.bb/thread-storage/thr_one";
+  const local = {
+    cwd: null,
+    isCloudThread: false,
+    threadStorageRootPath: storage,
+    workspaceRootPath: workspace,
+  };
+  const cloud = {
+    cwd: null,
+    isCloudThread: true,
+    threadStorageRootPath: null,
+    workspaceRootPath: "/code/app",
+  };
+  const resolve = (
+    context: typeof local | typeof cloud,
+    path: string,
+    cwd: string | null = null,
+  ) => resolveTimelineImagePreviewTarget({ ...context, cwd, path });
+
+  describe("allows only this thread's own files", () => {
+    it.each([
+      [
+        "absolute workspace PNG",
+        "/home/me/project/assets/Chart.PNG",
+        null,
+        "assets/Chart.PNG",
+      ],
+      [
+        "command-relative PNG inside the workspace",
+        "../shots/a.png",
+        "/home/me/project/sub",
+        "shots/a.png",
+      ],
+    ])("%s opens in the workspace preview", (_label, path, cwd, relative) => {
+      expect(resolve(local, path, cwd)).toEqual({
+        kind: "workspace",
+        path: `${workspace}/${relative}`,
+        relativePath: relative,
+      });
+    });
+
+    it("opens this thread's storage in the storage preview", () => {
+      expect(resolve(local, `${storage}/shots/a.png`)).toEqual({
+        kind: "thread-storage",
+        path: `${storage}/shots/a.png`,
+        relativePath: "shots/a.png",
+      });
+    });
+
+    it("opens a cloud checkout PNG through the thread's own sandbox", () => {
+      expect(resolve(cloud, "out/render.png", "/code/app")).toEqual({
+        kind: "cloud-workspace",
+        path: "/code/app/out/render.png",
+      });
+    });
   });
 
-  it("still opens workspace PNGs without host access", () => {
-    expect(
-      resolveOpenableTimelineImagePreviewLink({
-        cwd: null,
-        hostFileLinksAvailable: false,
-        path: "assets/chart.png",
-        relativeRootPath: "/home/me/project",
-        threadStorageRootPath: null,
-        workspaceRootPath: "/home/me/project",
-      }),
-    ).toEqual({ lineRange: null, path: "/home/me/project/assets/chart.png" });
+  describe("rejects other files with a clear reason", () => {
+    it.each([
+      ["another thread's storage", local, "/home/me/.bb/thread-storage/thr_two/a.png", null],
+      ["the thread storage folder itself", local, "/home/me/.bb/thread-storage/a.png", null],
+      ["an absolute host path", local, "/tmp/shot.png", null],
+      ["traversal out of the workspace", local, "../../etc/x.png", "/home/me/project/sub"],
+      ["a bare relative path with no folder", local, "assets/chart.png", null],
+      ["a cloud path outside the checkout", cloud, "/tmp/shot.png", null],
+      ["cloud traversal out of the checkout", cloud, "../x.png", "/code/app"],
+      ["a bare relative cloud path", cloud, "out/render.png", null],
+    ])("%s", (_label, context, path, cwd) => {
+      expect(resolve(context, path, cwd)).toMatchObject({ kind: "rejected" });
+    });
+
+    it("names another thread's storage in the reason", () => {
+      expect(
+        resolve(local, "/home/me/.bb/thread-storage/thr_two/a.png"),
+      ).toEqual({
+        kind: "rejected",
+        reason: "This image belongs to another thread's storage.",
+      });
+    });
+
+    it("fails closed while this thread's roots are unknown", () => {
+      const path = `${workspace}/assets/chart.png`;
+      expect(
+        resolveTimelineImagePreviewTarget({
+          ...local,
+          path,
+          threadStorageRootPath: null,
+        }),
+      ).toMatchObject({ kind: "rejected" });
+      expect(
+        resolveTimelineImagePreviewTarget({
+          ...cloud,
+          path: "/code/app/a.png",
+          workspaceRootPath: null,
+        }),
+      ).toMatchObject({ kind: "rejected" });
+    });
+
+    it("allows only this thread's storage when the workspace contains all thread storage", () => {
+      const home = { ...local, workspaceRootPath: "/home/me" };
+      expect(resolve(home, "/home/me/project/a.png")).toMatchObject({
+        kind: "rejected",
+      });
+      expect(
+        resolve(home, "/home/me/.bb/thread-storage/thr_two/a.png"),
+      ).toMatchObject({ kind: "rejected" });
+      expect(resolve(home, `${storage}/a.png`)).toMatchObject({
+        kind: "thread-storage",
+      });
+    });
+
+    it("prefers this thread's storage when it sits inside the workspace", () => {
+      const nested = {
+        ...local,
+        threadStorageRootPath: "/home/me/project/.bb/thread-storage/thr_one",
+      };
+      expect(
+        resolve(nested, "/home/me/project/.bb/thread-storage/thr_one/a.png"),
+      ).toMatchObject({ kind: "thread-storage", relativePath: "a.png" });
+      expect(
+        resolve(nested, "/home/me/project/.bb/thread-storage/thr_two/a.png"),
+      ).toMatchObject({ kind: "rejected" });
+    });
+  });
+
+  describe("keeps unsafe paths plain text", () => {
+    it.each([
+      ["home-relative paths", "~/Desktop/shot.png", null],
+      ["home-relative paths with a cwd", "~/Desktop/shot.png", "/home/me/project"],
+      ["file URLs", "file:///tmp/shot.png", null],
+      ["URL-shaped paths with a cwd", "https://example.com/a.png", "/home/me/project"],
+      ["Windows paths", "C:\\Users\\me\\shot.png", null],
+      ["backslash separators", "assets\\..\\shot.png", "/home/me/project"],
+      ["control characters", "/home/me/project/a\u0000.png", null],
+      ["newlines", "/home/me/project/a\n.png", null],
+      ["bidi overrides", "/home/me/project/a\u202Egnp.png", null],
+      ["bidi isolates", "/home/me/project/\u2066a\u2069.png", null],
+      ["Arabic letter marks", "/home/me/project/\u061Ca.png", null],
+      ["zero-width characters", "/home/me/project/a\u200B.png", null],
+      ["byte order marks", "\uFEFF/home/me/project/a.png", null],
+      ["line separators", "/home/me/project/a\u2028.png", null],
+      ["unsafe cwd characters", "a.png", "/home/me/pro\u202Eject"],
+      ["relative cwds", "a.png", "project"],
+      ["non-PNG files", "/home/me/project/notes.txt", null],
+      ["app routes", "/settings/general.png", null],
+    ])("%s", (_label, path, cwd) => {
+      expect(resolve(local, path, cwd)).toBeNull();
+    });
   });
 });

@@ -24,6 +24,7 @@ const GENERIC_HTML_IFRAME_SANDBOX = "allow-scripts";
 
 interface SecondaryPanelFilePreviewProps {
   activePath: string;
+  allowImageDownload?: boolean;
   copyPath?: string | null;
   error?: Error | null;
   filePreview: FilePreview | undefined;
@@ -158,8 +159,19 @@ function resolveSecondaryPanelFilePreviewState({
   };
 }
 
+function saveImageToDownloads(url: string, name: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.rel = "noopener";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 export function SecondaryPanelFilePreview({
   activePath,
+  allowImageDownload = false,
   copyPath = null,
   error,
   filePreview,
@@ -190,7 +202,18 @@ export function SecondaryPanelFilePreview({
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRevealInFinder={onRevealInFinder}
-      onDownload={onDownload}
+      onDownload={
+        onDownload ??
+        (allowImageDownload &&
+        state.kind === "image" &&
+        filePreview?.kind === "image"
+          ? () =>
+              saveImageToDownloads(
+                filePreview.url,
+                filePreview.name ?? activePath.split("/").pop() ?? activePath,
+              )
+          : undefined)
+      }
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
       markdownLinkRouting={

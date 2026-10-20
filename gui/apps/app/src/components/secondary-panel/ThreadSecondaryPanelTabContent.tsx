@@ -383,6 +383,7 @@ export function WorkspaceFilePreviewTabContent({
 
   return (
     <SecondaryPanelFilePreview
+      allowImageDownload
       {...filePreviewQueryProps(workspaceFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
@@ -574,6 +575,7 @@ export function ThreadStorageFilePreviewTabContent({
 
   return (
     <SecondaryPanelFilePreview
+      allowImageDownload
       {...filePreviewQueryProps(threadStorageFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}

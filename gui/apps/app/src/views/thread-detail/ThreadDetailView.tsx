@@ -84,6 +84,7 @@ import {
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
+  useThreadStorageLocation,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -280,8 +281,9 @@ import {
 } from "./threadWorkspaceOpenPath";
 import {
   resolveThreadLocalFileLink,
-  resolveOpenableTimelineImagePreviewLink,
   resolveTimelineImagePreviewRootPath,
+  resolveTimelineImagePreviewTarget,
+  type TimelineImagePreviewTarget,
   type ThreadLocalFileLinkResolution,
 } from "@/lib/thread-local-file-links";
 import {
@@ -2245,6 +2247,47 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     environment,
     thread,
   });
+  const imagePreviewStorageLocation = useThreadStorageLocation(threadId, {
+    enabled: isTimelineThreadLoaded && !isCloudThread,
+  });
+  const imagePreviewStorageRootPath = isTimelineThreadLoaded
+    ? (imagePreviewStorageLocation.data?.storageRootPath ?? null)
+    : null;
+  const openTimelineImagePreview = useCallback(
+    (target: TimelineImagePreviewTarget) => {
+      const options = { viewer: "builtin" } as const;
+      switch (target.kind) {
+        case "workspace":
+          openWorkspaceFile(
+            {
+              lineRange: null,
+              path: target.relativePath,
+              source: { kind: "working-tree" },
+              statusLabel: null,
+            },
+            options,
+          );
+          return;
+        case "thread-storage":
+          openStorageFile(
+            { lineRange: null, path: target.relativePath },
+            options,
+          );
+          return;
+        case "cloud-workspace":
+          openHostFile({ lineRange: null, path: target.path }, options);
+          return;
+        case "rejected":
+          appToast.error("Can't preview this image", {
+            description: target.reason,
+          });
+          return;
+        default:
+          assertNever(target);
+      }
+    },
+    [openHostFile, openStorageFile, openWorkspaceFile],
+  );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
       switch (action.kind) {
@@ -2264,34 +2307,30 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           if (!isTimelineThreadLoaded) {
             return null;
           }
-          const link = resolveOpenableTimelineImagePreviewLink({
+          const target = resolveTimelineImagePreviewTarget({
             cwd: action.cwd,
-            hostFileLinksAvailable,
+            isCloudThread,
             path: action.path,
-            relativeRootPath: imagePreviewWorkspaceRootPath,
-            threadStorageRootPath,
-            workspaceRootPath: workspacePreviewRootPath,
+            threadStorageRootPath: imagePreviewStorageRootPath,
+            workspaceRootPath: imagePreviewWorkspaceRootPath,
           });
-          return link === null
+          return target === null
             ? null
-            : () => {
-                handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
-              };
+            : () => openTimelineImagePreview(target);
         }
         default:
           return assertNever(action);
       }
     },
     [
-      handleOpenTimelineLocalFileLink,
       handleOpenTimelinePluginPanel,
-      hostFileLinksAvailable,
+      imagePreviewStorageRootPath,
       imagePreviewWorkspaceRootPath,
+      isCloudThread,
       isTimelineThreadLoaded,
       openSecondaryPanelDiffFile,
+      openTimelineImagePreview,
       threadId,
-      threadStorageRootPath,
-      workspacePreviewRootPath,
     ],
   );
   const metadataStorage = useMemo(

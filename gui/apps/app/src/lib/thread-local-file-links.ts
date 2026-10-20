@@ -2,6 +2,7 @@ import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
 import type { FilePreviewLineRange } from "@cloudroom/client-core";
 import {
   buildAbsoluteFilePath,
+  getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "./absolute-file-path";
@@ -10,6 +11,16 @@ import { isRoutePath } from "./route-paths";
 const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =
   "Thread file links are only available when the thread has an environment.";
 const UNSAFE_PATH_CHARACTERS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\]/u;
+const IMAGE_PREVIEW_NO_FOLDER_REASON =
+  "The agent didn't report which folder this path is relative to.";
+const IMAGE_PREVIEW_OUTSIDE_REASON =
+  "Only images in this thread's workspace or storage can be previewed.";
+const IMAGE_PREVIEW_OTHER_THREAD_REASON =
+  "This image belongs to another thread's storage.";
+const IMAGE_PREVIEW_OVERLAP_REASON =
+  "This workspace contains Cloudroom's thread storage, so only this thread's storage can be previewed.";
+const IMAGE_PREVIEW_UNKNOWN_ROOT_REASON =
+  "This thread's files aren't available yet. Try again in a moment.";
 const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
   "Thread file links must use absolute file paths.";
 
@@ -29,20 +40,19 @@ interface ResolveTimelineImagePreviewRootPathArgs {
     | undefined;
 }
 
-interface ResolveTimelineImagePreviewLinkArgs {
-  cwd?: string | null;
+interface ResolveTimelineImagePreviewTargetArgs {
+  cwd: string | null;
+  isCloudThread: boolean;
   path: string;
+  threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
 }
 
-interface ResolveOpenableTimelineImagePreviewLinkArgs extends Omit<
-  ResolveThreadLocalFileLinkArgs,
-  "link"
-> {
-  cwd: string | null;
-  path: string;
-  relativeRootPath: string | null;
-}
+export type TimelineImagePreviewTarget =
+  | { kind: "workspace"; path: string; relativePath: string }
+  | { kind: "thread-storage"; path: string; relativePath: string }
+  | { kind: "cloud-workspace"; path: string }
+  | { kind: "rejected"; reason: string };
 
 interface ThreadWorkspaceFileLinkOpenRequest {
   lineRange: FilePreviewLineRange | null;
@@ -213,43 +223,6 @@ export function resolveThreadLocalFileLink(
   };
 }
 
-export function resolveTimelineImagePreviewLink({
-  cwd = null,
-  path,
-  workspaceRootPath,
-}: ResolveTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
-  if (
-    !/\.png$/iu.test(path) ||
-    UNSAFE_PATH_CHARACTERS.test(path) ||
-    (cwd !== null && UNSAFE_PATH_CHARACTERS.test(cwd)) ||
-    /^(?:~|[a-z][a-z0-9+.-]*:)/iu.test(path)
-  ) {
-    return null;
-  }
-  const baseDir = path.startsWith("/") ? null : cwd;
-  if (path.startsWith("/") || baseDir !== null) {
-    const absolutePath = normalizeAbsoluteFilePath({
-      path:
-        baseDir === null
-          ? path
-          : buildAbsoluteFilePath({ path, rootPath: baseDir }),
-    });
-    return absolutePath === null || isRoutePath({ path: absolutePath })
-      ? null
-      : { lineRange: null, path: absolutePath };
-  }
-  if (workspaceRootPath === null) {
-    return null;
-  }
-  const resolvedPath = normalizeLocalFilePathWithinRoot({
-    linkPath: buildAbsoluteFilePath({ path, rootPath: workspaceRootPath }),
-    rootPath: workspaceRootPath,
-  });
-  return resolvedPath === null
-    ? null
-    : { lineRange: null, path: resolvedPath.path };
-}
-
 export function resolveTimelineImagePreviewRootPath({
   activeThreadId,
   cloudWorkspacePath,
@@ -265,20 +238,97 @@ export function resolveTimelineImagePreviewRootPath({
   return thread.executionTarget === "cloud" ? cloudWorkspacePath : null;
 }
 
-export function resolveOpenableTimelineImagePreviewLink({
+function rejectImagePreview(reason: string): TimelineImagePreviewTarget {
+  return { kind: "rejected", reason };
+}
+
+export function resolveTimelineImagePreviewTarget({
   cwd,
+  isCloudThread,
   path,
-  relativeRootPath,
-  ...routing
-}: ResolveOpenableTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
-  const link = resolveTimelineImagePreviewLink({
-    cwd,
-    path,
-    workspaceRootPath: relativeRootPath,
-  });
-  if (link === null) {
+  threadStorageRootPath,
+  workspaceRootPath,
+}: ResolveTimelineImagePreviewTargetArgs): TimelineImagePreviewTarget | null {
+  if (
+    !/\.png$/iu.test(path) ||
+    UNSAFE_PATH_CHARACTERS.test(path) ||
+    (cwd !== null && UNSAFE_PATH_CHARACTERS.test(cwd)) ||
+    /^(?:~|[a-z][a-z0-9+.-]*:)/iu.test(path)
+  ) {
     return null;
   }
-  const { kind } = resolveThreadLocalFileLink({ ...routing, link });
-  return kind === "error" || kind === "app-route" ? null : link;
+  const isAbsolute = path.startsWith("/");
+  if (!isAbsolute && cwd === null) {
+    return rejectImagePreview(IMAGE_PREVIEW_NO_FOLDER_REASON);
+  }
+  const absolutePath = normalizeAbsoluteFilePath({
+    path:
+      isAbsolute || cwd === null
+        ? path
+        : buildAbsoluteFilePath({ path, rootPath: cwd }),
+  });
+  if (absolutePath === null || isRoutePath({ path: absolutePath })) {
+    return null;
+  }
+
+  if (isCloudThread) {
+    if (workspaceRootPath === null) {
+      return rejectImagePreview(IMAGE_PREVIEW_UNKNOWN_ROOT_REASON);
+    }
+    const checkoutPath = normalizeLocalFilePathWithinRoot({
+      linkPath: absolutePath,
+      rootPath: workspaceRootPath,
+    });
+    return checkoutPath === null
+      ? rejectImagePreview(IMAGE_PREVIEW_OUTSIDE_REASON)
+      : { kind: "cloud-workspace", path: checkoutPath.path };
+  }
+
+  if (threadStorageRootPath === null) {
+    return rejectImagePreview(IMAGE_PREVIEW_UNKNOWN_ROOT_REASON);
+  }
+  const storagePath = normalizeLocalFilePathWithinRoot({
+    linkPath: absolutePath,
+    rootPath: threadStorageRootPath,
+  });
+  if (storagePath !== null) {
+    return {
+      kind: "thread-storage",
+      path: storagePath.path,
+      relativePath: storagePath.relativePath,
+    };
+  }
+  const allThreadStoragePath = getAbsoluteDirname({
+    path: threadStorageRootPath,
+  });
+  if (
+    isAbsoluteFilePathWithinRoot({
+      candidatePath: absolutePath,
+      rootPath: allThreadStoragePath,
+    })
+  ) {
+    return rejectImagePreview(IMAGE_PREVIEW_OTHER_THREAD_REASON);
+  }
+  if (workspaceRootPath === null) {
+    return rejectImagePreview(IMAGE_PREVIEW_OUTSIDE_REASON);
+  }
+  if (
+    isAbsoluteFilePathWithinRoot({
+      candidatePath: allThreadStoragePath,
+      rootPath: workspaceRootPath,
+    })
+  ) {
+    return rejectImagePreview(IMAGE_PREVIEW_OVERLAP_REASON);
+  }
+  const workspacePath = normalizeLocalFilePathWithinRoot({
+    linkPath: absolutePath,
+    rootPath: workspaceRootPath,
+  });
+  return workspacePath === null
+    ? rejectImagePreview(IMAGE_PREVIEW_OUTSIDE_REASON)
+    : {
+        kind: "workspace",
+        path: workspacePath.path,
+        relativePath: workspacePath.relativePath,
+      };
 }
