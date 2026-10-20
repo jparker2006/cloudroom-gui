@@ -231,4 +231,206 @@ describe("ProjectSelector", () => {
     );
     expect(list.scrollTop).toBe(0);
   });
+
+  describe("recent projects", () => {
+    const optionNames = (group: Element | undefined) =>
+      Array.from(group?.querySelectorAll("[cmdk-item]") ?? []).map(
+        (item) => item.textContent,
+      );
+    const groupByHeading = (heading: string) =>
+      Array.from(document.querySelectorAll("[cmdk-group]")).find((group) =>
+        group
+          .querySelector("[cmdk-group-heading]")
+          ?.textContent?.startsWith(heading),
+      );
+
+    it("lists up to five existing recents first and the rest once, in sidebar order", () => {
+      render(
+        <ProjectSelector
+          projects={PROJECTS}
+          value="proj_echo"
+          onChange={() => {}}
+          allowNoProject
+          createProject={{ onCreate: () => {} }}
+          recentProjectIds={[
+            "proj_echo",
+            "proj_deleted",
+            "proj_bravo",
+            "proj_foxtrot",
+            "proj_alpha",
+            "proj_delta",
+            "proj_charlie",
+          ]}
+          defaultOpen
+          modal={false}
+        />,
+      );
+
+      expect(optionNames(groupByHeading("Recent"))).toEqual([
+        "Echo Infra",
+        "Bravo API",
+        "Foxtrot Design",
+        "Alpha Web",
+        "Delta Mobile",
+      ]);
+      expect(optionNames(groupByHeading("Other projects"))).toEqual([
+        "Charlie Docs",
+      ]);
+      expect(
+        screen.getAllByRole("option", { name: "Echo Infra" }),
+      ).toHaveLength(1);
+      expect(
+        document.querySelectorAll('[cmdk-item][aria-current="true"]'),
+      ).toHaveLength(1);
+      expect(screen.getByRole("option", { name: "New project" })).toBeTruthy();
+      expect(
+        screen.getByRole("option", { name: "Don't work in a project" }),
+      ).toBeTruthy();
+    });
+
+    it("shows the current name of a renamed project and skips unknown ids", () => {
+      render(
+        <ProjectSelector
+          projects={[
+            { id: "proj_alpha", name: "Alpha Renamed" },
+            ...PROJECTS.slice(1),
+          ]}
+          value="proj_bravo"
+          onChange={() => {}}
+          recentProjectIds={["proj_gone", "proj_alpha"]}
+          defaultOpen
+          modal={false}
+        />,
+      );
+
+      expect(optionNames(groupByHeading("Recent"))).toEqual(["Alpha Renamed"]);
+    });
+
+    it("keeps today's picker when there is no history", () => {
+      render(
+        <ProjectSelector
+          projects={PROJECTS}
+          value="proj_alpha"
+          onChange={() => {}}
+          recentProjectIds={["proj_unavailable"]}
+          defaultOpen
+          modal={false}
+        />,
+      );
+
+      expect(groupByHeading("Recent")).toBeUndefined();
+      expect(optionNames(groupByHeading("Project"))).toEqual(
+        PROJECTS.map((project) => project.name),
+      );
+    });
+
+    it("searches every project and hides the recent section while searching", () => {
+      const onChange = vi.fn();
+      render(
+        <ProjectSelector
+          projects={PROJECTS}
+          value="proj_alpha"
+          onChange={onChange}
+          recentProjectIds={["proj_alpha", "proj_bravo"]}
+          defaultOpen
+          modal={false}
+        />,
+      );
+
+      const search = screen.getByRole("combobox", { name: "Search projects" });
+      fireEvent.change(search, { target: { value: "bravo" } });
+      expect(groupByHeading("Recent")).toBeUndefined();
+      expect(screen.getAllByRole("option", { name: "Bravo API" })).toHaveLength(
+        1,
+      );
+
+      fireEvent.change(search, { target: { value: "a" } });
+      expect(screen.getByRole("option", { name: "Alpha Web" })).toBeTruthy();
+      expect(screen.getByRole("option", { name: "Charlie Docs" })).toBeTruthy();
+      fireEvent.change(search, { target: { value: "cd" } });
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledWith("proj_charlie");
+    });
+
+    it("moves through recents before other projects with the keyboard", () => {
+      const onChange = vi.fn();
+      render(
+        <ProjectSelector
+          projects={PROJECTS}
+          value="proj_alpha"
+          onChange={onChange}
+          recentProjectIds={["proj_delta", "proj_bravo"]}
+          defaultOpen
+          modal={false}
+        />,
+      );
+
+      const search = screen.getByRole("combobox", { name: "Search projects" });
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      expect(
+        screen
+          .getByRole("option", { name: "Delta Mobile" })
+          .getAttribute("aria-selected"),
+      ).toBe("true");
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      expect(
+        screen
+          .getByRole("option", { name: "Alpha Web" })
+          .getAttribute("aria-selected"),
+      ).toBe("true");
+      expect(
+        screen
+          .getByRole("option", { name: "Alpha Web" })
+          .getAttribute("aria-current"),
+      ).toBe("true");
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledWith("proj_alpha");
+    });
+
+    it("keeps the order stable while open and refreshes it on the next open", () => {
+      const props = {
+        projects: PROJECTS,
+        value: "proj_alpha",
+        onChange: () => {},
+        modal: false,
+      };
+      const view = render(
+        <ProjectSelector
+          {...props}
+          recentProjectIds={["proj_bravo", "proj_charlie"]}
+        />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "Project: Alpha Web",
+      });
+      fireEvent.click(trigger);
+      expect(optionNames(groupByHeading("Recent"))).toEqual([
+        "Bravo API",
+        "Charlie Docs",
+      ]);
+
+      view.rerender(
+        <ProjectSelector
+          {...props}
+          recentProjectIds={["proj_echo", "proj_bravo", "proj_charlie"]}
+        />,
+      );
+      expect(optionNames(groupByHeading("Recent"))).toEqual([
+        "Bravo API",
+        "Charlie Docs",
+      ]);
+
+      fireEvent.keyDown(
+        screen.getByRole("combobox", { name: "Search projects" }),
+        { key: "Escape" },
+      );
+      fireEvent.click(trigger);
+      expect(optionNames(groupByHeading("Recent"))).toEqual([
+        "Echo Infra",
+        "Bravo API",
+        "Charlie Docs",
+      ]);
+    });
+  });
 });

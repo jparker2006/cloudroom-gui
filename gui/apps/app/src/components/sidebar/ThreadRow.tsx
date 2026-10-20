@@ -56,6 +56,7 @@ import {
   type ThreadListIndicatorState,
 } from "@cloudroom/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { useRecordRecentProject } from "@/lib/root-compose-selection";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@cloudroom/shared-ui/motion";
@@ -537,6 +538,7 @@ function ThreadRowComponent({
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const { renameThread } = useThreadActions();
+  const recordRecentProject = useRecordRecentProject();
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
@@ -749,6 +751,7 @@ function ThreadRowComponent({
           setConversationCollapsed(false);
           if (splitAvailable && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
+            recordRecentProject(projectId);
             openInSplit();
             return;
           }
@@ -758,6 +761,7 @@ function ThreadRowComponent({
             startEditing();
             return;
           }
+          recordRecentProject(projectId);
           onProjectSelect?.();
         }}
         onDoubleClick={isEditing ? undefined : startTitleEditing}

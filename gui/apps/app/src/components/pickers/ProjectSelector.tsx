@@ -26,6 +26,10 @@ const PROJECT_SEARCH_MIN_OPTIONS = 5;
 const NO_HIGHLIGHT_VALUE = "__project-picker-idle__";
 const PROJECT_PICKER_ITEM_CLASS_NAME = "py-[0.3125rem] text-xs max-md:py-2";
 const VISIBLE_REPO_SUGGESTIONS = 5;
+const VISIBLE_RECENT_PROJECTS = 5;
+const NO_RECENT_PROJECT_IDS: readonly string[] = [];
+const CURRENT_PROJECT_ITEM_CLASS_NAME =
+  "font-medium before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary";
 const REPO_FILTERS = [
   { id: "all", label: "All" },
   { id: "github", label: "GitHub" },
@@ -69,6 +73,7 @@ interface ProjectSelectorProps {
   className?: string;
   defaultOpen?: boolean;
   modal?: boolean;
+  recentProjectIds?: readonly string[];
 }
 
 export function ProjectSelector({
@@ -83,9 +88,12 @@ export function ProjectSelector({
   className,
   defaultOpen,
   modal = true,
+  recentProjectIds = NO_RECENT_PROJECT_IDS,
 }: ProjectSelectorProps) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [openRecentProjectIds, setOpenRecentProjectIds] =
+    useState(recentProjectIds);
   const [highlightedValue, setHighlightedValue] = useState(NO_HIGHLIGHT_VALUE);
   const [repoFilter, setRepoFilter] = useState<RepoFilter>("all");
   const commandRef = useRef<HTMLDivElement>(null);
@@ -107,6 +115,18 @@ export function ProjectSelector({
         : projects,
     [projects, searchQuery, showSearch],
   );
+  const recentRows = useMemo(() => {
+    if (searchQuery.trim() !== "") return [];
+    const byId = new Map(projects.map((project) => [project.id, project]));
+    return openRecentProjectIds
+      .flatMap((projectId) => byId.get(projectId) ?? [])
+      .slice(0, VISIBLE_RECENT_PROJECTS);
+  }, [openRecentProjectIds, projects, searchQuery]);
+  const listedProjects = useMemo(() => {
+    if (recentRows.length === 0) return filteredProjects;
+    const recentIds = new Set(recentRows.map((project) => project.id));
+    return filteredProjects.filter((project) => !recentIds.has(project.id));
+  }, [filteredProjects, recentRows]);
   const visibleRepos = useMemo(() => {
     const repos = (suggestions?.repos ?? []).filter(
       (repo) => repoFilter === "all" || repo.source === repoFilter,
@@ -135,6 +155,7 @@ export function ProjectSelector({
     projects.length > 0 && (Boolean(createProjectAction) || allowNoProject);
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
+    if (nextOpen) setOpenRecentProjectIds(recentProjectIds);
     setHighlightedValue(NO_HIGHLIGHT_VALUE);
     if (!nextOpen) {
       setSearchQuery("");
@@ -234,16 +255,38 @@ export function ProjectSelector({
             ref={listRef}
             className="min-h-0 max-h-none flex-1 overscroll-contain"
           >
-            {projects.length > 0 ? (
+            {recentRows.length > 0 ? (
+              <>
+                <CommandGroup heading="Recent">
+                  {recentRows.map((project) => (
+                    <ProjectItem
+                      key={project.id}
+                      project={project}
+                      current={project.id === value}
+                      onSelect={selectProject}
+                    />
+                  ))}
+                </CommandGroup>
+                {listedProjects.length > 0 ? <CommandSeparator /> : null}
+              </>
+            ) : null}
+            {projects.length > 0 &&
+            (listedProjects.length > 0 || recentRows.length === 0) ? (
               <CommandGroup
                 heading={
                   suggestions ? (
                     <>
-                      In Cloudroom{" "}
+                      {recentRows.length > 0
+                        ? "Other projects"
+                        : "In Cloudroom"}{" "}
                       <span className="font-normal opacity-70">
-                        {projects.length}
+                        {recentRows.length > 0
+                          ? listedProjects.length
+                          : projects.length}
                       </span>
                     </>
+                  ) : recentRows.length > 0 ? (
+                    "Other projects"
                   ) : (
                     "Project"
                   )
@@ -254,32 +297,13 @@ export function ProjectSelector({
                     suggestions && "max-h-[9.5rem] overflow-y-auto",
                   )}
                 >
-                  {filteredProjects.map((project) => (
-                    <CommandItem
+                  {listedProjects.map((project) => (
+                    <ProjectItem
                       key={project.id}
-                      value={project.id}
-                      keywords={[project.name]}
-                      aria-current={project.id === value ? "true" : undefined}
-                      onSelect={() => selectProject(project.id)}
-                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                    >
-                      <Icon
-                        name="Folder"
-                        className="size-4 text-muted-foreground"
-                        aria-hidden
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {project.name}
-                      </span>
-                      <Icon
-                        name="Check"
-                        className={cn(
-                          "ml-auto size-4",
-                          project.id === value ? "opacity-100" : "opacity-0",
-                        )}
-                        aria-hidden
-                      />
-                    </CommandItem>
+                      project={project}
+                      current={project.id === value}
+                      onSelect={selectProject}
+                    />
                   ))}
                 </div>
                 {showSearch && filteredProjects.length === 0 ? (
@@ -331,18 +355,26 @@ export function ProjectSelector({
                     value="no-project"
                     aria-current={value === null ? "true" : undefined}
                     onSelect={() => selectProject(null)}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    className={cn(
+                      PROJECT_PICKER_ITEM_CLASS_NAME,
+                      value === null && CURRENT_PROJECT_ITEM_CLASS_NAME,
+                    )}
                   >
                     <Icon
                       name="FolderMinus"
-                      className="size-4 text-muted-foreground"
+                      className={cn(
+                        "size-4",
+                        value === null
+                          ? "text-primary"
+                          : "text-muted-foreground",
+                      )}
                       aria-hidden
                     />
                     Don&apos;t work in a project
                     <Icon
                       name="Check"
                       className={cn(
-                        "ml-auto size-4",
+                        "ml-auto size-4 text-primary",
                         value === null ? "opacity-100" : "opacity-0",
                       )}
                       aria-hidden
@@ -355,6 +387,45 @@ export function ProjectSelector({
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+interface ProjectItemProps {
+  project: ProjectSelectorOption;
+  current: boolean;
+  onSelect: (projectId: string) => void;
+}
+
+function ProjectItem({ project, current, onSelect }: ProjectItemProps) {
+  return (
+    <CommandItem
+      value={project.id}
+      keywords={[project.name]}
+      aria-current={current ? "true" : undefined}
+      onSelect={() => onSelect(project.id)}
+      className={cn(
+        PROJECT_PICKER_ITEM_CLASS_NAME,
+        current && CURRENT_PROJECT_ITEM_CLASS_NAME,
+      )}
+    >
+      <Icon
+        name="Folder"
+        className={cn(
+          "size-4",
+          current ? "text-primary" : "text-muted-foreground",
+        )}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 truncate">{project.name}</span>
+      <Icon
+        name="Check"
+        className={cn(
+          "ml-auto size-4 text-primary",
+          current ? "opacity-100" : "opacity-0",
+        )}
+        aria-hidden
+      />
+    </CommandItem>
   );
 }
 

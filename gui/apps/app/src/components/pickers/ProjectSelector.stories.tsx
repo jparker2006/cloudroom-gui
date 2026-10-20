@@ -89,3 +89,77 @@ function ProjectSelectorInteractive({
     />
   );
 }
+
+const manyProjects: readonly ProjectSelectorOption[] = [
+  "cloudroom-gui",
+  "cloudroom-core",
+  "website",
+  "mobile-app",
+  "design-system",
+  "infra",
+  "docs",
+  "billing-service",
+  "analytics",
+  "sandbox-images",
+  "connect-relay",
+  "playground",
+].map((name) => ({ id: `proj_${name}`, name }));
+
+const createProjectWithSuggestions = {
+  onCreate: noop,
+  suggestions: {
+    repos: [
+      {
+        source: "github" as const,
+        name: "jparker2006/notes",
+        repo: "jparker2006/notes",
+        updatedAt: null,
+      },
+      {
+        source: "mac" as const,
+        name: "scratch",
+        path: "/Users/jake/code/scratch",
+        updatedAt: Date.UTC(2026, 9, 18),
+      },
+    ],
+    githubConnected: true,
+    isLoading: false,
+    addingKey: null,
+    onAdd: () => Promise.resolve("proj_new"),
+  },
+};
+
+export function RecentProjects() {
+  return (
+    <ProjectSelector
+      projects={manyProjects}
+      value="proj_cloudroom-gui"
+      onChange={noop}
+      allowNoProject
+      createProject={createProjectWithSuggestions}
+      recentProjectIds={[
+        "proj_cloudroom-gui",
+        "proj_connect-relay",
+        "proj_website",
+        "proj_design-system",
+        "proj_infra",
+      ]}
+      defaultOpen
+      modal={false}
+    />
+  );
+}
+
+export function NoRecentProjects() {
+  return (
+    <ProjectSelector
+      projects={manyProjects}
+      value="proj_cloudroom-gui"
+      onChange={noop}
+      allowNoProject
+      createProject={createProjectWithSuggestions}
+      defaultOpen
+      modal={false}
+    />
+  );
+}

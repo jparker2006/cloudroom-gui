@@ -114,6 +114,7 @@ export interface NewThreadProjectConfig {
   disabled?: boolean;
   isLoading?: boolean;
   showChevronWhenDisabled?: boolean;
+  recentProjectIds?: readonly string[];
 }
 
 export interface NewThreadModeConfig {
@@ -434,6 +435,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               disabled={project.disabled}
               isLoading={project.isLoading}
               showChevronWhenDisabled={project.showChevronWhenDisabled}
+              recentProjectIds={project.recentProjectIds}
               className="shrink-0"
             />
           ) : null}

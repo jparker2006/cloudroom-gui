@@ -1,4 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { RECENT_PROJECTS_STORAGE_KEY } from "@/lib/root-compose-selection";
 // @vitest-environment jsdom
 
 import type {
@@ -1019,6 +1021,55 @@ describe("ThreadDetailPromptArea", () => {
       expect(screen.getByTestId("selected-model-label").textContent).toBe(label);
     },
   );
+
+  describe("recent projects for the project picker", () => {
+    const recordedIds = () =>
+      Object.values(
+        JSON.parse(
+          window.localStorage.getItem(RECENT_PROJECTS_STORAGE_KEY) ?? "{}",
+        ) as Record<string, { id: string }[]>,
+      ).flatMap((entries) => entries.map((entry) => entry.id));
+
+    beforeEach(() => {
+      window.localStorage.clear();
+      testQueryClient.setQueryData(systemConfigQueryKey(), {
+        dataDir: "/Users/jake/.bb",
+      } as never);
+      mocks.defaultExecutionOptions = {
+        model: "gpt-5",
+        permissionMode: "auto",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      };
+    });
+
+    it("records the thread's project when Jake sends a follow-up", () => {
+      mocks.promptDraft.text = "Ship the picker";
+      renderPromptArea({ thread: makeThread({ projectId: "proj_worked" }) });
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+      expect(recordedIds()).toEqual(["proj_worked"]);
+    });
+
+    it("ignores empty submits and plugin-driven sends", async () => {
+      renderPromptArea({ thread: makeThread({ projectId: "proj_quiet" }) });
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+      expect(recordedIds()).toEqual([]);
+
+      mocks.promptDraft.text = "Sent by a plugin";
+      fireEvent.click(
+        screen.getByRole("button", { name: "Capture plugin host" }),
+      );
+      await act(async () => {
+        await mocks.pluginComposerHost?.submit?.(
+          { experimental_data: { kind: "draft" } },
+          { pluginId: "drafts", data: { kind: "draft" } },
+        );
+      });
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalled();
+      expect(recordedIds()).toEqual([]);
+    });
+  });
 
   it("preserves plugin submission data through a follow-up composer", async () => {
     mocks.defaultExecutionOptions = {

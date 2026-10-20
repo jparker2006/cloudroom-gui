@@ -43,6 +43,7 @@ import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
+import { useRecordRecentProject } from "@/lib/root-compose-selection";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import {
   buildPluginSettingsEntries,
@@ -73,6 +74,7 @@ export interface CommandPaletteProps {
 
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const navigate = useNavigate();
+  const recordRecentProject = useRecordRecentProject();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
   const listId = useId();
@@ -249,6 +251,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const chooseThread = useCallback(
     (item: ThreadPaletteNavigationItem) => {
+      if (item.threadId !== null) recordRecentProject(item.projectId);
       pendingRunRef.current = () => {
         void navigate(
           item.threadId === null
@@ -269,7 +272,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       };
       setOpen(false);
     },
-    [navigate],
+    [navigate, recordRecentProject],
   );
 
   const handleAfterCloseAutoFocus = useCallback(() => {

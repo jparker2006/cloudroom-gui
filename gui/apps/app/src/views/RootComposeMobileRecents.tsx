@@ -14,6 +14,7 @@ import {
 } from "@cloudroom/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { OverflowFade } from "@/components/ui/overflow-fade";
+import { useRecordRecentProject } from "@/lib/root-compose-selection";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
   getThreadListIndicatorLabel,
@@ -238,6 +239,7 @@ function MobileRecentThreadRow({
     isCollapsed,
   } = row;
   const touchStartedBeyondLink = useRef(false);
+  const recordRecentProject = useRecordRecentProject();
   const { providers: environmentProviders } = useSystemEnvironmentProviders();
   const threadTitle = getThreadDisplayTitle(thread);
   const indicatorState: ThreadListIndicatorState =
@@ -319,7 +321,9 @@ function MobileRecentThreadRow({
           touchStartedBeyondLink.current = false;
           if (event.detail > 0 && ignoreTouchClick) {
             event.preventDefault();
+            return;
           }
+          recordRecentProject(thread.projectId);
         }}
         style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
         className={cn(

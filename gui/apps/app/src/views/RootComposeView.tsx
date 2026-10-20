@@ -139,6 +139,7 @@ import {
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
 import {
+  useRecordRecentProject,
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
@@ -507,6 +508,7 @@ export function RootComposeView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
+  const recordRecentProject = useRecordRecentProject();
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
   >(() => readSectionIdFromLocationState(location.state));
@@ -566,6 +568,7 @@ export function RootComposeView() {
             },
       );
       setLastCreatedThreadId(thread.id);
+      recordRecentProject(thread.projectId);
       setForkSeed(null);
       setRootComposeSectionId(null);
       if (shouldNavigateToCreatedThread) {
@@ -583,6 +586,7 @@ export function RootComposeView() {
       queryClient,
       navigate,
       navigateToThreadAfterCreate,
+      recordRecentProject,
       rootComposeSectionId,
     ],
   );

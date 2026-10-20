@@ -7,7 +7,9 @@ import type { ReactNode } from "react";
 import { Provider, createStore } from "jotai";
 import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { RECENT_PROJECTS_STORAGE_KEY } from "@/lib/root-compose-selection";
 import type { SystemEnvironmentProvider } from "@cloudroom/server-contract";
 import { systemEnvironmentProvidersQueryKey } from "@/hooks/queries/environment-provider-queries";
 import {
@@ -40,13 +42,15 @@ const personalProvider: SystemEnvironmentProvider = {
 function TestProviders({
   children,
   store = createStore(),
+  client = new QueryClient(),
 }: {
   children: ReactNode;
   store?: ReturnType<typeof createStore>;
+  client?: QueryClient;
 }) {
   return (
     <Provider store={store}>
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={client}>
         <MemoryRouter>{children}</MemoryRouter>
       </QueryClientProvider>
     </Provider>
@@ -787,5 +791,77 @@ describe("RootComposeMobileRecents", () => {
       }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+});
+
+describe("mobile recents and the project picker's recent projects", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  function renderRecents(threads: ThreadListEntry[]) {
+    const client = new QueryClient();
+    client.setQueryData(systemConfigQueryKey(), {
+      dataDir: "/Users/jake/.bb",
+    } as never);
+    const tree = (rows: ThreadListEntry[]) => (
+      <TestProviders client={client}>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={rows}
+        />
+      </TestProviders>
+    );
+    const view = render(tree(threads));
+    return { rerender: (rows: ThreadListEntry[]) => view.rerender(tree(rows)) };
+  }
+
+  const recordedIds = () =>
+    Object.values(
+      JSON.parse(
+        window.localStorage.getItem(RECENT_PROJECTS_STORAGE_KEY) ?? "{}",
+      ) as Record<string, { id: string }[]>,
+    ).flatMap((entries) => entries.map((entry) => entry.id));
+
+  it("records the thread's project when Jake taps a recent thread", () => {
+    renderRecents([makeThread({ projectId: "proj_tapped" })]);
+    fireEvent.click(screen.getByRole("link", { name: /Open Mobile activity/ }));
+    expect(recordedIds()).toEqual(["proj_tapped"]);
+  });
+
+  it("ignores background thread updates and taps that started beside the link", () => {
+    const { rerender } = renderRecents([
+      makeThread({ projectId: "proj_background", updatedAt: 2 }),
+    ]);
+    rerender([
+      makeThread({
+        projectId: "proj_background",
+        updatedAt: 99,
+        latestAttentionAt: 99,
+      }),
+    ]);
+    expect(recordedIds()).toEqual([]);
+
+    rerender([
+      makeThread({ id: "thr_parent", projectId: "proj_parent" }),
+      makeThread({
+        id: "thr_child",
+        projectId: "proj_parent",
+        title: "Child work",
+        titleFallback: "Child work",
+        parentThreadId: "thr_parent",
+      }),
+    ]);
+    const link = screen.getAllByRole("link", {
+      name: /Open Mobile activity/,
+    })[0];
+    const row = link.closest("li");
+    if (row === null) throw new Error("missing row");
+    fireEvent.touchStart(row, {
+      touches: [{ clientX: link.getBoundingClientRect().right + 10 }],
+    });
+    fireEvent.click(link, { detail: 1 });
+    expect(recordedIds()).toEqual([]);
   });
 });

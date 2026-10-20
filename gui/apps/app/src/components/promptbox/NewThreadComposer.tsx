@@ -115,6 +115,10 @@ import {
   getThreadRoutePath,
   isProjectlessProjectId,
 } from "@/lib/route-paths";
+import {
+  recentProjectsScope,
+  useRecentProjectIds,
+} from "@/lib/root-compose-selection";
 import { sdk } from "@/lib/sdk";
 import {
   buildReuseThreadOptions,
@@ -510,6 +514,9 @@ export function NewThreadComposer({
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
+  const recentProjectIds = useRecentProjectIds(
+    recentProjectsScope(systemConfigQuery.data?.dataDir),
+  );
   const primaryHostId =
     selectPrimaryHost(
       availableHosts,
@@ -1912,6 +1919,7 @@ export function NewThreadComposer({
               isCopyingAttachments ||
               isSubmitting,
             showChevronWhenDisabled: !locks.project,
+            recentProjectIds,
           }}
           execution={{
             providerRouting: executionOptionsRouting,
@@ -1989,6 +1997,7 @@ export function NewThreadComposer({
       projectOptions,
       projectSources,
       promptActions,
+      recentProjectIds,
       promptBoxFocusRequest,
       promptDraft,
       promptHistoryDrafts,

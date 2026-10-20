@@ -4,6 +4,7 @@ import { TeleportCheckCard } from "@/components/thread/TeleportCheckCard";
 import { ProjectCopyNotice } from "@/components/thread/ProjectCopyNotice";
 import { FixPrompt } from "@/components/ui/fix-prompt";
 import { cloudThreadFixPrompt } from "@/lib/fix-prompts";
+import { useRecordRecentProject } from "@/lib/root-compose-selection";
 import { canTeleportLocalThread, canTeleportThread } from "@/components/thread/ThreadActionsMenu";
 import { ClaudeSignIn } from "@/components/ClaudeConnection";
 import { LocalSignInNotice } from "@/components/LocalSignInNotice";
@@ -1294,18 +1295,28 @@ export function ThreadDetailPromptArea({
     },
     [canTeleport, canTeleportLocal, promptDraft.clearIfCurrentMatches, startTeleport, startTeleportLocal],
   );
+  const recordRecentProjectHook = useRecordRecentProject();
+  const recordRecentProject = useCallback(
+    (projectId: string) => {
+      if (hasPromptDraftInput) recordRecentProjectHook(projectId);
+    },
+    [hasPromptDraftInput, recordRecentProjectHook],
+  );
   const handleBottomComposerSubmit = useCallback(() => {
+    recordRecentProject(thread.projectId);
     if (runCopyCommand(currentPromptDraft) || runTeleportCommand(currentPromptDraft)) return;
     void handleSend();
-  }, [currentPromptDraft, handleSend, runCopyCommand, runTeleportCommand]);
+  }, [currentPromptDraft, handleSend, recordRecentProject, runCopyCommand, runTeleportCommand, thread.projectId]);
   const handleBottomComposerModifierSubmit = useCallback(() => {
+    recordRecentProject(thread.projectId);
     if (runCopyCommand(currentPromptDraft) || runTeleportCommand(currentPromptDraft)) return;
     void handleModifierSubmit();
-  }, [currentPromptDraft, handleModifierSubmit, runCopyCommand, runTeleportCommand]);
+  }, [currentPromptDraft, handleModifierSubmit, recordRecentProject, runCopyCommand, runTeleportCommand, thread.projectId]);
   const handleBottomComposerHardQueueSubmit = useCallback(() => {
+    recordRecentProject(thread.projectId);
     if (runCopyCommand(currentPromptDraft) || runTeleportCommand(currentPromptDraft)) return;
     void handleHardQueue();
-  }, [currentPromptDraft, handleHardQueue, runCopyCommand, runTeleportCommand]);
+  }, [currentPromptDraft, handleHardQueue, recordRecentProject, runCopyCommand, runTeleportCommand, thread.projectId]);
   const handleInlineComposerSubmit = useCallback(() => {
     void handleSaveInlineQueuedMessage();
   }, [handleSaveInlineQueuedMessage]);
