@@ -16,6 +16,7 @@ import {
   resolveNewThreadProjectDefaultsState,
   resolveNewThreadSubmitDisabledReason,
   restorePromptDraftAfterOptionChange,
+  shouldRecordRecentProjectAfterSubmit,
   type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
 import { getProjectStoredPromptAttachmentPaths } from "@cloudroom/client-core";
@@ -818,6 +819,35 @@ describe("shouldNavigateAfterThreadCreate", () => {
         navigateToThreadAfterCreate: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe("shouldRecordRecentProjectAfterSubmit", () => {
+  it("records a thread created from the root new-thread composer", () => {
+    expect(
+      shouldRecordRecentProjectAfterSubmit({
+        created: true,
+        selectionScope: "new-thread",
+      }),
+    ).toBe(true);
+  });
+
+  it("never records plugin-hosted composer submits", () => {
+    expect(
+      shouldRecordRecentProjectAfterSubmit({
+        created: true,
+        selectionScope: "component-local",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not record a root submit that created no thread", () => {
+    expect(
+      shouldRecordRecentProjectAfterSubmit({
+        created: false,
+        selectionScope: "new-thread",
+      }),
+    ).toBe(false);
   });
 });
 

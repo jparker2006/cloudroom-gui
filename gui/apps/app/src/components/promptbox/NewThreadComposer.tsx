@@ -344,6 +344,16 @@ export function resolveNewThreadProjectDefaultsState({
   return queryIsError ? { status: "error" } : { status: "pending" };
 }
 
+export function shouldRecordRecentProjectAfterSubmit({
+  created,
+  selectionScope,
+}: {
+  created: boolean;
+  selectionScope: NewThreadComposerSelectionScope;
+}): boolean {
+  return created && selectionScope === "new-thread";
+}
+
 export function mergeMissingPromptDraftAttachments(
   currentAttachments: readonly PromptDraftAttachment[],
   preservedAttachments: readonly PromptDraftAttachment[],
@@ -1686,7 +1696,7 @@ export function NewThreadComposer({
     async (blockedReason: string | null) => {
       try {
         const created = await submitDraft(blockedReason, null);
-        if (created && selectionScope === "new-thread") {
+        if (shouldRecordRecentProjectAfterSubmit({ created, selectionScope })) {
           recordRecentProject(projectId);
         }
       } catch {}
