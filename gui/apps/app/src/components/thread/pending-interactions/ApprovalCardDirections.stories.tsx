@@ -5,6 +5,7 @@ import type {
   ApprovalPendingInteraction,
 } from "@cloudroom/domain";
 import {
+  PendingInteractionBannerPreview,
   ThreadPendingInteractionBanner,
   type ApprovalCardLayout,
 } from "./ThreadPendingInteractionBanner";
@@ -303,8 +304,17 @@ function StubbedBanner({
 }) {
   const [key] = useState(() => `${interaction.id}-${layout}`);
   useResolveStub(interaction.id, mode ?? "fail");
+  if (layout === "summary") {
+    return (
+      <ThreadPendingInteractionBanner
+        key={key}
+        interaction={interaction}
+        threadId={interaction.threadId}
+      />
+    );
+  }
   return (
-    <ThreadPendingInteractionBanner
+    <PendingInteractionBannerPreview
       key={key}
       approvalLayout={layout}
       interaction={interaction}

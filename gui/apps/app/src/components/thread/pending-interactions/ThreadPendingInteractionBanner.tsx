@@ -46,10 +46,13 @@ import {
 export type ApprovalCardLayout = "summary" | "decisions";
 
 interface ThreadPendingInteractionBannerProps {
-  approvalLayout?: ApprovalCardLayout;
   interaction: PendingInteraction;
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
+}
+
+interface PendingInteractionBannerPreviewProps extends ThreadPendingInteractionBannerProps {
+  approvalLayout: ApprovalCardLayout;
 }
 
 type ApprovalBannerSubject = Extract<
@@ -94,15 +97,27 @@ interface ApprovalDecisionSubmission {
 export function ThreadPendingInteractionBanner(
   props: ThreadPendingInteractionBannerProps,
 ) {
+  return (
+    <PendingInteractionBanner
+      key={props.interaction.id}
+      {...props}
+      approvalLayout="summary"
+    />
+  );
+}
+
+export function PendingInteractionBannerPreview(
+  props: PendingInteractionBannerPreviewProps,
+) {
   return <PendingInteractionBanner key={props.interaction.id} {...props} />;
 }
 
 function PendingInteractionBanner({
-  approvalLayout = "summary",
+  approvalLayout,
   interaction,
   sourceThread,
   threadId,
-}: ThreadPendingInteractionBannerProps) {
+}: PendingInteractionBannerPreviewProps) {
   const request = classifyInteractionRequest(interaction);
   if (request.family === "approval") {
     return (

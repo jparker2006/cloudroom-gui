@@ -9,7 +9,10 @@ import type {
 import { buildPendingInteractionApprovalResolution } from "@cloudroom/core-ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
+import {
+  PendingInteractionBannerPreview,
+  ThreadPendingInteractionBanner,
+} from "./ThreadPendingInteractionBanner";
 
 const mocks = vi.hoisted(() => ({
   resolveMutateAsync: vi.fn(async () => ({})),
@@ -127,11 +130,18 @@ function renderApproval(
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <ThreadPendingInteractionBanner
-          approvalLayout={approvalLayout}
-          interaction={interaction}
-          threadId={threadId}
-        />
+        {approvalLayout === "summary" ? (
+          <ThreadPendingInteractionBanner
+            interaction={interaction}
+            threadId={threadId}
+          />
+        ) : (
+          <PendingInteractionBannerPreview
+            approvalLayout={approvalLayout}
+            interaction={interaction}
+            threadId={threadId}
+          />
+        )}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -150,6 +160,46 @@ afterEach(() => {
 });
 
 describe("approval card behavior", () => {
+  it("keeps the selected Summary layout when stale preview props request decision rows", () => {
+    const interaction = approval("permission_grant");
+    const stalePreviewProps = { approvalLayout: "decisions" as const };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadPendingInteractionBanner
+            {...stalePreviewProps}
+            interaction={interaction}
+            threadId={threadId}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen
+        .getByTestId("approval-summary")
+        .getAttribute("data-approval-layout"),
+    ).toBe("summary");
+    expect(screen.queryByTestId("approval-decision-rows")).toBeNull();
+    expect(screen.getByTestId("approval-summary").textContent).toContain(
+      "/workspace/out",
+    );
+    expect(screen.getByTestId("approval-summary").textContent).toContain(
+      "/workspace/docs",
+    );
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(mocks.resolveMutateAsync).toHaveBeenCalledExactlyOnceWith({
+      threadId,
+      interactionId,
+      resolution: buildPendingInteractionApprovalResolution(
+        interaction,
+        "deny",
+      ),
+    });
+  });
+
   it.each(["summary", "decisions"] as const)(
     "%s layout offers and submits every nonempty decision subset for each subject",
     (layout) => {
@@ -308,25 +358,30 @@ describe("approval card behavior", () => {
   );
 
   it.each([
-    ["mutation pending", "pending" as const],
-    ["interaction resolving", "resolving" as const],
-  ])("disables every offered decision while %s", (_label, status) => {
-    if (status === "pending") mocks.isPending = true;
-    const interaction = approval("command", allDecisions, { status });
-    renderApproval(interaction, "decisions");
+    ["summary", "pending"],
+    ["summary", "resolving"],
+    ["decisions", "pending"],
+    ["decisions", "resolving"],
+  ] as const)(
+    "%s disables every offered decision while %s",
+    (layout, status) => {
+      if (status === "pending") mocks.isPending = true;
+      const interaction = approval("command", allDecisions, { status });
+      renderApproval(interaction, layout);
 
-    for (const decision of allDecisions) {
-      expect(
-        (
-          screen.getByRole("button", {
-            name: decisionLabels[decision],
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(true);
-      fireEvent.click(
-        screen.getByRole("button", { name: decisionLabels[decision] }),
-      );
-    }
-    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
-  });
+      for (const decision of allDecisions) {
+        expect(
+          (
+            screen.getByRole("button", {
+              name: decisionLabels[decision],
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(true);
+        fireEvent.click(
+          screen.getByRole("button", { name: decisionLabels[decision] }),
+        );
+      }
+      expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
+    },
+  );
 });
