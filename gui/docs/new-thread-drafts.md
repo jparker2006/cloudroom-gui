@@ -31,7 +31,12 @@ Every new-thread scope names its project:
 - Fork from message writes its quote to `source.projectId`, the project it then
   opens.
 - The plugin SDK's route fallback (`plugin-sdk-hooks.ts`, no composer host) uses
-  the route project, else the root composer's selected project.
+  the route project, else the root composer's selected project resolved by the
+  composer's rule (a project the settled list doesn't contain becomes
+  `proj_personal`), so it writes the draft the composer shows.
+- Report-bug and `?prompt=` no longer replace an unsent draft. If the visible
+  draft has content, the prompt is appended after a blank line. An empty draft
+  behaves as before.
 
 ## Ownership
 
@@ -58,7 +63,11 @@ Every new-thread scope names its project:
   switch never takes a snapshot.
 - After a switch where either draft has content, the composer shows a short
   note, for example "Saved your Alpha draft. Showing your Beta draft." It clears
-  after 4 seconds.
+  after 4 seconds and shows once per project pair per window.
+- The project picker is disabled while a send is in flight, as today.
+- A new tab opens the last selected project (the tab-scoped selection falls back
+  to `localStorage`). Marking which projects hold drafts belongs to the picker,
+  which this ticket doesn't touch.
 
 ## Unassigned drafts
 
@@ -68,13 +77,18 @@ project's draft:
 1. **Legacy**: the old global key `bb.promptbox.contents-draft-3`. Its owner is
    unknown: the old composer carried it across switches, and each tab could have
    had a different project selected.
-2. **Orphaned**: a per-project key whose project the server no longer lists.
-   Detection scans this store's keys (cache plus `localStorage`). A project is
-   known if it is `proj_personal`, in the sidebar list (successful,
-   non-placeholder), or in the hidden-projects list. The hidden list is fetched
-   once, only when a candidate orphan exists. Until both lists load, only the
-   legacy draft is shown. A hidden project's draft is not orphaned. It returns
-   when the project is unhidden.
+2. **Orphaned**: a per-project key whose project the server says is gone.
+   Detection scans this store's keys (cache plus `localStorage`). A key is a
+   candidate when its project is not `proj_personal` and not in the sidebar list
+   (successful, non-placeholder). Each candidate is then checked with
+   `GET /api/v1/projects/:id`, once per candidate per window, fresh each time
+   (no cached result). Only a 404 with `project_not_found` or
+   `project_unavailable` means orphaned. A hidden project returns 200 and is
+   not orphaned; its draft returns when the project is unhidden. Any other
+   result, including errors, shows nothing for that key and allows no action.
+   The same check runs again right before **Move to** or **Discard** acts on an
+   orphaned draft. If it no longer returns 404, the action stops and the banner
+   disappears.
 
 Rules:
 
@@ -86,25 +100,36 @@ Rules:
   1. Single-flight: the button is disabled while a move runs.
   2. Capture the target project at click. Results go to that project even if
      the user switches during the check.
-  3. Check each project-stored attachment in the target with a header-only
-     request to the existing attachment content route. 2xx means present (stored
-     names are unique per upload). 4xx means missing. A network error or 5xx
-     means unknown, and the banner offers a retry.
-  4. At write time, re-read the unassigned record and the target draft
+  3. Skip, as staying behind, any attachment with an absolute path or with an
+     owner tag (from the attachment fix) that differs from the target. Check
+     each remaining project-stored attachment in the target with a GET to the
+     existing attachment content route, cancelling the body once headers
+     arrive. 2xx means present (stored names are unique per upload). Only 404
+     means missing. Anything else means unknown, and the banner offers a retry.
+     Cost: the server reads each checked file once per click (up to the 25 MB
+     upload limit). This runs only on an explicit click, never on load.
+  4. Inside an exclusive Web Lock (`navigator.locks`, one lock name for all
+     moves on this origin), re-read the unassigned record and the target draft
      synchronously. Append the record's text, mentions, contexts, and present
      attachments to the target (after a blank line if it has text).
   5. Write the target immediately. If that write fails, restore the target in
-     memory and change nothing else.
+     memory, change nothing else, and show "Couldn't move the draft. Nothing
+     changed."
   6. Rewrite the record with only what stayed behind (missing, unknown, or
      absolute-path attachments). Remove the key only when nothing is left.
-  Steps 4–6 run synchronously, so another tab or a refresh cannot interleave
-  inside one tab. If two tabs both press Move at the same moment, the text can
-  land in both targets. Nothing is lost.
+  Steps 4–6 run synchronously inside the lock, so a second tab's move re-reads
+  the record after the first one finishes and finds it gone. Text is never
+  duplicated. If a browser lacks Web Locks, the move still runs without the lock
+  (Chromium/Electron and Safari 15.4+ have it).
 - **Discard** is two-step and inline (no modal). It removes that key only.
   Attachment files on the server are never deleted.
 - **Not now** hides that banner for this window only and writes nothing.
-- Unverified attachments never join another project. Absolute paths always stay
-  behind (shared strict file-scope rule).
+- Unverified attachments never join another project. An absolute path is never
+  a valid project attachment for a move and always stays behind (shared strict
+  file-scope rule).
+- Attachment ownership: the draft key decides which project a draft belongs to.
+  Where the attachment fix's owner tag is present, the tag decides that
+  attachment's owner for preview, send-time copy, and moves.
 
 ## Failures
 
@@ -134,6 +159,22 @@ Rules:
   reappear on upgrade.
 - Text moved with **Move to** lives in a per-project key, so an old build does
   not show it. Nothing is deleted.
+- An old build's schema drops the attachment fix's owner tag. Its send then
+  uses the draft's project, and the server rejects a path from another project
+  with a visible error. Nothing is sent to the wrong project.
+- Cloud request IDs: a send that was ambiguous before the upgrade was keyed by
+  the global key. A retry after the upgrade gets a new request ID, so a
+  duplicate Cloud thread is possible in that one case. It was already possible
+  before for any changed draft, because the ID is fingerprinted on the request.
+
+## Tests that change
+
+- `usePromptDraftStorage.test.tsx`: "uses project-agnostic storage for
+  new-thread prompt contents" asserted the global key. It is replaced by
+  per-project, No project, and legacy-untouched tests.
+- `useForkThreadFromMessage.test.tsx` and `plugin-slot-mounts.test.tsx`: the
+  new-thread scope now names a project.
+- `RootComposeView.test.ts`: the `isCopyingAttachments` field is removed.
 
 ## Integration with the attachment fix
 
@@ -157,9 +198,7 @@ ticket removes the other's reviewed changes.
   migration stay isolated in `usePromptDraftStorage.ts`, the banner component,
   and `appendPromptDraft`.
 - The recent-project picker (`room/project-picker-recents`) stays separate. This
-  ticket does not touch picker files. Its only shared file is
-  `project-queries.ts`, where it adds an `enabled` option to
-  `useHiddenProjects`.
+  ticket does not touch picker files or project-list queries.
 - Uploads: this ticket binds uploads to their draft and keeps the fix's owner tag
   (`{ ...uploaded, projectId: ownerProjectId }`).
 - Project switch: the fix narrows the switch copy to owned paths. This ticket
@@ -172,10 +211,9 @@ ticket removes the other's reviewed changes.
 
 ## Open choices
 
-1. Sign off the `handleProjectChange` split above.
-2. Report-bug and `?prompt=` replace the visible project's unsent draft today.
-   Keep as is (recommended, out of scope), or append instead.
-3. Accept last-write-wins for the same project's draft across tabs (recommended,
+1. Sign off the `handleProjectChange` split above (all three reviewers support
+   removing the switch copy).
+2. Accept last-write-wins for the same project's draft across tabs (recommended,
    matches thread drafts), or merge attachments by path.
-4. Accept the project-list load window above (recommended), or block editing
+3. Accept the project-list load window above (recommended), or block editing
    until projects load.
