@@ -138,6 +138,7 @@ export interface TimelineActivityIntentTitle {
 }
 
 interface BuildTimelineActivityIntentTitleArgs {
+  cwd: string | null | undefined;
   intent: TimelineActivityIntent;
   pending: boolean;
   failureStatus?: "error" | "interrupted";
@@ -206,8 +207,23 @@ function imagePreviewAction(path: string | null): TimelineTitleAction | null {
 
 function intentImagePreviewAction(
   intent: TimelineActivityIntent,
+  cwd: string | null | undefined,
 ): TimelineTitleAction | null {
-  return intent.type === "read" ? imagePreviewAction(intent.path) : null;
+  if (intent.type !== "read" || intent.path === null) {
+    return null;
+  }
+  if (intent.path.startsWith("/") || cwd === undefined) {
+    return imagePreviewAction(intent.path);
+  }
+  return cwd?.startsWith("/")
+    ? imagePreviewAction(`${cwd.replace(/\/+$/u, "")}/${intent.path}`)
+    : null;
+}
+
+function explorationRowCwd(
+  row: TimelineExplorationWorkRow,
+): string | null | undefined {
+  return row.workKind === "command" ? row.cwd : undefined;
 }
 
 function filterNull<T>(values: (T | null)[]): T[] {
@@ -626,7 +642,7 @@ function mapSingleExplorationIntentTitle(
     });
   }
 
-  const action = intentImagePreviewAction(intent);
+  const action = intentImagePreviewAction(intent, explorationRowCwd(row));
   const segments: TimelineTitleSegment[] = [];
   if (detail.prefix) {
     segments.push(segment(detail.prefix, { shimmer: pending }));
@@ -1660,6 +1676,7 @@ function mapConversationTitle(row: TimelineConversationViewRow): TimelineTitle {
 }
 
 function mapTimelineActivityIntentTitle({
+  cwd,
   intent,
   pending,
   failureStatus,
@@ -1675,7 +1692,7 @@ function mapTimelineActivityIntentTitle({
     pathMode: "full",
     pending,
   });
-  const action = intentImagePreviewAction(intent);
+  const action = intentImagePreviewAction(intent, cwd);
   const segments: TimelineTitleSegment[] = [];
   if (detail.prefix) {
     segments.push(segment(detail.prefix, { shimmer: pending }));
@@ -1725,6 +1742,7 @@ export function buildTimelineActivityIntentTitles(
       intent,
       intentType: intent.type,
       title: mapTimelineActivityIntentTitle({
+        cwd: explorationRowCwd(row),
         intent,
         pending: row.status === "pending",
         badges: titles.length === 0 ? badges : [],

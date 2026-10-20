@@ -1129,6 +1129,7 @@ describe("buildTimelineRowTitle", () => {
   it("declares image actions only on PNG exploration read intents", () => {
     const row = {
       ...commandRow(),
+      cwd: "/repo/sub/",
       activityIntents: [
         readIntent("out/render.png"),
         readIntent("src/app.ts"),
@@ -1139,7 +1140,7 @@ describe("buildTimelineRowTitle", () => {
     const titles = buildTimelineActivityIntentTitles(row);
 
     expect(titles.map((entry) => entry.title.action)).toEqual([
-      { kind: "open-image-preview", path: "out/render.png" },
+      { kind: "open-image-preview", path: "/repo/sub/out/render.png" },
       null,
       null,
     ]);
@@ -1147,6 +1148,54 @@ describe("buildTimelineRowTitle", () => {
       text: "render.png",
       accent: "file",
     });
+  });
+
+  it("resolves a single command PNG read against the command cwd", () => {
+    const withCwd = buildTimelineRowTitle(
+      {
+        ...commandRow(),
+        cwd: "/repo/subdir",
+        activityIntents: [readIntent("chart.png")],
+      },
+      DEFAULT_OPTIONS,
+    );
+    const withoutCwd = buildTimelineRowTitle(
+      {
+        ...commandRow(),
+        cwd: null,
+        activityIntents: [readIntent("chart.png")],
+      },
+      DEFAULT_OPTIONS,
+    );
+    const absoluteWithoutCwd = buildTimelineRowTitle(
+      {
+        ...commandRow(),
+        cwd: null,
+        activityIntents: [readIntent("/repo/chart.png")],
+      },
+      DEFAULT_OPTIONS,
+    );
+
+    expect(withCwd.action).toEqual({
+      kind: "open-image-preview",
+      path: "/repo/subdir/chart.png",
+    });
+    expect(withoutCwd.action).toBeNull();
+    expect(withoutCwd.segments.some((s) => s.accent === "file")).toBe(false);
+    expect(absoluteWithoutCwd.action).toEqual({
+      kind: "open-image-preview",
+      path: "/repo/chart.png",
+    });
+  });
+
+  it("drops relative command PNG reads with no known cwd", () => {
+    const titles = buildTimelineActivityIntentTitles({
+      ...commandRow(),
+      cwd: null,
+      activityIntents: [readIntent("a.png"), readIntent("b.png")],
+    });
+
+    expect(titles.map((entry) => entry.title.action)).toEqual([null, null]);
   });
 
   it("does not declare an action on non-file-change titles", () => {

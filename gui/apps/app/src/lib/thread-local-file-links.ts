@@ -216,9 +216,7 @@ export function resolveTimelineImagePreviewLink({
 }: ResolveTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
   if (
     !/\.png$/iu.test(path) ||
-    /[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069\\]/u.test(
-      path,
-    ) ||
+    /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\]/u.test(path) ||
     /^(?:~|[a-z][a-z0-9+.-]*:)/iu.test(path)
   ) {
     return null;

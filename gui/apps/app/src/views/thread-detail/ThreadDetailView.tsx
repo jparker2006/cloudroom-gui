@@ -2181,6 +2181,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           handleTimelineLocalFileLinkResolution(resolvedResolution, options);
         })
         .catch((error: Error) => {
+          if (activeThreadIdRef.current !== threadId) {
+            return;
+          }
           appToast.error("Failed to open file locally", {
             description: error.message,
           });
