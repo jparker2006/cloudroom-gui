@@ -980,10 +980,13 @@ describe("ThreadDetailPromptArea", () => {
     renderPromptArea({ thread: makeThread({ executionTarget: "cloud", status: "idle" }) });
     expect(screen.getByRole("status").textContent).toBe("Reconnecting…");
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "About reconnecting" })).toBeTruthy();
     await act(async () => { testQueryClient.setQueryData(queryKey, { ...status, reconnecting: false }); });
     await waitFor(() => expect(screen.queryByText("Reconnecting…")).toBeNull());
     await act(async () => { testQueryClient.setQueryData(queryKey, { ...status, error: "Cloudroom authentication failed" }); });
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Cloudroom authentication failed"));
+    expect(screen.getByRole("button", { name: "About this error" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "About reconnecting" })).toBeNull();
     expect(screen.queryByText("Reconnecting…")).toBeNull();
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
   });

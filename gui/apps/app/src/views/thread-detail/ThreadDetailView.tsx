@@ -93,6 +93,8 @@ import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialo
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { ThreadHelpButton } from "@/components/thread-help/ThreadHelp";
+import { THREAD_HELP_HASH, relevantThreadHelpTopicIds } from "@/components/thread-help/thread-help-topics";
 import {
   ThreadActionsMenu,
   type ThreadActionsMenuResponsiveAction,
@@ -2573,6 +2575,13 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const responsiveHeaderActions = [
     ...responsiveWorkspaceActions,
     ...responsiveGitActions,
+    {
+      icon: "CircleQuestion" as const,
+      label: "Help",
+      onSelect: () => {
+        void navigate({ search: window.location.search, hash: THREAD_HELP_HASH });
+      },
+    },
   ];
   const timelineHeader = (
     <ThreadDetailHeader
@@ -2597,6 +2606,21 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }
       shareButton={
         <>
+          <ThreadHelpButton
+            label="Thread help"
+            variant="header"
+            className="max-md:hidden"
+            listenToHash={isFocused}
+            relevantTopicIds={relevantThreadHelpTopicIds({
+              isCloud: isCloudThread,
+              hasContextUsage: contextWindowUsage != null,
+              hostDisconnected: buildHostConnectionNotice(thread, null) !== null,
+              reconnecting: false,
+              authRequired: false,
+              startFailed: thread.runtime.displayStatus === "error",
+              usageLimit: false,
+            })}
+          />
           <Button
             type="button"
             variant="ghost"

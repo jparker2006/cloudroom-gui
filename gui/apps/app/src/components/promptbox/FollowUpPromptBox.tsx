@@ -152,6 +152,7 @@ export interface FollowUpPromptBoxProps {
   environmentSummary: ReactNode | null;
   contextWindowUsage: ContextWindowUsage | null;
   contextWindowNote?: string | undefined;
+  footerHelp?: ReactNode;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
   executionReadOnly?: boolean;
@@ -224,6 +225,7 @@ function FollowUpPromptBoxWithComposer({
   environmentSummary,
   contextWindowUsage,
   contextWindowNote,
+  footerHelp,
   execution,
   permission,
   executionReadOnly,
@@ -763,6 +765,7 @@ function FollowUpPromptBoxWithComposer({
                 note={contextWindowNote}
               />
             ) : null}
+            {footerHelp}
           </div>
         </div>
       ) : null}

@@ -24,6 +24,8 @@ import type { IconName } from "@cloudroom/shared-ui/icon";
 import { Button } from "@cloudroom/shared-ui/button";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { CloudDiskFullNotice, CloudUsageLimitNotice } from "@/components/CloudUsageLimitNotice";
+import { ThreadHelpButton } from "@/components/thread-help/ThreadHelp";
+import { relevantThreadHelpTopicIds } from "@/components/thread-help/thread-help-topics";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   getFollowUpPromptPlaceholder,
@@ -1617,6 +1619,7 @@ export function ThreadDetailPromptArea({
   const environmentSummary = useMemo(
     () =>
       isCloud || thread.environmentId !== null ? (
+        <>
         <ThreadEnvironmentSummary
           projectName={projectName}
           environmentLabel={
@@ -1636,6 +1639,8 @@ export function ThreadDetailPromptArea({
           onTeleportToCloud={canTeleport ? startTeleport : undefined}
           onTeleportToLocal={canTeleportLocal ? startTeleportLocal : undefined}
         />
+        <ThreadHelpButton label="About where this thread runs" initialTopicId="where-it-runs" align="start" className="max-md:hidden" />
+        </>
       ) : null,
     [
       isCloud,
@@ -2136,12 +2141,12 @@ export function ThreadDetailPromptArea({
   const cloudOffline = cloudFetchFailed || (typeof navigator !== "undefined" && !navigator.onLine);
   const cloudError = retryCloudStart.error?.message ?? (cloudFetchFailed ? undefined : cloudState.error?.message) ?? cloudState.data?.error;
   const cloudReconnecting = !cloudError && (cloudOffline || cloudState.data?.reconnecting);
-  const cloudLimitNotice = isCloud && !shouldHideComposer ? cloudState.data?.usageLimit ? <CloudUsageLimitNotice /> : cloudState.data?.diskFull ? <CloudDiskFullNotice /> : null : null;
+  const cloudLimitNotice = isCloud && !shouldHideComposer ? cloudState.data?.usageLimit ? <div className="relative"><CloudUsageLimitNotice /><ThreadHelpButton label="About limits" initialTopicId="limits" className="absolute right-2 top-2" /></div> : cloudState.data?.diskFull ? <CloudDiskFullNotice /> : null : null;
   const cloudFixPrompt = cloudError || cloudState.data?.failedStart ? cloudThreadFixPrompt(thread.id, thread.providerId, cloudError) : null;
   const cloudStatusKey = `${thread.id}|${cloudState.data?.failedStart ? "failed" : ""}|${cloudError ?? ""}`;
   const cloudStatusDismissed = dismissedCloudStatus === cloudStatusKey;
   const cloudAuthNotice = isCloud && !shouldHideComposer && cloudState.data?.authRequired ? (
-    <PromptStackCard ariaLabel="Connect your account" className="w-full max-w-sm justify-self-center p-3 text-xs">
+    <PromptStackCard ariaLabel="Connect your account" className="relative w-full max-w-sm justify-self-center p-3 pr-9 text-xs">
       {claudeThread ? <ClaudeSignIn target={{ target: "cloud" }} onContinue={() => retryCloudStart.mutate()} continuing={retryCloudStart.isPending} /> : (
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -2152,6 +2157,7 @@ export function ThreadDetailPromptArea({
         </div>
       )}
       {retryCloudStart.error && <p role="alert" className="mt-2 text-destructive">{retryCloudStart.error.message}</p>}
+      <ThreadHelpButton label="About connecting an account" initialTopicId="connect-harness" className="absolute right-2 top-2" />
     </PromptStackCard>
   ) : null;
   const cloudReconnectingPill = cloudReconnecting ? (
@@ -2160,6 +2166,7 @@ export function ThreadDetailPromptArea({
       <span role="status" className="flex items-center gap-2">{cloudOffline && <><span className="text-foreground">Offline</span><span aria-hidden>·</span></>}<span>Reconnecting…</span></span>
       <span aria-hidden>·</span>
       <button type="button" className="underline underline-offset-2 hover:text-foreground disabled:opacity-50" disabled={cloudState.isFetching} onClick={() => void cloudState.refetch()}>Retry</button>
+      <ThreadHelpButton label="About reconnecting" initialTopicId="reconnecting" className="-my-1 -mr-2 max-md:-my-2.5" />
     </div>
   ) : null;
   const cloudNotice = cloudAuthNotice ?? cloudLimitNotice ?? (isCloud && !shouldHideComposer && (cloudError || cloudReconnecting || cloudState.data?.failedStart) ? (<>
@@ -2169,6 +2176,7 @@ export function ThreadDetailPromptArea({
       <div className="flex items-center gap-2">
         {cloudState.data?.failedStart && <Button type="button" size="sm" variant="outline" disabled={retryCloudStart.isPending} onClick={() => retryCloudStart.mutate()}>Retry start</Button>}
         {cloudState.isError && !cloudFetchFailed && <Button type="button" size="sm" variant="outline" disabled={cloudState.isFetching} onClick={() => void cloudState.refetch()}>Reconnect</Button>}
+        <ThreadHelpButton label="About this error" initialTopicId="start-error" />
       </div>
       {cloudFixPrompt && <FixPrompt prompt={cloudFixPrompt} />}
     </PromptStackCard>}
@@ -2190,6 +2198,15 @@ export function ThreadDetailPromptArea({
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       contextWindowNote={thread.providerId === "acp-cursor" ? "Cursor doesn't report token usage, so this is an estimate." : undefined}
+      footerHelp={<ThreadHelpButton label="Thread help" className="max-md:-m-1 max-md:size-8" relevantTopicIds={relevantThreadHelpTopicIds({
+        isCloud,
+        hasContextUsage: contextWindowUsage != null,
+        reconnecting: Boolean(cloudReconnecting),
+        hostDisconnected: runtimeDisplayStatus === "host-reconnecting" || runtimeDisplayStatus === "waiting-for-host",
+        authRequired: isCloud ? Boolean(cloudState.data?.authRequired) : providerAuthFailed,
+        startFailed: runtimeDisplayStatus === "error" || Boolean(isCloud && (cloudError || cloudState.data?.failedStart)),
+        usageLimit: Boolean(isCloud && cloudState.data?.usageLimit),
+      })} />}
       execution={isCloud ? {
         ...bottomExecutionConfig,
         provider: { ...bottomExecutionConfig.provider, selectedId: thread.providerId, options: cloudProviderOptions, hasMultiple: cloudProviderOptions.length > 1 },
