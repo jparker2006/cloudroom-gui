@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import {
   RECORDED_COMPACTION_GAP_TEXT,
   type RecordedCompactionEntry,
@@ -112,21 +112,20 @@ function EntryRow({ entry }: { entry: RecordedCompactionEntry }) {
 function useCompletionAnnouncement(
   summary: RecordedCompactionsSummary | null,
 ): string {
-  const previous = useRef(summary);
+  const [previous, setPrevious] = useState(summary);
   const [announcement, setAnnouncement] = useState("");
-  useEffect(() => {
-    const before = previous.current;
-    previous.current = summary;
+  if (previous !== summary) {
+    setPrevious(summary);
     if (summary?.inProgress) {
       setAnnouncement("");
-    } else if (before !== null && summary !== null && before.inProgress) {
+    } else if (previous !== null && summary !== null && previous.inProgress) {
       setAnnouncement(
-        summary.completedCount > before.completedCount
+        summary.completedCount > previous.completedCount
           ? "Compaction recorded."
           : "Compaction ended without a recorded result.",
       );
     }
-  }, [summary]);
+  }
   return announcement;
 }
 
