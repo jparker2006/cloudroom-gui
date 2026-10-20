@@ -8,6 +8,7 @@ import type {
 } from "@/components/thread/timeline/types";
 import {
   appendMessageContextToDraft,
+  appendPromptDraft,
   appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
@@ -503,6 +504,59 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   const normalizedProjectId = normalizeStorageSegment(scope.projectId);
   const normalizedThreadId = normalizeStorageSegment(scope.threadId);
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+export type MoveNewThreadDraftResult =
+  | { status: "moved"; leftoverAttachments: string[] }
+  | { status: "nothing-to-move" | "unreadable" | "failed" | "source-not-updated" };
+
+export function moveNewThreadDraft(
+  sourceKey: string,
+  targetProjectId: string,
+): MoveNewThreadDraftResult {
+  const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
+  if (pendingPromptDraftStorageKeys.has(targetKey)) persistPromptDraftCache(targetKey);
+
+  const sourceRaw = readStoredPromptDraftValue(sourceKey);
+  const source = readNewThreadRecord(sourceRaw);
+  if (source.kind === "unreadable") return { status: "unreadable" };
+  if (source.kind !== "draft" || isPromptDraftEmpty(source.draft)) {
+    return { status: "nothing-to-move" };
+  }
+
+  const carried = source.draft.attachments.filter(
+    (attachment) => (attachment as { projectId?: string }).projectId === targetProjectId,
+  );
+  const leftovers = source.draft.attachments.filter((attachment) => !carried.includes(attachment));
+  const previousTarget = readPromptDraft(targetKey);
+  writePromptDraft(
+    targetKey,
+    appendPromptDraft(previousTarget, { ...source.draft, attachments: carried }),
+  );
+  if (unsavedPromptDraftKeys.has(targetKey)) {
+    promptDraftCache.set(targetKey, {
+      rawValue: readStoredPromptDraftValue(targetKey),
+      draft: previousTarget,
+    });
+    unsavedPromptDraftKeys.delete(targetKey);
+    emitPromptDraftChange(targetKey);
+    return { status: "failed" };
+  }
+
+  const rev = createDraftRev();
+  const sourceValue =
+    leftovers.length > 0
+      ? JSON.stringify({ text: "", attachments: leftovers, rev })
+      : JSON.stringify({ rev, moved: true });
+  try {
+    window.localStorage.setItem(sourceKey, sourceValue);
+  } catch (error) {
+    console.warn(`[prompt-draft] moved ${sourceKey} but could not update it`, error);
+    return { status: "source-not-updated" };
+  }
+  promptDraftCache.delete(sourceKey);
+  emitPromptDraftChange(sourceKey);
+  return { status: "moved", leftoverAttachments: leftovers.map((attachment) => attachment.name) };
 }
 
 export function getPromptDraftAccessor(scope: PromptDraftScope): {

@@ -416,14 +416,14 @@ describe("appendPromptDraft", () => {
     const target = {
       text: "Beta notes",
       mentions: [],
-      attachments: [{ type: "image" as const, path: "a.png", name: "a.png", sizeBytes: 1 }],
+      attachments: [{ type: "localImage" as const, path: "a.png", name: "a.png", sizeBytes: 1 }],
     };
     const source = {
       text: "use /automation",
       mentions: [{ start: 4, end: 15, resource: AUTOMATION_COMMAND_RESOURCE }],
       attachments: [
-        { type: "image" as const, path: "a.png", name: "a.png", sizeBytes: 1 },
-        { type: "image" as const, path: "b.png", name: "b.png", sizeBytes: 2, copyToken: "tok" },
+        { type: "localImage" as const, path: "a.png", name: "a.png", sizeBytes: 1 },
+        { type: "localImage" as const, path: "b.png", name: "b.png", sizeBytes: 2, copyToken: "tok" },
       ],
       contexts: [{ label: "msg 1", text: "context" }],
     };
@@ -432,8 +432,8 @@ describe("appendPromptDraft", () => {
       text: "Beta notes\n\nuse /automation",
       mentions: [{ start: 16, end: 27, resource: AUTOMATION_COMMAND_RESOURCE }],
       attachments: [
-        { type: "image", path: "a.png", name: "a.png", sizeBytes: 1 },
-        { type: "image", path: "b.png", name: "b.png", sizeBytes: 2, copyToken: "tok" },
+        { type: "localImage", path: "a.png", name: "a.png", sizeBytes: 1 },
+        { type: "localImage", path: "b.png", name: "b.png", sizeBytes: 2, copyToken: "tok" },
       ],
       contexts: [{ label: "msg 1", text: "context" }],
     });

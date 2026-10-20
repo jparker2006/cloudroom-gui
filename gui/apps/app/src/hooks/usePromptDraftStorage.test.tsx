@@ -4,6 +4,7 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPromptDraftAccessor,
+  moveNewThreadDraft,
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
 } from "./usePromptDraftStorage";
@@ -800,5 +801,66 @@ describe("new-thread recovery copies", () => {
 
     const remaining = recoveryKeys().map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null"));
     expect(remaining.some((record) => record.rev === firstRev)).toBe(false);
+  });
+});
+
+describe("moving the pre-upgrade draft into a project", () => {
+  const LEGACY_KEY = "bb.promptbox.contents-draft-3";
+
+  it("appends the text to the project's draft and leaves untagged attachments behind", () => {
+    window.localStorage.setItem(
+      LEGACY_KEY,
+      JSON.stringify({
+        text: "legacy text",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+      }),
+    );
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    target.setDraft({ text: "alpha text", mentions: [], attachments: [] });
+
+    const result = moveNewThreadDraft(LEGACY_KEY, alphaId());
+
+    expect(result).toEqual({ status: "moved", leftoverAttachments: ["old.png"] });
+    expect(target.getCurrent().text).toBe("alpha text\n\nlegacy text");
+    expect(target.getCurrent().attachments).toEqual([]);
+    expect(JSON.parse(window.localStorage.getItem(LEGACY_KEY) ?? "null")).toMatchObject({
+      text: "",
+      attachments: [{ path: "old.png" }],
+    });
+  });
+
+  it("marks a fully moved draft as moved so a second move adds nothing", () => {
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("legacy text"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+
+    moveNewThreadDraft(LEGACY_KEY, alphaId());
+    const second = moveNewThreadDraft(LEGACY_KEY, alphaId());
+
+    expect(second.status).toBe("nothing-to-move");
+    expect(target.getCurrent().text).toBe("legacy text");
+    expect(JSON.parse(window.localStorage.getItem(LEGACY_KEY) ?? "null")).toMatchObject({
+      moved: true,
+    });
+  });
+
+  it("changes nothing when the project's draft can't be saved", () => {
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("legacy text"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    target.setDraft({ text: "alpha text", mentions: [], attachments: [] });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let result;
+    try {
+      result = moveNewThreadDraft(LEGACY_KEY, alphaId());
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(result).toEqual({ status: "failed" });
+    expect(target.getCurrent().text).toBe("alpha text");
+    expect(window.localStorage.getItem(LEGACY_KEY)).toBe(storedDraft("legacy text"));
   });
 });
