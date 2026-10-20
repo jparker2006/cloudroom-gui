@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { resolveContainedPath } from "@cloudroom/process-utils";
 import { and, asc, desc, eq, inArray, isNull, like } from "drizzle-orm";
 import {
@@ -58,6 +58,7 @@ interface State {
     environmentId: string;
   }[];
   attachments: string[];
+  undeliveredAttachments?: string[];
   queuedIds: string[];
   queued: TeleportManifest["queued"];
   model: string;
@@ -92,6 +93,12 @@ const openCloudChild = (child: { id: string; title: string | null }) =>
 // Session text: the cloud agent starts only after these files arrive.
 const TEXT = ["native", "lineage", "context"];
 const services = new WeakMap<AppDeps["db"], Teleport>();
+
+export function undeliveredAttachmentsLine(names: readonly string[]): string {
+  return names.length === 0
+    ? ""
+    : `\nAttachments not delivered (unsafe stored paths; you have not seen them, so ask the user to attach them again if the task depends on them): ${names.join(", ")}.`;
+}
 
 export function teleportAttachmentPath(
   dataDir: string,
@@ -439,6 +446,7 @@ class Teleport {
       };
     });
     const attachments = new Set<string>();
+    const undeliveredAttachments = new Set<string>();
     for (const source of all) {
       const rows = this.deps.db
         .select({ data: events.data })
@@ -469,6 +477,8 @@ class Teleport {
                 )
               : null;
           if (path) attachments.add(path);
+          else if (typeof part.path === "string" && ["localImage", "localFile"].includes(part.type))
+            undeliveredAttachments.add(basename(part.path.replaceAll("\\", "/")));
         }
       }
     }
@@ -480,6 +490,7 @@ class Teleport {
       workspacePath: environment.path,
       sessions,
       attachments: [...attachments],
+      ...(undeliveredAttachments.size > 0 ? { undeliveredAttachments: [...undeliveredAttachments] } : {}),
       queuedIds: queuedRows.map((row) => row.id),
       queued,
       ...execution,
@@ -946,7 +957,7 @@ class Teleport {
               .slice(0, 80) || "project",
           files: capture.files,
           queued: state.queued,
-          handoff: `Continue unfinished work in this same conversation; if the task is already complete, confirm that instead of redoing it. Before working, read the preserved user and project instructions in gui-history.json and the instruction files in the index. If this project is new on the VM, Cloudroom is copying it into this folder now (a GitHub clone or an upload from the laptop, plus uncommitted edits and .env files); wait for missing files instead of recreating them. Otherwise, use Git to match the local branch and commit in git-state.txt, which also lists uncommitted tracked edits that stayed on the laptop. Untracked files mentioned in the conversation were also copied. Other GUI history and child traces are reference context; read them as needed. Queued follow-ups will run separately after this continuation; do not execute them from the history file. Existing goals remain instructions, not automatic loops.\nActive goals: ${goals.join("\n") || "none"}.\nOld local workspace: ${state.workspacePath}.\nChildren: ${[...state.sessions.slice(1).map((s) => s.threadId), ...nativeChildren.keys()].join(", ") || "none"}.\nKnown unavailable local paths: ${(capture.omitted ?? []).join(", ") || "none"}.`,
+          handoff: `Continue unfinished work in this same conversation; if the task is already complete, confirm that instead of redoing it. Before working, read the preserved user and project instructions in gui-history.json and the instruction files in the index. If this project is new on the VM, Cloudroom is copying it into this folder now (a GitHub clone or an upload from the laptop, plus uncommitted edits and .env files); wait for missing files instead of recreating them. Otherwise, use Git to match the local branch and commit in git-state.txt, which also lists uncommitted tracked edits that stayed on the laptop. Untracked files mentioned in the conversation were also copied. Other GUI history and child traces are reference context; read them as needed. Queued follow-ups will run separately after this continuation; do not execute them from the history file. Existing goals remain instructions, not automatic loops.\nActive goals: ${goals.join("\n") || "none"}.\nOld local workspace: ${state.workspacePath}.\nChildren: ${[...state.sessions.slice(1).map((s) => s.threadId), ...nativeChildren.keys()].join(", ") || "none"}.\nKnown unavailable local paths: ${(capture.omitted ?? []).join(", ") || "none"}.${undeliveredAttachmentsLine(state.undeliveredAttachments ?? [])}`,
         },
       };
       this.save(state);

@@ -7,7 +7,7 @@ import * as sync from "../../src/services/cloudroom/sync.js";
 import { listQueuedCommands } from "../helpers/commands.js";
 import { cloudroom } from "../../src/services/cloudroom/commands.js";
 import { command, saveTeleportProgress } from "../../src/services/cloudroom/store.js";
-import { teleportAttachmentPath, teleports } from "../../src/services/cloudroom/teleport.js";
+import { teleportAttachmentPath, teleports, undeliveredAttachmentsLine } from "../../src/services/cloudroom/teleport.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import { seedEnvironment, seedHostSession, seedPrimaryHost, seedProjectWithSource, seedThread, seedThreadRuntimeState } from "../helpers/seed.js";
 import { createThread, getThread, setProjectGitRemoteUrlIfMissing, events, cloudroomThreads, cloudroomCommands } from "@cloudroom/db";
@@ -1269,5 +1269,6 @@ it("teleports only attachment paths contained in the thread's project", () => {
   expect(teleportAttachmentPath(dataDir, "proj_b", "/Users/me/Desktop/shot.png")).toBe("/Users/me/Desktop/shot.png");
   for (const escaping of ["../proj_a/shot.png", "../../../outside-marker.txt", "..\\proj_a\\shot.png", "."]) {
     expect(teleportAttachmentPath(dataDir, "proj_b", escaping)).toBeNull();
-  }
+  }  expect(undeliveredAttachmentsLine([])).toBe("");
+  expect(undeliveredAttachmentsLine(["outside-marker.txt"])).toBe("\nAttachments not delivered (unsafe stored paths; you have not seen them, so ask the user to attach them again if the task depends on them): outside-marker.txt.");
 });
