@@ -1,3 +1,7 @@
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { eq } from "drizzle-orm";
+import { projects } from "@cloudroom/db";
 import { describe, expect, it } from "vitest";
 import { uploadedPromptAttachmentSchema } from "@cloudroom/server-contract";
 import { readJson } from "../helpers/json.js";
@@ -224,6 +228,63 @@ describe("public project attachments", () => {
         code: "invalid_request",
         message: "Attachment not found",
       });
+    });
+  });
+
+  it("copies by upload token only while the token's source project is available", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-project-attachment-copy-source",
+      });
+      const { project: source } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const { project: target } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const uploadToken = async () =>
+        uploadedPromptAttachmentSchema.parse(
+          await readJson(
+            await upload(
+              harness.app,
+              source.id,
+              new File(["shot"], "shot.png", { type: "image/png" }),
+            ),
+          ),
+        );
+      const copy = (tokens: string[]) =>
+        harness.app.request(
+          `/api/v1/projects/${target.id}/attachments/copy`,
+          {
+            body: JSON.stringify({ tokens }),
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+          },
+        );
+      const attachmentsDir = (projectId: string) =>
+        join(harness.config.dataDir, "attachments", projectId);
+
+      const live = await uploadToken();
+      expect((await copy([live.copyToken!])).status).toBe(200);
+      expect(
+        await readFile(join(attachmentsDir(target.id), live.path), "utf8"),
+      ).toBe("shot");
+
+      const stranded = await uploadToken();
+      harness.db
+        .update(projects)
+        .set({ deletedAt: Date.now() })
+        .where(eq(projects.id, source.id))
+        .run();
+      const refused = await copy([stranded.copyToken!]);
+      expect(refused.status).toBe(404);
+      await expect(readJson(refused)).resolves.toMatchObject({
+        code: "project_unavailable",
+      });
+      expect(await readdir(attachmentsDir(target.id))).toEqual([live.path]);
+      expect(
+        await readFile(join(attachmentsDir(source.id), stranded.path), "utf8"),
+      ).toBe("shot");
     });
   });
 });
