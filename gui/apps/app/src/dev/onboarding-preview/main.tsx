@@ -55,6 +55,7 @@ function Preview() {
   const [advanced, setAdvanced] = useState(false);
   const [storageFailed, setStorageFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const detailsHeading = useRef<HTMLHeadingElement>(null);
   const step = activeStep(state);
   const verified = isVerified(state);
   const hasSession = step === 3;
@@ -64,6 +65,7 @@ function Preview() {
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(state));
+      setStorageFailed(false);
     } catch {
       setStorageFailed(true);
     }
@@ -74,8 +76,9 @@ function Preview() {
     }
   }, [state]);
   useEffect(() => {
-    heading.current?.focus();
-  }, [state.phase, left, composer]);
+    if (details) detailsHeading.current?.focus();
+    else heading.current?.focus();
+  }, [state.phase, left, composer, details]);
 
   function selectScenario(value: Scenario) {
     setScenario(value);
@@ -155,7 +158,7 @@ function Preview() {
           </span>
           {!left && !composer && (
             <Button variant="ghost" onClick={() => setLeft(true)}>
-              Save & leave <Icon name="X" />
+              {storageFailed ? "Leave setup" : "Save & leave"} <Icon name="X" />
             </Button>
           )}
         </header>
@@ -165,13 +168,20 @@ function Preview() {
             <span className="large-symbol">
               <Icon name="Check" />
             </span>
-            <p className="eyebrow">PROGRESS SAVED IN THIS BROWSER</p>
+            <p className="eyebrow">
+              {storageFailed
+                ? "PROGRESS KEPT IN THIS TAB ONLY"
+                : "PROGRESS SAVED IN THIS BROWSER"}
+            </p>
             <h1 ref={heading} tabIndex={-1}>
-              Pick up where you left off.
+              {storageFailed
+                ? "Keep this tab to keep your place."
+                : "Pick up where you left off."}
             </h1>
             <p>
-              Your choices and current operation are saved. Reopening checks the
-              existing operation before starting another.
+              {storageFailed
+                ? "Browser storage is unavailable. Closing or reloading can lose recent choices or restore older progress. Keep this tab open to continue from your current place."
+                : "Your choices and current operation are saved. Reopening checks the existing operation before starting another."}
             </p>
             <Button
               onClick={() => {
@@ -182,7 +192,8 @@ function Preview() {
                 setLeft(false);
               }}
             >
-              Resume setup <Icon name="ArrowRight" />
+              {storageFailed ? "Return to setup" : "Resume setup"}{" "}
+              <Icon name="ArrowRight" />
             </Button>
             <small>
               Fixture persistence only. Production recovery still needs
@@ -458,6 +469,7 @@ function Preview() {
         }}
         srLabel={advanced ? "Advanced setup preview" : "Setup session details"}
         contentClassName="setup-details-drawer"
+        onAfterCloseAutoFocus={() => heading.current?.focus()}
       >
         <div className="details-header">
           <div>
@@ -466,7 +478,9 @@ function Preview() {
                 ? "CLOUD SETUP SESSION · FIXTURE"
                 : "LOCAL BOOTSTRAP · FIXTURE"}
             </p>
-            <h2>{advanced ? "Agent-driven setup" : "Behind the setup"}</h2>
+            <h2 ref={detailsHeading} tabIndex={-1}>
+              {advanced ? "Agent-driven setup" : "Behind the setup"}
+            </h2>
           </div>
           <Button
             variant="ghost"
