@@ -48,6 +48,10 @@ const unsavedPromptDraftKeys = new Set<string>();
 export type NewThreadDraftNotice = "sent-elsewhere" | "moved-elsewhere" | "unreadable";
 const newThreadDraftNotices = new Map<string, NewThreadDraftNotice>();
 
+function readPromptDraftStatus(storageKey: string): string {
+  return `${unsavedPromptDraftKeys.has(storageKey) ? "unsaved" : "saved"}:${newThreadDraftNotices.get(storageKey) ?? ""}`;
+}
+
 function holdInMemory(
   storageKey: string,
   cachedEntry: PromptDraftCacheEntry,
@@ -255,6 +259,56 @@ function writeNewThreadSentMarker(storageKey: string): void {
   emitPromptDraftChange(storageKey);
 }
 
+function keepNewThreadDraftOnIncomingChange(storageKey: string): boolean {
+  const cachedEntry = promptDraftCache.get(storageKey);
+  if (!cachedEntry || isPromptDraftEmpty(cachedEntry.draft)) return false;
+  const rawValue = readStoredPromptDraftValue(storageKey);
+  const record = readNewThreadRecord(rawValue);
+  if (record.kind === "sent") {
+    newThreadDraftNotices.set(storageKey, "sent-elsewhere");
+    newThreadDraftRevs.set(storageKey, record.rev);
+    cachedEntry.rawValue = rawValue;
+    return true;
+  }
+  if ((record.kind === "moved" || record.kind === "discarded") && rawValue !== null) {
+    holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
+    return true;
+  }
+  const myRev = newThreadDraftRevs.get(storageKey);
+  if (
+    record.kind === "draft" &&
+    myRev &&
+    readStoredBase(rawValue) !== myRev &&
+    !arePromptDraftStatesEqual(record.draft, cachedEntry.draft)
+  ) {
+    const conflictKey = newThreadConflictKey(storageKey, myRev);
+    const ownRecord = serializePromptDraftStorage(cachedEntry.draft);
+    if (ownRecord !== null && readStoredPromptDraftValue(conflictKey) === null) {
+      try {
+        window.localStorage.setItem(
+          conflictKey,
+          JSON.stringify({ ...JSON.parse(ownRecord), rev: myRev }),
+        );
+      } catch (error) {
+        if (rawValue !== null) holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
+        console.warn(`[prompt-draft] could not keep this window's draft for ${storageKey}`, error);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function readStoredBase(rawValue: string | null): string | undefined {
+  if (rawValue === null) return undefined;
+  try {
+    const base = (JSON.parse(rawValue) as { base?: unknown }).base;
+    return typeof base === "string" ? base : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function readStoredPromptDraftValue(storageKey: string): string | null {
   try {
     return window.localStorage.getItem(storageKey);
@@ -292,6 +346,13 @@ function ensurePromptDraftStorageObserver(): void {
       pendingPromptDraftStorageKeys.has(event.key) ||
       unsavedPromptDraftKeys.has(event.key)
     ) {
+      return;
+    }
+    if (
+      isNewThreadProjectDraftKey(event.key) &&
+      keepNewThreadDraftOnIncomingChange(event.key)
+    ) {
+      emitPromptDraftChange(event.key);
       return;
     }
     promptDraftCache.delete(event.key);
@@ -445,6 +506,15 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     () => EMPTY_PROMPT_DRAFT,
   );
 
+  const status = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribePromptDraft(storageKey, listener),
+      [storageKey],
+    ),
+    useCallback(() => readPromptDraftStatus(storageKey), [storageKey]),
+    () => "saved",
+  );
+
   useEffect(
     () => () => {
       if (pendingPromptDraftStorageKeys.has(storageKey)) {
@@ -580,8 +650,8 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       storageKey,
       getCurrent,
       subscribe,
-      isUnsaved: unsavedPromptDraftKeys.has(storageKey),
-      notice: newThreadDraftNotices.get(storageKey) ?? null,
+      isUnsaved: status.startsWith("unsaved"),
+      notice: (newThreadDraftNotices.get(storageKey) ?? null) as NewThreadDraftNotice | null,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
@@ -612,6 +682,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setAttachments,
       setDraftAndPersist,
       setTextAndMentions,
+      status,
       storageKey,
       subscribe,
     ],

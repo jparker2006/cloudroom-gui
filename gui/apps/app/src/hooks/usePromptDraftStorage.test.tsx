@@ -384,10 +384,21 @@ describe("usePromptDraftStorage addQuote", () => {
   });
 });
 
+let alphaCounter = 0;
+beforeEach(() => {
+  alphaCounter += 1;
+});
+function alphaId(): string {
+  return `proj_alpha${alphaCounter}`;
+}
+function alphaKey(): string {
+  return `bb.promptbox.contents-new-thread-${alphaId()}-3`;
+}
+
 describe("project-scoped new-thread drafts", () => {
   it("keeps each project's draft separate and leaves the legacy draft untouched", () => {
     window.localStorage.setItem(NEW_THREAD_DRAFT_KEY, storedDraft("legacy text"));
-    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
     const personal = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_personal" });
 
     alpha.setDraft({ text: "alpha text", mentions: [], attachments: [] });
@@ -395,9 +406,9 @@ describe("project-scoped new-thread drafts", () => {
 
     expect(alpha.getCurrent().text).toBe("alpha text");
     expect(personal.getCurrent().text).toBe("no project text");
-    expect(getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_beta" }).getCurrent().text).toBe("");
+    expect(getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}b` }).getCurrent().text).toBe("");
     expect(window.localStorage.getItem(NEW_THREAD_DRAFT_KEY)).toBe(storedDraft("legacy text"));
-    expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toContain("alpha text");
+    expect(window.localStorage.getItem(alphaKey())).toContain("alpha text");
   });
 });
 
@@ -405,25 +416,24 @@ describe("switching projects in the new-thread composer", () => {
   it("saves the origin draft at the switch and shows the destination draft", () => {
     vi.useFakeTimers();
     window.localStorage.setItem(
-      "bb.promptbox.contents-new-thread-proj_beta-3",
+      `bb.promptbox.contents-new-thread-${alphaId()}b-3`,
       storedDraft("beta text"),
     );
     const { result, rerender } = renderHook(
       ({ projectId }) => usePromptDraftStorage({ kind: "new-thread", projectId }),
-      { initialProps: { projectId: "proj_alpha" } },
+      { initialProps: { projectId: alphaId() } },
     );
 
     act(() => result.current.setTextAndMentions("alpha typed", []));
-    rerender({ projectId: "proj_beta" });
+    rerender({ projectId: `${alphaId()}b` });
 
     expect(result.current.text).toBe("beta text");
-    expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toContain(
+    expect(window.localStorage.getItem(alphaKey())).toContain(
       '"text":"alpha typed"',
     );
   });
 });
 
-const ALPHA_KEY = "bb.promptbox.contents-new-thread-proj_alpha-3";
 
 function storedRecord(key: string): Record<string, unknown> {
   return JSON.parse(window.localStorage.getItem(key) ?? "null");
@@ -431,12 +441,12 @@ function storedRecord(key: string): Record<string, unknown> {
 
 describe("new-thread draft revisions", () => {
   it("stamps each saved draft with a revision and the revision it replaced", () => {
-    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
 
     alpha.setDraft({ text: "first", mentions: [], attachments: [] });
-    const first = storedRecord(ALPHA_KEY);
+    const first = storedRecord(alphaKey());
     alpha.setDraft({ text: "second", mentions: [], attachments: [] });
-    const second = storedRecord(ALPHA_KEY);
+    const second = storedRecord(alphaKey());
 
     expect(first.rev).toMatch(/^[0-9a-f]{16}$/);
     expect(second.rev).toMatch(/^[0-9a-f]{16}$/);
@@ -448,38 +458,38 @@ describe("new-thread draft revisions", () => {
 
 describe("new-thread drafts edited in two windows", () => {
   it("keeps the other window's unseen draft as a conflict copy before saving", () => {
-    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
     alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
     const otherWindowRecord = JSON.stringify({
       text: "theirs",
       attachments: [],
       rev: "aaaaaaaaaaaaaaaa",
-      base: storedRecord(ALPHA_KEY).rev,
+      base: storedRecord(alphaKey()).rev,
     });
-    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+    window.localStorage.setItem(alphaKey(), otherWindowRecord);
 
     alpha.setDraft({ text: "mine, edited", mentions: [], attachments: [] });
 
     expect(
       window.localStorage.getItem(
-        "bb.promptbox.conflict-new-thread-proj_alpha-aaaaaaaaaaaaaaaa-3",
+        `bb.promptbox.conflict-new-thread-${alphaId()}-aaaaaaaaaaaaaaaa-3`,
       ),
     ).toBe(otherWindowRecord);
-    expect(storedRecord(ALPHA_KEY).text).toBe("mine, edited");
-    expect(storedRecord(ALPHA_KEY).base).toBe("aaaaaaaaaaaaaaaa");
+    expect(storedRecord(alphaKey()).text).toBe("mine, edited");
+    expect(storedRecord(alphaKey()).base).toBe("aaaaaaaaaaaaaaaa");
   });
 
   it("adopts the other window's draft without a copy when the content is the same", () => {
-    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
     alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
     window.localStorage.setItem(
-      ALPHA_KEY,
+      alphaKey(),
       JSON.stringify({ text: "same", attachments: [], rev: "bbbbbbbbbbbbbbbb" }),
     );
 
     alpha.setDraft({ text: "same", mentions: [], attachments: [] });
 
-    expect(storedRecord(ALPHA_KEY).rev).toBe("bbbbbbbbbbbbbbbb");
+    expect(storedRecord(alphaKey()).rev).toBe("bbbbbbbbbbbbbbbb");
     expect(
       Object.keys(window.localStorage).filter((key) => key.includes("conflict")),
     ).toEqual([]);
@@ -489,7 +499,7 @@ describe("new-thread drafts edited in two windows", () => {
 describe("new-thread draft save failures", () => {
   it("leaves the other window's draft in place and reports unsaved when its conflict copy fails", () => {
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
     const otherWindowRecord = JSON.stringify({
@@ -497,7 +507,7 @@ describe("new-thread draft save failures", () => {
       attachments: [],
       rev: "cccccccccccccccc",
     });
-    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+    window.localStorage.setItem(alphaKey(), otherWindowRecord);
     const realSetItem = Storage.prototype.setItem;
     const setItem = vi
       .spyOn(Storage.prototype, "setItem")
@@ -517,14 +527,14 @@ describe("new-thread draft save failures", () => {
       warn.mockRestore();
     }
 
-    expect(window.localStorage.getItem(ALPHA_KEY)).toBe(otherWindowRecord);
+    expect(window.localStorage.getItem(alphaKey())).toBe(otherWindowRecord);
     expect(result.current.text).toBe("mine, edited");
     expect(result.current.isUnsaved).toBe(true);
   });
 
   it("never replaces an unsaved draft when another window's change arrives", () => {
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     const setItem = vi
       .spyOn(Storage.prototype, "setItem")
@@ -539,12 +549,12 @@ describe("new-thread draft save failures", () => {
       warn.mockRestore();
     }
     window.localStorage.setItem(
-      ALPHA_KEY,
+      alphaKey(),
       JSON.stringify({ text: "from another window", attachments: [], rev: "dddddddddddddddd" }),
     );
 
     act(() => {
-      window.dispatchEvent(new StorageEvent("storage", { key: ALPHA_KEY }));
+      window.dispatchEvent(new StorageEvent("storage", { key: alphaKey() }));
     });
 
     expect(result.current.text).toBe("unsaved");
@@ -554,7 +564,7 @@ describe("new-thread draft save failures", () => {
 describe("clearing a new-thread draft after a send", () => {
   it("replaces a sent draft with a sent marker instead of removing it", () => {
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
     const sent = result.current.getCurrent();
@@ -566,13 +576,13 @@ describe("clearing a new-thread draft after a send", () => {
 
     expect(cleared).toBe(true);
     expect(result.current.text).toBe("");
-    expect(storedRecord(ALPHA_KEY)).toMatchObject({ sent: true });
-    expect(storedRecord(ALPHA_KEY).rev).toMatch(/^[0-9a-f]{16}$/);
+    expect(storedRecord(alphaKey())).toMatchObject({ sent: true });
+    expect(storedRecord(alphaKey()).rev).toMatch(/^[0-9a-f]{16}$/);
   });
 
   it("keeps another window's newer draft when the send succeeds", () => {
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
     const sent = result.current.getCurrent();
@@ -581,7 +591,7 @@ describe("clearing a new-thread draft after a send", () => {
       attachments: [],
       rev: "eeeeeeeeeeeeeeee",
     });
-    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+    window.localStorage.setItem(alphaKey(), otherWindowRecord);
 
     let cleared = true;
     act(() => {
@@ -589,13 +599,13 @@ describe("clearing a new-thread draft after a send", () => {
     });
 
     expect(cleared).toBe(false);
-    expect(window.localStorage.getItem(ALPHA_KEY)).toBe(otherWindowRecord);
+    expect(window.localStorage.getItem(alphaKey())).toBe(otherWindowRecord);
   });
 
   it("keeps text typed during the send that hasn't been saved yet", () => {
     vi.useFakeTimers();
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
     const sent = result.current.getCurrent();
@@ -609,13 +619,13 @@ describe("clearing a new-thread draft after a send", () => {
 
     expect(cleared).toBe(false);
     expect(result.current.text).toBe("send me, then more");
-    expect(storedRecord(ALPHA_KEY).text).toBe("send me, then more");
+    expect(storedRecord(alphaKey()).text).toBe("send me, then more");
   });
 
   it("keeps another window's draft when the sent text was still waiting to be saved", () => {
     vi.useFakeTimers();
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     act(() => result.current.setDraft({ text: "older", mentions: [], attachments: [] }));
     act(() => result.current.setTextAndMentions("send me", []));
@@ -625,7 +635,7 @@ describe("clearing a new-thread draft after a send", () => {
       attachments: [],
       rev: "ffffffffffffffff",
     });
-    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+    window.localStorage.setItem(alphaKey(), otherWindowRecord);
 
     act(() => {
       result.current.clearIfCurrentMatches(sent);
@@ -633,11 +643,11 @@ describe("clearing a new-thread draft after a send", () => {
     act(() => vi.advanceTimersByTime(250));
 
     expect(
-      [window.localStorage.getItem(ALPHA_KEY), ...Object.keys(window.localStorage)
+      [window.localStorage.getItem(alphaKey()), ...Object.keys(window.localStorage)
         .filter((key) => key.startsWith("bb.promptbox.conflict-"))
         .map((key) => window.localStorage.getItem(key))],
     ).toContain(otherWindowRecord);
-    expect(storedRecord(ALPHA_KEY).sent).toBeUndefined();
+    expect(storedRecord(alphaKey()).sent).toBeUndefined();
   });
 });
 
@@ -645,7 +655,7 @@ describe("clearing a new-thread draft after a send", () => {
 describe("the new-thread save check", () => {
   function renderAlpha() {
     const { result } = renderHook(() =>
-      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
     );
     act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
     return result;
@@ -662,11 +672,11 @@ describe("the new-thread save check", () => {
     ],
   ])("never writes over a %s record and keeps this window's text", (_, stored, notice) => {
     const result = renderAlpha();
-    window.localStorage.setItem(ALPHA_KEY, stored);
+    window.localStorage.setItem(alphaKey(), stored);
 
     act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
 
-    expect(window.localStorage.getItem(ALPHA_KEY)).toBe(stored);
+    expect(window.localStorage.getItem(alphaKey())).toBe(stored);
     expect(result.current.text).toBe("mine, edited");
     expect(result.current.notice).toBe(notice);
   });
@@ -674,13 +684,70 @@ describe("the new-thread save check", () => {
   it("writes over a sent marker and says the draft was sent from another window", () => {
     const result = renderAlpha();
     window.localStorage.setItem(
-      ALPHA_KEY,
+      alphaKey(),
       JSON.stringify({ rev: "4444444444444444", sent: true }),
     );
 
     act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
 
-    expect(storedRecord(ALPHA_KEY).text).toBe("mine, edited");
+    expect(storedRecord(alphaKey()).text).toBe("mine, edited");
     expect(result.current.notice).toBe("sent-elsewhere");
+  });
+});
+
+describe("another window's new-thread change arriving", () => {
+  function renderSavedAlpha() {
+    const hook = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => hook.result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    return { result: hook.result, myRev: String(storedRecord(alphaKey()).rev) };
+  }
+
+  function arrive(record: Record<string, unknown>) {
+    window.localStorage.setItem(alphaKey(), JSON.stringify(record));
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: alphaKey() }));
+    });
+  }
+
+  function conflictCopies(): string[] {
+    return Object.keys(window.localStorage).filter((key) =>
+      key.startsWith("bb.promptbox.conflict-"),
+    );
+  }
+
+  it("adopts a change written over this window's draft", () => {
+    const { result, myRev } = renderSavedAlpha();
+    arrive({ text: "theirs", attachments: [], rev: "5555555555555555", base: myRev });
+
+    expect(result.current.text).toBe("theirs");
+    expect(conflictCopies()).toEqual([]);
+  });
+
+  it("keeps this window's draft as a conflict copy when the change never saw it", () => {
+    const { result, myRev } = renderSavedAlpha();
+    arrive({ text: "theirs", attachments: [], rev: "6666666666666666", base: "0000000000000000" });
+
+    expect(result.current.text).toBe("theirs");
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(
+          `bb.promptbox.conflict-new-thread-${alphaId()}-${myRev}-3`,
+        ) ?? "null",
+      ),
+    ).toMatchObject({ text: "mine" });
+  });
+
+  it.each([
+    [{ rev: "7777777777777777", sent: true }, "sent-elsewhere"],
+    [{ rev: "8888888888888888", moved: true }, "moved-elsewhere"],
+  ])("keeps this window's text and says why when a marker arrives", (record, notice) => {
+    const { result } = renderSavedAlpha();
+    arrive(record);
+
+    expect(result.current.text).toBe("mine");
+    expect(result.current.notice).toBe(notice);
+    expect(conflictCopies()).toEqual([]);
   });
 });
