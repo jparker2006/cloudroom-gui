@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import type { PendingInteraction, PluginPendingInteraction } from "@cloudroom/domain";
+import type {
+  PendingInteraction,
+  PluginPendingInteraction,
+} from "@cloudroom/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
 import {
   resetPluginSlotStoreForTest,
@@ -21,6 +24,7 @@ import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/pl
 const mocks = vi.hoisted(() => ({
   resolveMutateAsync: vi.fn(async () => ({})),
   stopMutateAsync: vi.fn(async () => undefined),
+  error: null as Error | null,
 }));
 
 vi.mock(
@@ -41,7 +45,7 @@ vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
   useResolveThreadPendingInteraction: () => ({
     mutateAsync: mocks.resolveMutateAsync,
     isPending: false,
-    error: null,
+    error: mocks.error,
   }),
 }));
 
@@ -176,6 +180,7 @@ function isHidden(element: HTMLElement): boolean {
 
 afterEach(() => {
   cleanup();
+  mocks.error = null;
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
@@ -288,6 +293,16 @@ describe("ThreadPendingInteractionBanner request family", () => {
     );
   });
 
+  it("keeps a plan review error visible while the card is collapsed", () => {
+    mocks.error = new Error("plan service unavailable");
+    renderBanner(planReview);
+    expect(isHidden(screen.getByTestId("plan-review-request"))).toBe(true);
+    const error = screen.getByTestId("pending-interaction-error");
+    expect(error.textContent).toBe("plan service unavailable");
+    expect(error.className).not.toContain("sr-only");
+    expect(isHidden(error)).toBe(false);
+  });
+
   it("renders a plugin request through the plugin's pendingInteraction slot, keyed by <pluginId>/<kind>", () => {
     function SecretForm({ interaction }: PluginPendingInteractionProps) {
       return <div data-testid="secret-form">{interaction.title}</div>;
@@ -366,17 +381,24 @@ describe("ThreadPendingInteractionBanner presentation detail images", () => {
 });
 
 describe("ThreadPendingInteractionBanner collapsed strip", () => {
-  it("arrives collapsed with only the label and exposes decisions after expansion", () => {
+  it("arrives with a visible summary and decisions while the exact details stay collapsed", () => {
     renderBanner(commandApproval);
     const banner = screen.getByTestId("approval-banner");
     expect(banner.hasAttribute("data-expanded")).toBe(false);
-    expect(banner.textContent).toContain("Not in allowlist: bash");
-    expect(banner.textContent).toContain(
+    const summary = screen.getByTestId("approval-summary");
+    expect(isHidden(summary)).toBe(false);
+    expect(summary.textContent).toContain("Not in allowlist: bash");
+    expect(screen.getByTestId("approval-target").textContent).toBe(
       "python3 -m unittest discover -s tests 2>&1 | tail -20",
     );
+    expect(summary.textContent).toContain("in /home/user/immortal-agents");
+    expect(screen.getByTestId("approval-waiting-state").textContent).toBe(
+      "Waiting for you",
+    );
     expect(isHidden(screen.getByTestId("command-preview"))).toBe(true);
-    expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
-    expandBanner();
+    expect(isHidden(screen.getByRole("button", { name: "Allow once" }))).toBe(
+      false,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(mocks.resolveMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -398,7 +420,16 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(pre?.textContent).toContain("echo '=== watcher untouched ==='");
     expect(pre?.textContent).not.toContain("git diff --stat -- watcher.py");
     expect(preview.textContent).not.toContain("Action:");
-    expect(preview.textContent).toContain("/home/user/immortal-agents");
+    const details = screen.getByTestId("approval-details");
+    expect(details.textContent).toContain("Working directory");
+    expect(details.textContent).toContain("/home/user/immortal-agents");
+    expect(details.textContent).not.toContain("Actions");
+    expect(screen.getByTestId("approval-raw-command").textContent).toBe(
+      commandApproval.payload.kind === "approval" &&
+        commandApproval.payload.subject.kind === "command"
+        ? commandApproval.payload.subject.command
+        : "",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Show 2 more lines" }));
     expect(preview.querySelector("pre")?.textContent).toContain(
       "git diff --stat -- watcher.py",
@@ -475,7 +506,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     ).toBe(false);
   });
 
-  it("keeps the source thread reachable after expanding", () => {
+  it("keeps the source thread reachable while collapsed and after expanding", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
@@ -491,8 +522,10 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       </QueryClientProvider>,
     );
     expect(
-      screen.queryByRole("link", { name: "From Install tools" }),
-    ).toBeNull();
+      screen
+        .getByRole("link", { name: "From Install tools" })
+        .getAttribute("href"),
+    ).toBe("/threads/thr_child");
     expandBanner();
     expect(
       screen
@@ -502,6 +535,56 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(
       screen.getByRole("link", { name: "From Install tools" }),
     ).toBeTruthy();
+  });
+
+  it("moves a Summary card's source link out of the crowded header and above the summary", () => {
+    const source = { href: "/threads/thr_child", title: "Install tools" };
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadPendingInteractionBanner
+            interaction={commandApproval}
+            sourceThread={source}
+            threadId="thr_child"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const headerRow = () =>
+      screen.getByRole("button", { name: /details/ }).parentElement;
+    const link = () => screen.getByRole("link", { name: "From Install tools" });
+    const summary = () => screen.getByTestId("approval-summary");
+
+    for (const expand of [false, true]) {
+      if (expand) expandBanner();
+      expect(
+        screen.getAllByRole("link", { name: "From Install tools" }),
+      ).toHaveLength(1);
+      expect(headerRow()?.contains(link())).toBe(false);
+      expect(
+        link().compareDocumentPosition(summary()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
+    view.unmount();
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadPendingInteractionBanner
+            interaction={planReview}
+            sourceThread={source}
+            threadId="thr_child"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.queryByRole("link", { name: "From Install tools" }),
+    ).toBeNull();
+    expandBanner();
+    expect(headerRow()?.contains(link())).toBe(true);
   });
 
   it("renders a user question open by default and keeps draft answers across collapse", () => {

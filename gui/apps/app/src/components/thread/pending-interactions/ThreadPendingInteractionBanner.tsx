@@ -4,13 +4,9 @@ import {
 } from "./PendingInteractionShell";
 import { useMemo, useState, type ReactNode } from "react";
 import {
-  assertNever,
   buildPendingInteractionApprovalResolution,
-  describePendingInteractionToolUse,
-  formatPendingInteractionSubjectDetailLines,
   type PendingInteractionToolUseAsk,
 } from "@cloudroom/core-ui";
-import { extractShellCommandFromString } from "@cloudroom/thread-view";
 import {
   isPluginPendingInteraction,
   type ApprovalPendingInteractionPayload,
@@ -39,11 +35,24 @@ import {
 import { PluginCompactIconMask } from "@/components/plugin/PluginIcon";
 import { usePluginIconUrl } from "@/lib/plugin-logos";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
+import {
+  buildApprovalCardView,
+  orderApprovalDecisions,
+  type ApprovalCardView,
+  type ApprovalDecisionScope,
+  type ApprovalPermissionList,
+} from "./approval-card-view";
+
+export type ApprovalCardLayout = "summary" | "decisions";
 
 interface ThreadPendingInteractionBannerProps {
   interaction: PendingInteraction;
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
+}
+
+interface PendingInteractionBannerPreviewProps extends ThreadPendingInteractionBannerProps {
+  approvalLayout: ApprovalCardLayout;
 }
 
 type ApprovalBannerSubject = Extract<
@@ -52,6 +61,7 @@ type ApprovalBannerSubject = Extract<
 >["subject"];
 
 interface ApprovalPendingInteractionBannerProps {
+  layout: ApprovalCardLayout;
   interaction: PendingInteraction;
   payload: ApprovalPendingInteractionPayload;
   subject: ApprovalBannerSubject;
@@ -66,22 +76,8 @@ interface UserQuestionPendingInteractionBannerProps {
   threadId: string;
 }
 
-interface ApprovalSubject {
-  title: string;
-  body: ReactNode;
-}
-
 const COMMAND_PREVIEW_LINE_COUNT = 4;
-const APPROVAL_DECISION_ORDER: Record<
-  PendingInteractionApprovalDecision,
-  number
-> = { deny: 0, allow_for_session: 1, allow_once: 2 };
-
-interface BuildApprovalSubjectInput {
-  interaction: PendingInteraction;
-  payload: ApprovalPendingInteractionPayload;
-  subject: ApprovalBannerSubject;
-}
+const SUMMARY_PATH_LIMIT = 3;
 
 interface UseApprovalDecisionSubmissionArgs {
   fallbackMessage: string;
@@ -92,6 +88,8 @@ interface UseApprovalDecisionSubmissionArgs {
 interface ApprovalDecisionSubmission {
   errorMessage: string | null;
   loadingDecision: PendingInteractionApprovalDecision | null;
+  sendingDecision: PendingInteractionApprovalDecision | null;
+  isSending: boolean;
   submitDecision: (decision: PendingInteractionApprovalDecision) => void;
   submitDisabled: boolean;
 }
@@ -99,18 +97,32 @@ interface ApprovalDecisionSubmission {
 export function ThreadPendingInteractionBanner(
   props: ThreadPendingInteractionBannerProps,
 ) {
+  return (
+    <PendingInteractionBanner
+      key={props.interaction.id}
+      {...props}
+      approvalLayout="summary"
+    />
+  );
+}
+
+export function PendingInteractionBannerPreview(
+  props: PendingInteractionBannerPreviewProps,
+) {
   return <PendingInteractionBanner key={props.interaction.id} {...props} />;
 }
 
 function PendingInteractionBanner({
+  approvalLayout,
   interaction,
   sourceThread,
   threadId,
-}: ThreadPendingInteractionBannerProps) {
+}: PendingInteractionBannerPreviewProps) {
   const request = classifyInteractionRequest(interaction);
   if (request.family === "approval") {
     return (
       <ApprovalPendingInteractionBanner
+        layout={approvalLayout}
         interaction={interaction}
         payload={request.payload}
         subject={request.subject}
@@ -194,11 +206,19 @@ function useApprovalDecisionSubmission({
       .mutateAsync({ threadId, interactionId: interaction.id, resolution })
       .catch(() => {});
   };
+  const loadingDecision = isResolving
+    ? approvalResolutionDecision(interaction.resolution)
+    : null;
+  const requestedDecision = resolvePendingInteraction.isPending
+    ? approvalResolutionDecision(
+        resolvePendingInteraction.variables?.resolution ?? null,
+      )
+    : null;
   return {
     errorMessage,
-    loadingDecision: isResolving
-      ? approvalResolutionDecision(interaction.resolution)
-      : null,
+    loadingDecision,
+    sendingDecision: loadingDecision ?? requestedDecision,
+    isSending: resolvePendingInteraction.isPending || isResolving,
     submitDecision,
     submitDisabled: resolvePendingInteraction.isPending || isResolving,
   };
@@ -260,54 +280,445 @@ function PlanReviewRequestBanner({
   );
 }
 
-function unwrapBacktickedCommand(command: string): string {
-  const trimmed = command.trim();
-  return trimmed.length > 2 &&
-    trimmed.startsWith("`") &&
-    trimmed.endsWith("`") &&
-    !trimmed.slice(1, -1).includes("`")
-    ? trimmed.slice(1, -1)
-    : command;
-}
-
 function ApprovalPendingInteractionBanner({
+  layout,
   interaction,
   payload,
   subject,
   sourceThread,
   threadId,
 }: ApprovalPendingInteractionBannerProps) {
-  const { errorMessage, loadingDecision, submitDecision, submitDisabled } =
-    useApprovalDecisionSubmission({
-      fallbackMessage: "Failed to resolve pending interaction",
-      interaction,
-      threadId,
-    });
+  const submission = useApprovalDecisionSubmission({
+    fallbackMessage: "Failed to resolve pending interaction",
+    interaction,
+    threadId,
+  });
   const view = useMemo(
-    () => buildApprovalSubject({ interaction, payload, subject }),
+    () => buildApprovalCardView(interaction, payload, subject),
     [interaction, payload, subject],
   );
+  const decide = {
+    disabled: submission.submitDisabled,
+    loadingDecision: submission.loadingDecision,
+    onDecide: submission.submitDecision,
+    subjectKind: subject.kind,
+  };
+  const durationNote = [
+    payload.availableDecisions.includes("allow_once")
+      ? "Allow once applies to this request."
+      : null,
+    payload.availableDecisions.includes("allow_for_session")
+      ? "Allow for session applies for the rest of the session."
+      : null,
+  ]
+    .filter((sentence) => sentence !== null)
+    .join(" ");
 
   return (
     <PendingInteractionShell
       label="Approval needed"
-      title={view.title}
       initiallyExpanded={false}
-      errorMessage={errorMessage}
+      errorMessage={submission.errorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"
-      footer={
-        <ApprovalDecisionButtons
-          decisions={payload.availableDecisions}
-          disabled={submitDisabled}
-          loadingDecision={loadingDecision}
-          onDecide={submitDecision}
+      status={
+        <ApprovalWaitingState
+          hasError={submission.errorMessage !== null}
+          isSending={submission.isSending}
+          sendingDecision={submission.sendingDecision}
           subjectKind={subject.kind}
         />
       }
+      summary={
+        <div data-approval-layout={layout} data-testid="approval-summary">
+          <ApprovalHeadline view={view} />
+          {layout === "summary" ? (
+            <>
+              <ApprovalScopeSummary view={view} />
+              {durationNote ? (
+                <p className="mt-2 text-xs text-subtle-foreground">
+                  {durationNote}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <ApprovalDecisionButtons
+                  decisions={payload.availableDecisions}
+                  {...decide}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {view.requested ? (
+                <div className="mt-2">
+                  <PermissionListSection
+                    heading="Requested access"
+                    list={view.requested}
+                    limit={SUMMARY_PATH_LIMIT}
+                  />
+                </div>
+              ) : null}
+              <ApprovalDecisionRows view={view} {...decide} />
+            </>
+          )}
+        </div>
+      }
     >
-      {() => view.body}
+      {() => <ApprovalDetails view={view} />}
     </PendingInteractionShell>
+  );
+}
+
+function ApprovalWaitingState({
+  hasError,
+  isSending,
+  sendingDecision,
+  subjectKind,
+}: {
+  hasError: boolean;
+  isSending: boolean;
+  sendingDecision: PendingInteractionApprovalDecision | null;
+  subjectKind: PendingInteractionApprovalSubject["kind"];
+}) {
+  const text = isSending
+    ? "Sending…"
+    : hasError
+      ? "Not sent"
+      : "Waiting for you";
+  return (
+    <span
+      role="status"
+      data-testid="approval-waiting-state"
+      title={
+        sendingDecision
+          ? `Sending ${labelForApprovalDecision(sendingDecision, subjectKind)}`
+          : undefined
+      }
+      className={cn(
+        "flex min-w-0 items-center gap-1 text-xs",
+        hasError && !isSending
+          ? "text-destructive-text"
+          : "text-subtle-foreground",
+      )}
+    >
+      {isSending ? (
+        <Icon name="Spinner" className="size-3 animate-spin" />
+      ) : null}
+      {text}
+    </span>
+  );
+}
+
+function ApprovalHeadline({ view }: { view: ApprovalCardView }) {
+  return (
+    <div className="min-w-0">
+      <h3
+        className="whitespace-pre-wrap text-sm font-medium text-foreground [overflow-wrap:anywhere]"
+        data-testid="approval-title"
+      >
+        {view.title}
+      </h3>
+      <div className="mt-1.5 flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 text-xs font-medium text-foreground">
+          {view.action}
+        </span>
+        {view.target !== null ? (
+          <span
+            title={view.target}
+            data-testid="approval-target"
+            className={cn(
+              "min-w-0 truncate",
+              view.targetIsCode
+                ? "rounded bg-card px-1 font-mono text-foreground"
+                : "text-muted-foreground",
+            )}
+          >
+            {view.target}
+          </span>
+        ) : null}
+      </div>
+      {view.targetHiddenLineCount > 0 ? (
+        <p className="mt-0.5 text-subtle-foreground">
+          +{view.targetHiddenLineCount} more{" "}
+          {view.targetHiddenLineCount === 1 ? "line" : "lines"} in details
+        </p>
+      ) : null}
+      {view.toolUse?.detail ? (
+        <MarkdownPreview
+          content={view.toolUse.detail}
+          className="mt-2 text-xs text-muted-foreground [overflow-wrap:anywhere]"
+          imagePolicy="alt-text"
+        />
+      ) : null}
+      {view.location !== null ? (
+        <p
+          title={view.location}
+          className="mt-0.5 truncate font-mono text-subtle-foreground"
+        >
+          in {view.location}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ApprovalScopeSummary({ view }: { view: ApprovalCardView }) {
+  const offersSession = view.decisions.some(
+    (scope) => scope.decision === "allow_for_session",
+  );
+  const sessionGrant = offersSession ? view.sessionGrant : null;
+  if (view.requested === null && sessionGrant === null) {
+    return null;
+  }
+  return (
+    <div
+      className="mt-2 rounded-md border border-border bg-card px-2.5 py-2"
+      data-testid="approval-scope"
+    >
+      {view.requested !== null ? (
+        <PermissionListSection
+          heading="Requested access"
+          list={view.requested}
+          limit={SUMMARY_PATH_LIMIT}
+        />
+      ) : null}
+      {sessionGrant !== null ? (
+        <PermissionListSection
+          heading="Allow for session also grants"
+          list={sessionGrant}
+          limit={SUMMARY_PATH_LIMIT}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ApprovalDecisionRows({
+  view,
+  disabled,
+  loadingDecision,
+  onDecide,
+  subjectKind,
+}: {
+  view: ApprovalCardView;
+  disabled: boolean;
+  loadingDecision: PendingInteractionApprovalDecision | null;
+  onDecide: (decision: PendingInteractionApprovalDecision) => void;
+  subjectKind: PendingInteractionApprovalSubject["kind"];
+}) {
+  const rows = [...view.decisions].reverse();
+  return (
+    <ul
+      className="mt-3 divide-y divide-border-hairline overflow-hidden rounded-md border border-border bg-card"
+      data-testid="approval-decision-rows"
+    >
+      {rows.map((scope) => (
+        <li
+          key={scope.decision}
+          className="flex flex-col gap-2 px-2.5 py-2 @md:flex-row @md:items-start"
+        >
+          <ApprovalDecisionButton
+            decision={scope.decision}
+            disabled={disabled}
+            isLoading={loadingDecision === scope.decision}
+            onClick={() => onDecide(scope.decision)}
+            subjectKind={subjectKind}
+            className="w-full shrink-0 @md:w-36"
+          />
+          <DecisionScopeCaption scope={scope} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DecisionScopeCaption({ scope }: { scope: ApprovalDecisionScope }) {
+  const text =
+    scope.duration === "none"
+      ? "Nothing is granted. The agent is told you declined."
+      : scope.duration === "request"
+        ? scope.grants
+          ? "Grants this access for this request only:"
+          : "This request only. No extra access is granted."
+        : scope.grants
+          ? "Grants this access for the rest of the session:"
+          : "Approves for the rest of the session. No extra access is listed.";
+  return (
+    <div className="min-w-0 flex-1 self-center text-xs text-muted-foreground">
+      <p>{text}</p>
+      {scope.grants ? (
+        <PermissionListSection
+          list={scope.grants}
+          limit={SUMMARY_PATH_LIMIT}
+          className="mt-1"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PermissionListSection({
+  className,
+  heading,
+  limit,
+  list,
+}: {
+  className?: string;
+  heading?: string;
+  limit?: number;
+  list: ApprovalPermissionList;
+}) {
+  return (
+    <div className={cn("min-w-0 [&+&]:mt-2", className)}>
+      {heading ? (
+        <p className="mb-1 text-xs font-medium text-foreground">{heading}</p>
+      ) : null}
+      <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-xs">
+        {list.network ? (
+          <>
+            <dt className="text-subtle-foreground">Network</dt>
+            <dd className="text-foreground">Network access</dd>
+          </>
+        ) : null}
+        <PathRows label="Read" paths={list.read} limit={limit} />
+        <PathRows label="Write" paths={list.write} limit={limit} />
+      </dl>
+    </div>
+  );
+}
+
+function PathRows({
+  label,
+  limit,
+  paths,
+}: {
+  label: string;
+  limit?: number;
+  paths: readonly string[];
+}) {
+  if (paths.length === 0) {
+    return null;
+  }
+  const shown = limit === undefined ? paths : paths.slice(0, limit);
+  const hidden = paths.length - shown.length;
+  return (
+    <>
+      <dt className="text-subtle-foreground">{label}</dt>
+      <dd className="min-w-0">
+        <ul>
+          {shown.map((path, index) => (
+            <li
+              key={`${index}:${path}`}
+              className="font-mono text-foreground [overflow-wrap:anywhere]"
+            >
+              {path}
+            </li>
+          ))}
+          {hidden > 0 ? (
+            <li className="text-subtle-foreground">
+              +{hidden} more in details
+            </li>
+          ) : null}
+        </ul>
+      </dd>
+    </>
+  );
+}
+
+function ApprovalDetails({ view }: { view: ApprovalCardView }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3" data-testid="approval-details">
+      {view.command ? (
+        <>
+          <DetailSection heading="Command">
+            <CommandPreview command={view.command.formatted} />
+          </DetailSection>
+          <DetailSection heading="Exact command as sent">
+            <pre
+              data-testid="approval-raw-command"
+              className={cn(
+                getDetailScrollMaxHeightClass("base"),
+                "overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground [overflow-wrap:anywhere]",
+              )}
+            >
+              {view.command.raw}
+            </pre>
+          </DetailSection>
+          {view.command.cwd !== null ? (
+            <DetailSection heading="Working directory">
+              <p className="font-mono text-foreground [overflow-wrap:anywhere]">
+                {view.command.cwd}
+              </p>
+            </DetailSection>
+          ) : null}
+          {view.command.actions.length > 0 ? (
+            <DetailSection heading="Actions">
+              <ul className="font-mono text-foreground [overflow-wrap:anywhere]">
+                {view.command.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </DetailSection>
+          ) : null}
+        </>
+      ) : null}
+      {view.toolUse ? <ToolUseAskCard ask={view.toolUse} /> : null}
+      {view.tool !== null && view.toolUse === null ? (
+        <DetailSection heading="Tool">
+          <p className="font-mono text-foreground [overflow-wrap:anywhere]">
+            {view.tool}
+          </p>
+        </DetailSection>
+      ) : null}
+      {view.target !== null && view.command === null && view.tool === null ? (
+        <DetailSection heading="Write root">
+          <p className="font-mono text-foreground [overflow-wrap:anywhere]">
+            {view.target}
+          </p>
+        </DetailSection>
+      ) : null}
+      {view.requested !== null ? (
+        <DetailSection heading="Requested access">
+          <PermissionListSection list={view.requested} />
+        </DetailSection>
+      ) : null}
+      {view.sessionGrant !== null ? (
+        <DetailSection heading="Session grant">
+          <PermissionListSection list={view.sessionGrant} />
+        </DetailSection>
+      ) : null}
+      <DetailSection heading="Decisions offered">
+        <ul className="text-foreground">
+          {view.decisions.map((scope) => (
+            <li key={scope.decision} className="font-mono">
+              {scope.decision}
+            </li>
+          ))}
+        </ul>
+      </DetailSection>
+      <DetailSection heading="Item">
+        <p className="font-mono text-foreground [overflow-wrap:anywhere]">
+          {view.itemId}
+        </p>
+      </DetailSection>
+    </div>
+  );
+}
+
+function DetailSection({
+  children,
+  heading,
+}: {
+  children: ReactNode;
+  heading: string;
+}) {
+  return (
+    <section className="min-w-0 text-xs">
+      <h4 className="mb-1 text-xs font-medium text-subtle-foreground">
+        {heading}
+      </h4>
+      {children}
+    </section>
   );
 }
 
@@ -355,10 +766,7 @@ function ApprovalDecisionButtons({
   onDecide,
   subjectKind,
 }: ApprovalDecisionButtonsProps) {
-  const denyFirst = [...decisions].sort(
-    (left, right) =>
-      APPROVAL_DECISION_ORDER[left] - APPROVAL_DECISION_ORDER[right],
-  );
+  const denyFirst = orderApprovalDecisions(decisions);
   return denyFirst.map((decision, index) => (
     <ApprovalDecisionButton
       key={decision}
@@ -430,27 +838,6 @@ function approvalResolutionDecision(
   return resolution.decision;
 }
 
-function ApprovalDetailList({
-  className,
-  lines,
-}: {
-  className: string;
-  lines: readonly string[];
-}) {
-  return (
-    <ul
-      className={cn(
-        "min-w-0 max-w-full text-xs text-muted-foreground [overflow-wrap:anywhere]",
-        className,
-      )}
-    >
-      {lines.map((line) => (
-        <li key={line}>{line}</li>
-      ))}
-    </ul>
-  );
-}
-
 function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
   const iconUrl = usePluginIconUrl(ask.icon.glyph);
   return (
@@ -491,13 +878,7 @@ function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
   );
 }
 
-function CommandPreview({
-  command,
-  detailLines,
-}: {
-  command: string;
-  detailLines: readonly string[];
-}) {
+function CommandPreview({ command }: { command: string }) {
   const [showsAllLines, setShowsAllLines] = useState(false);
   const lines = command.split("\n");
   const hiddenLineCount = Math.max(
@@ -534,77 +915,8 @@ function CommandPreview({
               : `Show ${hiddenLineCount} more lines`}
         </button>
       ) : null}
-      {detailLines.length > 0 ? (
-        <ApprovalDetailList
-          className="border-t border-border px-3 py-2"
-          lines={detailLines}
-        />
-      ) : null}
     </div>
   );
-}
-
-function buildApprovalSubject({
-  interaction,
-  payload,
-  subject,
-}: BuildApprovalSubjectInput): ApprovalSubject {
-  switch (subject.kind) {
-    case "command": {
-      const rawCommand = subject.command;
-      const command = rawCommand
-        ? unwrapBacktickedCommand(
-            extractShellCommandFromString(rawCommand) ?? rawCommand,
-          )
-        : null;
-      const detailLines = formatPendingInteractionSubjectDetailLines(
-        interaction,
-      )
-        .filter(
-          (line) =>
-            !line.startsWith("Command: ") &&
-            line !== `Action: ${rawCommand}` &&
-            line !== `Action: ${command}`,
-        )
-        .map((line) =>
-          line.startsWith("Cwd: ") ? line.slice("Cwd: ".length) : line,
-        );
-      return {
-        title: payload.reason ?? "Do you want to run this command?",
-        body: command ? (
-          <CommandPreview command={command} detailLines={detailLines} />
-        ) : null,
-      };
-    }
-    case "file_change":
-    case "permission_grant": {
-      const detailLines =
-        formatPendingInteractionSubjectDetailLines(interaction);
-      return {
-        title:
-          payload.reason ??
-          (subject.kind === "file_change"
-            ? "Do you want to make these changes?"
-            : "Do you want to grant this permission?"),
-        body:
-          detailLines.length > 0 ? (
-            <ApprovalDetailList
-              className="rounded-lg border border-border bg-card px-3 py-2"
-              lines={detailLines}
-            />
-          ) : null,
-      };
-    }
-    case "tool_use": {
-      const ask = describePendingInteractionToolUse({ ...payload, subject });
-      return {
-        title: ask.title,
-        body: <ToolUseAskCard ask={ask} />,
-      };
-    }
-    default:
-      return assertNever(subject);
-  }
 }
 
 function labelForApprovalDecision(
