@@ -120,6 +120,14 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
   if (isNewThreadProjectDraftKey(storageKey)) {
     const rev = readStoredRev(rawValue);
     if (rev) newThreadDraftRevs.set(storageKey, rev);
+    const recovered = cachedEntry ? null : findCloseTimeRecoveryCopy(storageKey, rev);
+    if (recovered) {
+      promotedRecoveryCopies.set(storageKey, recovered.key);
+      promptDraftCache.set(storageKey, { rawValue, draft: recovered.draft });
+      ensurePromptDraftStorageObserver();
+      schedulePromptDraftPersist(storageKey);
+      return recovered.draft;
+    }
   }
   promptDraftCache.set(storageKey, {
     rawValue,
@@ -227,6 +235,11 @@ function persistPromptDraftCacheNow(storageKey: string): void {
     }
     window.localStorage.setItem(storageKey, serialized);
     unsavedPromptDraftKeys.delete(storageKey);
+    const promotedKey = promotedRecoveryCopies.get(storageKey);
+    if (promotedKey) {
+      promotedRecoveryCopies.delete(storageKey);
+      window.localStorage.removeItem(promotedKey);
+    }
   } catch (error) {
     unsavedPromptDraftKeys.add(storageKey);
     cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
@@ -387,6 +400,30 @@ function readStoredBase(rawValue: string | null): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+const promotedRecoveryCopies = new Map<string, string>();
+
+function findCloseTimeRecoveryCopy(
+  storageKey: string,
+  storedRev: string | undefined,
+): { key: string; draft: PromptDraftState } | null {
+  const prefix = newThreadRecoveryPrefix(storageKey);
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    const rawValue = readStoredPromptDraftValue(key);
+    const record = readNewThreadRecord(rawValue);
+    if (
+      record.kind === "draft" &&
+      record.rev !== storedRev &&
+      readStoredBase(rawValue) === storedRev &&
+      !isPromptDraftEmpty(record.draft)
+    ) {
+      return { key, draft: record.draft };
+    }
+  }
+  return null;
 }
 
 function readStoredPromptDraftValue(storageKey: string): string | null {

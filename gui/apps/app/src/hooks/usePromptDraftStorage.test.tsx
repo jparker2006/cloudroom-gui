@@ -1031,8 +1031,12 @@ describe("new-thread saves with Web Locks", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await act(async () => {
+      for (const release of releases.splice(0)) release();
+    });
     Reflect.deleteProperty(navigator, "locks");
+    window.localStorage.clear();
   });
 
   it("saves only once it holds the draft's lock, and keeps the draft readable meanwhile", async () => {
@@ -1059,5 +1063,29 @@ describe("new-thread saves with Web Locks", () => {
     expect(JSON.parse(window.localStorage.getItem(recovery!) ?? "null")).toMatchObject({
       text: "typed before close",
     });
+  });
+});
+
+describe("restoring a close-time recovery copy", () => {
+  it("shows the text saved as the page closed and saves it as the project's draft", async () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({ text: "saved", attachments: [], rev: "a1a1a1a1a1a1a1a1" }),
+    );
+    const recoveryKey = `bb.promptbox.recovery-new-thread-${alphaId()}-b2b2b2b2b2b2b2b2-3`;
+    window.localStorage.setItem(
+      recoveryKey,
+      JSON.stringify({ text: "typed before close", attachments: [], rev: "c3c3c3c3c3c3c3c3", base: "a1a1a1a1a1a1a1a1" }),
+    );
+
+    vi.resetModules();
+    const reloaded = await import("./usePromptDraftStorage");
+    const alpha = reloaded.getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+
+    expect(alpha.getCurrent().text).toBe("typed before close");
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    expect(storedRecord(alphaKey())).toMatchObject({ text: "typed before close", base: "a1a1a1a1a1a1a1a1" });
+    expect(window.localStorage.getItem(recoveryKey)).toBeNull();
+    expect(reloaded.listNewThreadDraftsNotShown([alphaId()])).toEqual([]);
   });
 });
