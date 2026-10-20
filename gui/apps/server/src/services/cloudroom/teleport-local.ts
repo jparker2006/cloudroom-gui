@@ -203,7 +203,8 @@ export async function cloudFile(deps: AppDeps, threadId: string, path: string): 
     await writeFile(saved, data);
     return data;
   } catch (error) {
-    if (existsSync(saved)) return readFile(saved);
+    const missing = error instanceof ApiError && error.status === 404;
+    if (!missing && existsSync(saved)) return readFile(saved);
     throw error instanceof ApiError ? error : new ApiError(502, "cloud_file_unavailable", `Could not read ${path} from the cloud. ${error instanceof Error ? error.message : ""}`.trim());
   }
 }
