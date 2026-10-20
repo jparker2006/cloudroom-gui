@@ -133,6 +133,22 @@ Rules:
   Where the attachment fix's owner tag is present, the tag decides that
   attachment's owner for preview, send-time copy, and moves.
 
+## Banner UI
+
+- Reviewed design: `apps/app/src/components/promptbox/banner/NewThreadDraftDesign.stories.tsx`
+  (design only; built from the existing `ProviderRequirementBanner`,
+  `PromptStackCard`, and `Button`).
+- One slot above the composer shows one state, in priority order: storage
+  failure, move result, leftover attachments, legacy or orphaned draft, switch
+  note. Other composer banners (Cloud, machine access) are unchanged.
+- Actions: **Move to <project>**, **Discard**, **Not now**. Leftover attachments
+  offer **Move rest to <project>**, and the copy says the text already moved and
+  Discard removes only the leftovers. Move failures offer **Retry**. Storage
+  failure offers **Copy draft** (clipboard).
+- Accessibility: the switch note is a polite live region, and warnings use the
+  existing alert role. Focus is not moved to a banner, because it can appear
+  while the user is typing.
+
 ## Failures
 
 - Storage write failure: the key is marked unsaved and the composer shows
