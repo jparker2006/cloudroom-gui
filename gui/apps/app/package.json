@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "onboarding:preview": "vite --config vite.onboarding-preview.config.ts --configLoader runner",
+    "build:onboarding-preview": "vite build --config vite.onboarding-preview.config.ts --configLoader runner",
+    "typecheck:onboarding-preview": "tsc --noEmit -p tsconfig.onboarding-preview.json",
     "generate:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "generate:pwa-icons:check": "node scripts/generate-pwa-icons.mjs --check",
     "dev": "node scripts/generate-pwa-icons.mjs && vite --config vite.dev.config.ts --configLoader runner",

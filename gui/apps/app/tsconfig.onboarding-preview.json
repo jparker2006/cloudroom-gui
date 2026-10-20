@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/onboarding-preview",
+    "src/vite-env.d.ts",
+    "vite.onboarding-preview.config.ts"
+  ]
+}

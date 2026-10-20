@@ -2,6 +2,12 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": ["BB_BUILD_TOOLCHAIN"],
   "tasks": {
+    "@cloudroom/app#build:onboarding-preview": {
+      "dependsOn": ["topo"],
+      "outputs": ["node_modules/.cache/onboarding-preview/**"]
+    },
+    "@cloudroom/app#typecheck:onboarding-preview": { "dependsOn": ["topo"] },
+    "@cloudroom/app#onboarding:preview": { "cache": false, "persistent": true },
     "@cloudroom/db#db:generate": { "cache": false },
     "@cloudroom/desktop#smoke:browser-broker": {
       "cache": false,
