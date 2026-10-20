@@ -684,7 +684,71 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
 
 export type MoveNewThreadDraftResult =
   | { status: "moved"; leftoverAttachments: string[] }
-  | { status: "nothing-to-move" | "unreadable" | "failed" | "source-not-updated" };
+  | {
+      status:
+        | "nothing-to-move"
+        | "unreadable"
+        | "failed"
+        | "source-not-updated"
+        | "finished-elsewhere";
+    };
+
+function sideKeyProject(key: string): string | null {
+  return (
+    parseNewThreadSideKey(key, "bb.promptbox.recovery-new-thread-") ??
+    parseNewThreadSideKey(key, "bb.promptbox.conflict-new-thread-")
+  );
+}
+
+function finishedDraftKind(sideKey: string): "moved" | "discarded" | "sent" | null {
+  const projectId = sideKeyProject(sideKey);
+  if (!projectId) return null;
+  const base = readStoredBase(readStoredPromptDraftValue(sideKey));
+  const storedValue = readStoredPromptDraftValue(
+    getPromptDraftStorageKey({ kind: "new-thread", projectId }),
+  );
+  const stored = readNewThreadRecord(storedValue);
+  return (stored.kind === "moved" || stored.kind === "discarded" || stored.kind === "sent") &&
+    base !== undefined &&
+    readStoredBase(storedValue) === base
+    ? stored.kind
+    : null;
+}
+
+export function keepNewThreadDraftCopy(
+  sideKey: string,
+): Promise<"kept" | "changed" | "failed" | "nothing-to-keep"> {
+  const projectId = sideKeyProject(sideKey);
+  if (!projectId) return Promise.resolve("nothing-to-keep");
+  const storageKey = getPromptDraftStorageKey({ kind: "new-thread", projectId });
+  return withDraftWriteLock(storageKey, () => {
+    const side = readNewThreadRecord(readStoredPromptDraftValue(sideKey));
+    if (side.kind !== "draft" || isPromptDraftEmpty(side.draft)) return "nothing-to-keep";
+    const storedValue = readStoredPromptDraftValue(storageKey);
+    const stored = readNewThreadRecord(storedValue);
+    if (stored.kind === "draft" && !isPromptDraftEmpty(stored.draft)) return "changed";
+    if (stored.kind === "unreadable") return "failed";
+    const serialized = serializePromptDraftStorage(side.draft);
+    if (!serialized) return "nothing-to-keep";
+    const rev = createDraftRev();
+    const storedRev = readStoredRev(storedValue);
+    const value = JSON.stringify({ ...JSON.parse(serialized), rev, ...(storedRev ? { base: storedRev } : {}) });
+    try {
+      window.localStorage.setItem(storageKey, value);
+    } catch (error) {
+      console.warn(`[prompt-draft] could not keep the copy for ${storageKey}`, error);
+      return "failed";
+    }
+    window.localStorage.removeItem(sideKey);
+    newThreadDraftRevs.set(storageKey, rev);
+    lastOwnWrittenRevs.set(storageKey, rev);
+    unsavedPromptDraftKeys.delete(storageKey);
+    newThreadDraftNotices.delete(storageKey);
+    promptDraftCache.set(storageKey, { rawValue: value, draft: side.draft });
+    emitPromptDraftChange(storageKey);
+    return "kept";
+  });
+}
 
 export async function moveNewThreadDraft(
   sourceKey: string,
@@ -719,6 +783,7 @@ function moveNewThreadDraftNow(
   sourceKey: string,
   targetProjectId: string,
 ): MoveNewThreadDraftResult {
+  if (finishedDraftKind(sourceKey)) return { status: "finished-elsewhere" };
   const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
   if (pendingPromptDraftStorageKeys.has(targetKey)) persistPromptDraftCacheNow(targetKey);
   if (
@@ -877,7 +942,13 @@ function discardNewThreadDraftNow(
 }
 
 export interface NewThreadDraftNotShown {
-  kind: "legacy" | "unreadable" | "conflict" | "unlisted-project" | "moved-elsewhere";
+  kind:
+    | "legacy"
+    | "unreadable"
+    | "conflict"
+    | "unlisted-project"
+    | "moved-elsewhere"
+    | "sent-elsewhere";
   key: string;
   projectId: string | null;
   draft?: PromptDraftState;
@@ -983,16 +1054,14 @@ function collectNewThreadDraftsNotShown(
     );
     const base = readStoredBase(readStoredPromptDraftValue(key));
     if (record.rev === storedRev) continue;
-    const storedValue = readStoredPromptDraftValue(
-      getPromptDraftStorageKey({ kind: "new-thread", projectId: recoveryProject }),
-    );
-    const storedKind = readNewThreadRecord(storedValue).kind;
-    if (
-      (storedKind === "moved" || storedKind === "discarded") &&
-      base !== undefined &&
-      readStoredBase(storedValue) === base
-    ) {
-      rows.push({ kind: "moved-elsewhere", key, projectId: recoveryProject, draft: record.draft });
+    const finished = finishedDraftKind(key);
+    if (finished) {
+      rows.push({
+        kind: finished === "sent" ? "sent-elsewhere" : "moved-elsewhere",
+        key,
+        projectId: recoveryProject,
+        draft: record.draft,
+      });
       continue;
     }
     if (base !== storedRev) {
@@ -1013,7 +1082,7 @@ function collectNewThreadDraftsInMemory(
     const projectId = decodeURIComponent(newThreadProjectSegment(storageKey));
     if (known.has(projectId)) continue;
     const storedRow = rows.find((row) => row.key === storageKey);
-    if (storedRow) storedRow.draft = draft;
+    if (storedRow?.kind === "unlisted-project") storedRow.draft = draft;
     else
       rows.push({
         kind:

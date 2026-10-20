@@ -6,6 +6,7 @@ import {
   getPromptDraftAccessor,
   listNewThreadDraftsNotShown,
   discardNewThreadDraft,
+  keepNewThreadDraftCopy,
   moveNewThreadDraft,
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
@@ -1969,5 +1970,64 @@ describe("moved text in recovery copies", () => {
     expect(listedNotShown([alphaId()]).map(({ kind, projectId }) => [kind, projectId])).toEqual([
       ["moved-elsewhere", heldId],
     ]);
+  });
+});
+
+describe("copies built on a finished draft", () => {
+  async function recoveryOnFinishedDraft(finish: "move" | "send") {
+    const sourceId = `${alphaId()}src`;
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: sourceId }));
+    act(() => result.current.setDraft({ text: "finished text", mentions: [], attachments: [] }));
+    const savedRev = String(storedRecord(result.current.storageKey).rev);
+    const recoveryKey = `bb.promptbox.recovery-new-thread-${sourceId}-d1d1d1d1d1d1d1d1-3`;
+    window.localStorage.setItem(
+      recoveryKey,
+      JSON.stringify({ text: "finished text, typed", attachments: [], rev: "e2e2e2e2e2e2e2e2", base: savedRev }),
+    );
+    if (finish === "move") await moveNewThreadDraft(result.current.storageKey, alphaId());
+    else {
+      const revision = result.current.getRevision();
+      await act(async () => {
+        await result.current.clearAfterSend(result.current.getCurrent(), revision);
+      });
+    }
+    return { sourceId, recoveryKey, sourceKey: result.current.storageKey };
+  }
+
+  it("refuses to move a copy built on a moved draft", async () => {
+    const { recoveryKey } = await recoveryOnFinishedDraft("move");
+
+    expect((await moveNewThreadDraft(recoveryKey, alphaId())).status).toBe("finished-elsewhere");
+    expect(getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() }).getCurrent().text).toBe(
+      "finished text",
+    );
+  });
+
+  it("lists a copy built on a sent draft as sent elsewhere", async () => {
+    const { sourceId } = await recoveryOnFinishedDraft("send");
+
+    expect(listedNotShown([alphaId()]).map(({ kind, projectId }) => [kind, projectId])).toEqual([
+      ["sent-elsewhere", sourceId],
+    ]);
+  });
+
+  it("keeps the user's copy as the project's draft when asked", async () => {
+    const { recoveryKey, sourceKey, sourceId } = await recoveryOnFinishedDraft("move");
+
+    expect(await keepNewThreadDraftCopy(recoveryKey)).toBe("kept");
+    expect(storedRecord(sourceKey).text).toBe("finished text, typed");
+    expect(window.localStorage.getItem(recoveryKey)).toBeNull();
+    expect(listedNotShown([alphaId(), sourceId])).toEqual([]);
+  });
+
+  it("doesn't show held text on an unreadable row", () => {
+    const heldId = `${alphaId()}bad`;
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: heldId }));
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(result.current.storageKey, "{bad");
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    const unreadable = listedNotShown([alphaId()]).find((row) => row.kind === "unreadable");
+    expect(unreadable?.draft).toBeUndefined();
   });
 });
