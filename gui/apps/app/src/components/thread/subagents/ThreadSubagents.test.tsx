@@ -183,6 +183,58 @@ describe("ThreadSubagentsRow in the Info tab", () => {
   });
 });
 
+describe("review round 2 (adb5eaa)", () => {
+  it("finding 1: a failed refresh marks cached children as last known, not live", async () => {
+    vi.mocked(sdk.threads.list).mockResolvedValueOnce([FAMILY[1]!, FAMILY[2]!]);
+    const { queryClient } = renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      null,
+    );
+    await waitFor(() => expect(screen.getByText("Builder")).toBeTruthy());
+    expect(document.body.textContent).not.toMatch(/last known/);
+    vi.mocked(sdk.threads.list).mockRejectedValue(new Error("offline"));
+    await queryClient.refetchQueries().catch(() => {});
+    await waitFor(() =>
+      expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/),
+    );
+    expect(screen.getByText("Builder")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Subagents:/ }).getAttribute("aria-label"),
+    ).toMatch(/showing last known/);
+  });
+
+  it("finding 2: the chip has a 44px touch target on coarse mobile pointers", () => {
+    renderWith(<ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />, FAMILY);
+    const classes = screen.getByRole("button").className.split(/\s+/);
+    expect(classes).toContain("relative");
+    expect(classes).toContain("max-md:pointer-coarse:h-8");
+    expect(classes).toContain("max-md:pointer-coarse:before:-inset-1.5");
+    expect(classes).toContain("max-md:pointer-coarse:before:absolute");
+  });
+
+  it("finding 3: small error text uses the AA text token, not the fill token", () => {
+    renderWith(
+      <ThreadSubagentsRow threadId={ROOT} />,
+      [
+        ...FAMILY,
+        thread("thr_c", ROOT, {
+          title: "Broken",
+          queuedWork: "failed",
+          runtime: { displayStatus: "error", hostReconnectGraceExpiresAt: null },
+        }),
+      ],
+    );
+    const fillText = Array.from(document.querySelectorAll("[class]")).filter((el) =>
+      el.getAttribute("class")!.split(/\s+/).includes("text-destructive"),
+    );
+    expect(fillText.map((el) => el.textContent)).toEqual([]);
+    expect(screen.getByText(/1 error/).closest("[class*='text-destructive-text']")).toBeTruthy();
+  });
+});
+
 describe("ThreadSubagentChip in the header", () => {
   it("shows the direct count, opens the Info tab, and points at the Subagents section", () => {
     const onToggle = vi.fn();

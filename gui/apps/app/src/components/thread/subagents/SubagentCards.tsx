@@ -40,7 +40,7 @@ const BUCKET_ORDER: readonly SubagentBucket[] = [
 
 const BUCKET_TONE_CLASS: Record<SubagentBucket, string> = {
   "needs-input": "text-foreground",
-  failed: "text-destructive",
+  failed: "text-destructive-text",
   host: "text-foreground",
   working: "text-foreground",
   "not-started": "text-muted-foreground",
@@ -67,7 +67,7 @@ export function SubagentBucketGlyph({
     case "needs-input":
       return <Icon name="CircleQuestion" className={cn(base, "text-foreground")} aria-hidden="true" />;
     case "failed":
-      return <Icon name="CircleX" className={cn(base, "text-destructive")} aria-hidden="true" />;
+      return <Icon name="CircleX" className={cn(base, "text-destructive-text")} aria-hidden="true" />;
     case "host":
       return <Icon name="Unavailable" className={cn(base, "text-foreground")} aria-hidden="true" />;
     case "not-started":
@@ -97,7 +97,7 @@ export function SubagentScopeNote({
   if (freshness.state === "paused") {
     parts.push(
       <span key="fresh" className="text-foreground">
-        Updates paused
+        {freshness.reason === "refresh-failed" ? "Couldn’t refresh" : "Updates paused"}
         {freshness.since !== null
           ? ` · last known ${formatRelativeTime({ timestamp: freshness.since, now })}`
           : " · showing last known"}
@@ -188,7 +188,7 @@ function FlagChips({ entry }: { entry: SubagentEntry }) {
           className={cn(
             "inline-flex shrink-0 items-center rounded-sm px-1.5 text-[11px] leading-5",
             flag.kind === "queued-failed"
-              ? "bg-destructive/10 text-destructive"
+              ? "bg-destructive/10 text-destructive-text"
               : flag.kind === "needs-input"
                 ? "bg-foreground/10 text-foreground"
                 : "bg-muted text-muted-foreground",
@@ -416,7 +416,7 @@ export function SubagentEmptyOrError({
 }: Pick<SubagentViewProps, "listState" | "summary">) {
   if (listState === "error") {
     return (
-      <p className="px-3 py-2 text-xs text-destructive" role="status">
+      <p className="px-3 py-2 text-xs text-destructive-text" role="status">
         Couldn’t load subagents. This is not the same as having none.
       </p>
     );

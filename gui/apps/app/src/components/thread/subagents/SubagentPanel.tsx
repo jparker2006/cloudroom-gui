@@ -32,7 +32,13 @@ function getChipAccessibleName({
     if (attention) parts.push(`${attention} direct need attention`);
     if (summary.buckets.working) parts.push(`${summary.buckets.working} direct active`);
   }
-  if (freshness.state === "paused") parts.push("updates paused, showing last known");
+  if (freshness.state === "paused") {
+    parts.push(
+      freshness.reason === "refresh-failed"
+        ? "couldn’t refresh, showing last known"
+        : "updates paused, showing last known",
+    );
+  }
   return `Subagents: ${parts.join(", ")}`;
 }
 
@@ -61,7 +67,7 @@ export function SubagentHeaderChip({
       aria-label={getChipAccessibleName({ summary, listState, freshness })}
       onClick={onToggle}
       className={cn(
-        "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border border-border px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring max-md:h-8",
+        "relative inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border border-border px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring max-md:pointer-coarse:h-8 max-md:pointer-coarse:before:absolute max-md:pointer-coarse:before:-inset-1.5",
         isOpen && "bg-state-hover text-foreground",
       )}
     >

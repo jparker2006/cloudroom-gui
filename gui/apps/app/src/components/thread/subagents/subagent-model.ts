@@ -67,7 +67,7 @@ export type SubagentExecution =
 
 export type SubagentFreshness =
   | { state: "live" }
-  | { state: "paused"; since: number | null };
+  | { state: "paused"; since: number | null; reason?: "refresh-failed" };
 
 const STATUS_COPY: Record<
   ThreadRuntimeDisplayStatus,
