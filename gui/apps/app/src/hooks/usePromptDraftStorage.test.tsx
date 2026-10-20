@@ -1912,3 +1912,62 @@ describe("Sol third-round fixes", () => {
     expect(listedNotShown([alphaId()]).map((row) => row.key)).toEqual([unlisted.storageKey]);
   });
 });
+
+describe("moved text in recovery copies", () => {
+  it("lists a recovery copy built on a moved draft as moved elsewhere, not as a conflict", async () => {
+    const sourceId = `${alphaId()}src`;
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: sourceId });
+    source.setDraft({ text: "moved text", mentions: [], attachments: [] });
+    const savedRev = String(storedRecord(source.storageKey).rev);
+    window.localStorage.setItem(
+      `bb.promptbox.recovery-new-thread-${sourceId}-d1d1d1d1d1d1d1d1-3`,
+      JSON.stringify({ text: "moved text, typed", attachments: [], rev: "e2e2e2e2e2e2e2e2", base: savedRev }),
+    );
+    await moveNewThreadDraft(source.storageKey, alphaId());
+
+    vi.resetModules();
+    const reloaded = await import("./usePromptDraftStorage");
+
+    expect(
+      reloaded
+        .listNewThreadDraftsNotShown([alphaId(), sourceId])
+        .map(({ kind, draft }) => [kind, draft?.text]),
+    ).toEqual([["moved-elsewhere", "moved text, typed"]]);
+  });
+
+  it("keeps a recovery copy of typing held after another window moved the draft", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "moved text", mentions: [], attachments: [] }));
+    const savedRev = String(storedRecord(alphaKey()).rev);
+    act(() => result.current.setTextAndMentions("moved text, typed", []));
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({ rev: "f3f3f3f3f3f3f3f3", base: savedRev, moved: true }),
+    );
+
+    act(() => window.dispatchEvent(new Event("pagehide")));
+
+    expect(
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith(`bb.promptbox.recovery-new-thread-${alphaId()}-`))
+        .map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null").text),
+    ).toContain("moved text, typed");
+  });
+
+  it("lists a draft held because another window moved it as moved elsewhere", () => {
+    const heldId = `${alphaId()}held`;
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: heldId }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(result.current.storageKey, JSON.stringify({ rev: "a4a4a4a4a4a4a4a4", moved: true }));
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    expect(listedNotShown([alphaId()]).map(({ kind, projectId }) => [kind, projectId])).toEqual([
+      ["moved-elsewhere", heldId],
+    ]);
+  });
+});

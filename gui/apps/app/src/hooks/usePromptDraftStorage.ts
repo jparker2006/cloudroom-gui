@@ -81,6 +81,7 @@ function holdInMemory(
   unsavedPromptDraftKeys.add(storageKey);
   newThreadDraftNotices.set(storageKey, notice);
   cachedEntry.rawValue = rawValue;
+  if (!isPromptDraftEmpty(cachedEntry.draft)) writeRecoveryCopyOnly(storageKey);
   return false;
 }
 const NEW_THREAD_DRAFT_KEY_PREFIX = `${PROMPT_DRAFT_STORAGE_PREFIX}-new-thread-`;
@@ -417,7 +418,11 @@ function writeTerminalRecord(
 }
 
 function writeNewThreadSentMarker(storageKey: string, checkedRev: string | undefined): boolean {
-  const marker = JSON.stringify({ rev: createDraftRev(), sent: true });
+  const marker = JSON.stringify({
+    rev: createDraftRev(),
+    ...(checkedRev ? { base: checkedRev } : {}),
+    sent: true,
+  });
   if (!writeTerminalRecord(storageKey, marker, checkedRev)) return false;
   newThreadDraftRevs.set(storageKey, String(readStoredRev(marker)));
   promptDraftCache.set(storageKey, { rawValue: marker, draft: EMPTY_PROMPT_DRAFT });
@@ -764,8 +769,8 @@ function moveNewThreadDraftNow(
   const rev = createDraftRev();
   const sourceValue =
     leftovers.length > 0
-      ? JSON.stringify({ text: "", attachments: leftovers, rev })
-      : JSON.stringify({ rev, moved: true });
+      ? JSON.stringify({ text: "", attachments: leftovers, rev, ...(source.rev ? { base: source.rev } : {}) })
+      : JSON.stringify({ rev, ...(source.rev ? { base: source.rev } : {}), moved: true });
   if (!writeTerminalRecord(sourceKey, sourceValue, source.rev)) {
     emitPromptDraftChange(targetKey);
     return { status: "source-not-updated" };
@@ -848,7 +853,12 @@ function discardNewThreadDraftNow(
   ) {
     return "failed";
   }
-  const tombstone = JSON.stringify({ rev: createDraftRev(), discarded: true });
+  const discardedRev = "rev" in record ? record.rev : undefined;
+  const tombstone = JSON.stringify({
+    rev: createDraftRev(),
+    ...(discardedRev ? { base: discardedRev } : {}),
+    discarded: true,
+  });
   if (!writeTerminalRecord(storageKey, tombstone, "rev" in record ? record.rev : undefined)) {
     return "failed";
   }
@@ -867,7 +877,7 @@ function discardNewThreadDraftNow(
 }
 
 export interface NewThreadDraftNotShown {
-  kind: "legacy" | "unreadable" | "conflict" | "unlisted-project";
+  kind: "legacy" | "unreadable" | "conflict" | "unlisted-project" | "moved-elsewhere";
   key: string;
   projectId: string | null;
   draft?: PromptDraftState;
@@ -973,6 +983,18 @@ function collectNewThreadDraftsNotShown(
     );
     const base = readStoredBase(readStoredPromptDraftValue(key));
     if (record.rev === storedRev) continue;
+    const storedValue = readStoredPromptDraftValue(
+      getPromptDraftStorageKey({ kind: "new-thread", projectId: recoveryProject }),
+    );
+    const storedKind = readNewThreadRecord(storedValue).kind;
+    if (
+      (storedKind === "moved" || storedKind === "discarded") &&
+      base !== undefined &&
+      readStoredBase(storedValue) === base
+    ) {
+      rows.push({ kind: "moved-elsewhere", key, projectId: recoveryProject, draft: record.draft });
+      continue;
+    }
     if (base !== storedRev) {
       rows.push({ kind: "conflict", key, projectId: recoveryProject, draft: record.draft });
     } else if (!known.has(recoveryProject)) {
@@ -992,7 +1014,16 @@ function collectNewThreadDraftsInMemory(
     if (known.has(projectId)) continue;
     const storedRow = rows.find((row) => row.key === storageKey);
     if (storedRow) storedRow.draft = draft;
-    else rows.push({ kind: "unlisted-project", key: storageKey, projectId, draft });
+    else
+      rows.push({
+        kind:
+          newThreadDraftNotices.get(storageKey) === "moved-elsewhere"
+            ? "moved-elsewhere"
+            : "unlisted-project",
+        key: storageKey,
+        projectId,
+        draft,
+      });
   }
   const unique: NewThreadDraftNotShown[] = [];
   for (const row of rows) {
