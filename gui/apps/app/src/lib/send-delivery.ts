@@ -1,22 +1,19 @@
 import { useSyncExternalStore } from "react";
-import type { QueryClient } from "@tanstack/react-query";
 import { BbHttpError } from "@cloudroom/sdk/browser";
 import type { PromptDraftState } from "@cloudroom/client-core";
 import type { PromptInput, ThreadQueuedMessage } from "@cloudroom/domain";
-import type { ThreadTimelineResponse, TimelineRow } from "@cloudroom/server-contract";
-import { threadQueuedMessagesQueryKey, threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { HttpError } from "./api";
 import { isAbortLikeError } from "./mutation-errors";
 
-export type SendFailureKind = "not-sent" | "unconfirmed" | "rejected" | "cancelled";
+export type SendFailureKind = "unconfirmed" | "rejected" | "cancelled";
 
-export function classifySendFailure(error: unknown, browserOfflineAtSend: boolean): SendFailureKind {
+export function classifySendFailure(error: unknown): SendFailureKind {
   if (isAbortLikeError(error)) return "cancelled";
   if (error instanceof HttpError || error instanceof BbHttpError) {
     if (error.status === 408) return "unconfirmed";
     return error.status >= 500 && !error.code ? "unconfirmed" : "rejected";
   }
-  return browserOfflineAtSend ? "not-sent" : "unconfirmed";
+  return "unconfirmed";
 }
 
 function normalize(text: string): string {
@@ -27,48 +24,19 @@ export function promptInputText(input: readonly PromptInput[]): string {
   return normalize(input.map((part) => (part.type === "text" ? part.text : "")).join(" "));
 }
 
-interface DeliveryMatchTarget {
-  text: string;
-  baselineMaxSeq: number | null;
-  baselineQueueIds: readonly string[];
-  requestId: string | null;
-}
-
 export function isMessageDelivered(
-  attempt: DeliveryMatchTarget,
-  rows: readonly TimelineRow[],
+  attempt: { requestId: string | null },
   queue: readonly ThreadQueuedMessage[],
 ): boolean {
-  if (attempt.requestId && queue.some((item) => item.id === attempt.requestId)) return true;
-  const text = normalize(attempt.text);
-  if (!text) return false;
-  const baselineMaxSeq = attempt.baselineMaxSeq;
-  const inTimeline =
-    baselineMaxSeq !== null &&
-    rows.some(
-      (row) =>
-        row.kind === "conversation" &&
-        row.role === "user" &&
-        row.sourceSeqStart > baselineMaxSeq &&
-        normalize(row.text) === text,
-    );
-  return (
-    inTimeline ||
-    queue.some((item) => !attempt.baselineQueueIds.includes(item.id) && promptInputText(item.content) === text)
-  );
+  return attempt.requestId !== null && queue.some((item) => item.id === attempt.requestId);
 }
 
-export function captureDeliveryBaseline(queryClient: QueryClient, threadId: string) {
-  return {
-    baselineMaxSeq: queryClient.getQueryData<ThreadTimelineResponse>(threadTimelineQueryKey(threadId))?.maxSeq ?? null,
-    baselineQueueIds: (queryClient.getQueryData<ThreadQueuedMessage[]>(threadQueuedMessagesQueryKey(threadId)) ?? []).map((item) => item.id),
-  };
-}
-
-export interface DeliveryAttempt extends DeliveryMatchTarget {
+export interface DeliveryAttempt {
   key: number;
   threadId: string;
-  phase: "checking" | "not-found" | "delivered" | "not-sent";
+  text: string;
+  requestId: string | null;
+  phase: "checking" | "not-found" | "delivered";
   draft: PromptDraftState;
   attachmentCount: number;
   dedupes: boolean;
@@ -97,13 +65,6 @@ export function updateDeliveryAttempt(threadId: string, key: number, patch: Part
 
 export function clearDeliveryAttempt(threadId: string, key: number): void {
   if (attempts.get(threadId)?.key !== key) return;
-  attempts.delete(threadId);
-  emit();
-}
-
-export function settleDeliveryAttempt(threadId: string, text: string): void {
-  const current = attempts.get(threadId);
-  if (!current || normalize(current.text) !== normalize(text)) return;
   attempts.delete(threadId);
   emit();
 }

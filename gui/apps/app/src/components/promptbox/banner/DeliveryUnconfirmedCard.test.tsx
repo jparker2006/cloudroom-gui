@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@cloudroom/domain";
 import type { ThreadTimelineResponse, TimelineRow } from "@cloudroom/server-contract";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
+import { makeThreadQueuedMessage } from "@cloudroom/test-helpers/domain-fixtures";
 import { createDeferredPromise } from "@cloudroom/test-helpers";
 import { threadQueuedMessagesQueryKey, threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import {
@@ -47,8 +48,6 @@ function record(overrides: Partial<Omit<DeliveryAttempt, "key">> = {}) {
     draft: DRAFT,
     text: TEXT,
     attachmentCount: 1,
-    baselineMaxSeq: 10,
-    baselineQueueIds: [],
     requestId: null,
     dedupes: false,
     resend: vi.fn(async () => undefined),
@@ -103,17 +102,53 @@ describe("DeliveryUnconfirmedCard", () => {
     expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
   });
 
-  it("confirms delivery after reconnecting and clears only the matching restored draft", async () => {
-    const resend = vi.fn();
-    record({ resend });
-    const view = renderCard();
-    expect(screen.getByText("Delivery unconfirmed")).toBeTruthy();
-    serverRows = [...serverRows, userRow(11, TEXT)];
-    connection.state = "connected";
-    view.rerender(card());
-    await waitFor(() => expect(screen.getByText("Delivered")).toBeTruthy());
-    expect(clearDraftIfMatches).toHaveBeenCalledWith(DRAFT);
-    expect(resend).not.toHaveBeenCalled();
+  describe("delivery identity (R1/R2)", () => {
+    async function reconcileAndExpectUnresolved() {
+      connection.state = "connected";
+      renderCard();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Send again" })).toBeTruthy());
+      expect(screen.queryByText("Delivered")).toBeNull();
+      expect(clearDraftIfMatches).not.toHaveBeenCalled();
+      expect(currentAttempt()?.phase).toBe("not-found");
+    }
+
+    it("does not confirm a same-text message that carries different attachments", async () => {
+      serverRows = [
+        ...serverRows,
+        conversationRow({
+          id: "row_11", role: "user", seq: 11, text: TEXT,
+          attachments: { webImages: 0, localImages: 0, localFiles: 1, imageUrls: [], localImagePaths: [], localFilePaths: ["/uploads/other.csv"] },
+        }),
+      ];
+      record();
+      await reconcileAndExpectUnresolved();
+    });
+
+    it("does not confirm an old server message that the stale pre-send cache had not seen", async () => {
+      serverRows = [...serverRows, userRow(15, TEXT)];
+      record();
+      await reconcileAndExpectUnresolved();
+    });
+
+    it("does not confirm a different queued request with the same text or a different mention", async () => {
+      serverQueue = [
+        makeThreadQueuedMessage({ id: "req_other", content: [{ type: "text", text: TEXT, mentions: [] }] }),
+        makeThreadQueuedMessage({ id: "q_mention", content: [{ type: "text", text: TEXT, mentions: [{ start: 0, end: 6, resource: { kind: "thread", threadId: "thr_other", projectId: "proj_1", label: "Please" } }] }] }),
+      ];
+      record({ requestId: "req_1", dedupes: true });
+      await reconcileAndExpectUnresolved();
+    });
+
+    it("confirms delivery only from the exact queued request id and clears only the matching draft", async () => {
+      serverQueue = [makeThreadQueuedMessage({ id: "req_1", content: [{ type: "text", text: "edited later", mentions: [] }] })];
+      const resend = vi.fn();
+      record({ requestId: "req_1", dedupes: true, resend });
+      connection.state = "connected";
+      renderCard();
+      await waitFor(() => expect(screen.getByText("Delivered")).toBeTruthy());
+      expect(clearDraftIfMatches).toHaveBeenCalledWith(DRAFT);
+      expect(resend).not.toHaveBeenCalled();
+    });
   });
 
   it("offers a manual decision when the message is not found, without resending by itself", async () => {
@@ -180,11 +215,4 @@ describe("DeliveryUnconfirmedCard", () => {
     expect(currentAttempt()?.text).toBe("newer message");
   });
 
-  it("says not sent only for the offline-before-send case and keeps the draft", () => {
-    record({ phase: "not-sent" });
-    renderCard();
-    expect(screen.getByText("Not sent")).toBeTruthy();
-    expect(screen.getByText(/never left this device/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
-  });
 });

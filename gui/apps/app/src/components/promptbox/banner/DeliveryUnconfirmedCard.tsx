@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Co
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import type { PromptDraftState } from "@cloudroom/client-core";
 import type { ThreadQueuedMessage } from "@cloudroom/domain";
-import type { ThreadTimelineResponse } from "@cloudroom/server-contract";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { threadQueuedMessagesQueryKey, threadTimelineQueryKey } from "@/hooks/queries/query-keys";
@@ -45,7 +44,6 @@ export function DeliveryUnconfirmedCard({
   const attempt = useDeliveryAttempt(threadId);
   const socket = useServerConnectionState();
   const queryClient = useQueryClient();
-  const timeline = useCachedQueryData<ThreadTimelineResponse>(threadTimelineQueryKey(threadId));
   const queue = useCachedQueryData<ThreadQueuedMessage[]>(threadQueuedMessagesQueryKey(threadId));
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
@@ -54,7 +52,7 @@ export function DeliveryUnconfirmedCard({
   const delivered =
     attempt !== null &&
     (attempt.phase === "checking" || attempt.phase === "not-found") &&
-    isMessageDelivered(attempt, timeline?.rows ?? [], queue ?? []);
+    isMessageDelivered(attempt, queue ?? []);
 
   useEffect(() => {
     if (!attempt || !delivered) return;
@@ -67,9 +65,8 @@ export function DeliveryUnconfirmedCard({
     await Promise.all(keys.map((queryKey) => queryClient.refetchQueries({ queryKey, exact: true })));
     const answered = keys.every((queryKey) => queryClient.getQueryState(queryKey)?.status === "success");
     if (!answered) return;
-    const rows = queryClient.getQueryData<ThreadTimelineResponse>(keys[0])?.rows ?? [];
     const items = queryClient.getQueryData<ThreadQueuedMessage[]>(keys[1]) ?? [];
-    if (!isMessageDelivered(target, rows, items)) updateDeliveryAttempt(threadId, target.key, { phase: "not-found" });
+    if (!isMessageDelivered(target, items)) updateDeliveryAttempt(threadId, target.key, { phase: "not-found" });
   }, [queryClient, threadId]);
 
   useEffect(() => {
@@ -89,9 +86,8 @@ export function DeliveryUnconfirmedCard({
       clearDraftIfMatches(attempt.draft);
       clearDeliveryAttempt(threadId, attempt.key);
     } catch (error) {
-      const kind = classifySendFailure(error, !navigator.onLine);
+      const kind = classifySendFailure(error);
       if (kind === "unconfirmed") updateDeliveryAttempt(threadId, attempt.key, { phase: "checking" });
-      else if (kind === "not-sent") updateDeliveryAttempt(threadId, attempt.key, { phase: "not-sent" });
       else if (kind === "rejected") showMutationErrorToast({ error, fallbackMessage: "Cloudroom refused to send it again", lifecycleOperation: "send_message" });
     } finally {
       sendingRef.current = false;
@@ -111,25 +107,23 @@ export function DeliveryUnconfirmedCard({
     );
   }
 
-  const notSent = attempt.phase === "not-sent";
   const attachments = attempt.attachmentCount === 0 ? "" : ` + ${attempt.attachmentCount} attachment${attempt.attachmentCount === 1 ? "" : "s"}`;
   const whereIsDraft = draftInBox ? "It's back in the box below." : "Its text is shown above.";
-  const body = notSent
-    ? `Your browser was offline, so the message never left this device. ${whereIsDraft} Send it when you're online.`
-    : attempt.phase === "not-found"
-      ? `Reconnected, but this message isn't in the conversation yet. That doesn't prove it wasn't received. ${
+  const body =
+    attempt.phase === "not-found"
+      ? `Reconnected, but Cloudroom couldn't confirm this exact message arrived. Check the conversation above; not seeing it there doesn't prove it wasn't received. ${
           attempt.dedupes ? "Sending again is safe: Cloudroom ignores it if the first one arrived." : "Sending again could post it twice."
         }`
       : `Cloudroom hasn't confirmed this message. It may or may not have arrived. ${
           socket === "connected" ? "Checking the conversation now." : "We'll check the conversation when the connection is back."
         } ${whereIsDraft}`;
   return (
-    <PromptStackCard ariaLabel={notSent ? "Not sent" : "Delivery unconfirmed"} className="space-y-2 p-3 text-xs">
+    <PromptStackCard ariaLabel="Delivery unconfirmed" className="space-y-2 p-3 text-xs">
       <div className="flex items-start gap-2">
-        <Icon name={notSent ? "CloudOff" : "CircleQuestion"} className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
+        <Icon name="CircleQuestion" className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
         <div className="min-w-0 space-y-1">
           <p role="alert" className="text-sm font-medium text-foreground">
-            {notSent ? "Not sent" : "Delivery unconfirmed"}
+            Delivery unconfirmed
           </p>
           <p className="truncate rounded border border-border bg-background px-2 py-1 text-foreground">
             “{attempt.text}”<span className="text-muted-foreground">{attachments}</span>

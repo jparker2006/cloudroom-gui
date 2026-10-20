@@ -1096,17 +1096,42 @@ describe("ThreadDetailPromptArea", () => {
       expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ requestId: expect.any(String) }));
     });
 
-    it("says not sent when the browser was offline before sending", async () => {
+    it("keeps an unresolved attempt when a separate same-text message later succeeds (R1)", async () => {
       mocks.defaultExecutionOptions = localOptions;
       mocks.promptDraft.text = TEXT;
       mocks.sendMessageMutateAsync.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-      const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
       renderPromptArea();
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed"));
 
+      mocks.sendMessageMutateAsync.mockResolvedValueOnce(undefined);
       fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
 
-      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Not sent"));
-      onLine.mockRestore();
+      await waitFor(() => expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(2));
+      await act(async () => {});
+      expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed");
+    });
+
+    it("does not claim a dispatched send never left the device just because the browser flag said offline (R4)", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      const serverAccepted: unknown[] = [];
+      mocks.sendMessageMutateAsync.mockImplementationOnce(async (request: unknown) => {
+        serverAccepted.push(request);
+        throw new TypeError("Failed to fetch");
+      });
+      const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      try {
+        renderPromptArea();
+
+        fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+        await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed"));
+        expect(serverAccepted).toHaveLength(1);
+        expect(screen.queryByText(/never left this device/)).toBeNull();
+      } finally {
+        onLine.mockRestore();
+      }
     });
 
     it("keeps structured server rejections on the existing toast", async () => {

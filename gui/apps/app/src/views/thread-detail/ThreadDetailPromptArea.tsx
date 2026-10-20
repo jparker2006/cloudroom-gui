@@ -1,7 +1,7 @@
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
 import { ThreadConnectionStatus } from "@/components/promptbox/banner/ThreadConnectionStatus";
 import { DeliveryUnconfirmedCard } from "@/components/promptbox/banner/DeliveryUnconfirmedCard";
-import { captureDeliveryBaseline, classifySendFailure, promptInputText, recordDeliveryAttempt, settleDeliveryAttempt, useDeliveryAttempt } from "@/lib/send-delivery";
+import { classifySendFailure, promptInputText, recordDeliveryAttempt, useDeliveryAttempt } from "@/lib/send-delivery";
 import { isPhoneRelay } from "@/cloud/cloud-mode";
 import { TeleportLocalNotice, TeleportNotice } from "@/components/thread/TeleportNotice";
 import { TeleportCheckCard } from "@/components/thread/TeleportCheckCard";
@@ -1001,24 +1001,19 @@ export function ThreadDetailPromptArea({
     lifecycleOperation: "send_message" | "queue_message";
   }): Promise<boolean> => {
     const threadId = thread.id;
-    const baseline = captureDeliveryBaseline(queryClient, threadId);
-    const offlineAtSend = typeof navigator !== "undefined" && !navigator.onLine;
-    const text = promptInputText(submittedInput);
     try {
       await send();
-      settleDeliveryAttempt(threadId, text);
       return true;
     } catch (error) {
       promptDraft.restoreIfEmpty(submittedDraft);
-      const kind = classifySendFailure(error, offlineAtSend);
-      if (kind === "unconfirmed" || kind === "not-sent") {
-        recordDeliveryAttempt({ threadId, phase: kind === "not-sent" ? "not-sent" : "checking", draft: submittedDraft, text, attachmentCount: submittedDraft.attachments.length, ...baseline, requestId, dedupes, resend: send });
+      if (classifySendFailure(error) === "unconfirmed") {
+        recordDeliveryAttempt({ threadId, phase: "checking", draft: submittedDraft, text: promptInputText(submittedInput), attachmentCount: submittedDraft.attachments.length, requestId, dedupes, resend: send });
       } else {
         showMutationErrorToast({ error, fallbackMessage, lifecycleOperation });
       }
       return false;
     }
-  }, [promptDraft, queryClient, thread.id]);
+  }, [promptDraft, thread.id]);
 
   const sendCloudDraft = useCallback(async (steer: boolean) => {
     const submittedDraft = currentPromptDraft;

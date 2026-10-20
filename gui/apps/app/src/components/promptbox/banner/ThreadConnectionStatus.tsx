@@ -72,31 +72,32 @@ export function useRecoveredFlash(problemShown: boolean): boolean {
   return recovered && !problemShown;
 }
 
-function useTimelineUpdatedAt(threadId: string): number {
-  const queryClient = useQueryClient();
-  return useSyncExternalStore(
-    (onChange) => queryClient.getQueryCache().subscribe(onChange),
-    () => queryClient.getQueryState(threadTimelineQueryKey(threadId))?.dataUpdatedAt ?? 0,
-  );
-}
+const heldStaleLabels = new Map<string, string>();
 
 export function StaleConversationMarker({ threadId, hasRows }: { threadId: string; hasRows: boolean }) {
-  const disconnectedAt = wsManager.getDisconnectedAt();
+  const queryClient = useQueryClient();
   const liveLabel = getStaleConversationLabel({
     socket: useServerConnectionState(),
     graceElapsed: useServerConnectionGracePeriodElapsed(),
-    disconnectedAt,
+    disconnectedAt: wsManager.getDisconnectedAt(),
     hasRows,
   });
-  const updatedAt = useTimelineUpdatedAt(threadId);
-  const [held, setHeld] = useState<{ label: string; staleSince: number } | null>(null);
-  if (liveLabel && held?.label !== liveLabel) {
-    setHeld({ label: liveLabel, staleSince: disconnectedAt ?? updatedAt });
-  }
-  if (!liveLabel && held && updatedAt > held.staleSince) {
-    setHeld(null);
-  }
-  const label = liveLabel ?? held?.label ?? null;
+  const [heldLabel, setHeldLabel] = useState(() => heldStaleLabels.get(threadId) ?? null);
+  useEffect(() => {
+    if (liveLabel) heldStaleLabels.set(threadId, liveLabel);
+  }, [liveLabel, threadId]);
+  useEffect(() => {
+    if (liveLabel) return;
+    const queryHash = JSON.stringify(threadTimelineQueryKey(threadId));
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== "updated" || event.action.type !== "success" || event.action.manual) return;
+      if (JSON.stringify(event.query.queryKey) !== queryHash) return;
+      heldStaleLabels.delete(threadId);
+      setHeldLabel(null);
+    });
+  }, [liveLabel, queryClient, threadId]);
+  if (liveLabel && heldLabel !== liveLabel) setHeldLabel(liveLabel);
+  const label = liveLabel ?? heldLabel;
   if (!label) return null;
   return (
     <p className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-muted-foreground">
