@@ -1651,3 +1651,41 @@ describe("Sol review fixes: status and listing", () => {
     ]);
   });
 });
+
+describe("Sol review fixes: send revision", () => {
+  it("keeps the draft when it was saved again after the send started, even with the same text", async () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "S", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+    const sentRevision = result.current.getRevision();
+    act(() => result.current.setDraft({ text: "E", mentions: [], attachments: [] }));
+    act(() => result.current.setDraft({ text: "S", mentions: [], attachments: [] }));
+
+    let cleared = true;
+    await act(async () => {
+      cleared = await result.current.clearAfterSend(sent, sentRevision);
+    });
+
+    expect(cleared).toBe(false);
+    expect(storedRecord(alphaKey()).text).toBe("S");
+  });
+
+  it("clears the draft when nothing was saved since the send started", async () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "S", mentions: [], attachments: [] }));
+
+    let cleared = false;
+    await act(async () => {
+      cleared = await result.current.clearAfterSend(
+        result.current.getCurrent(),
+        result.current.getRevision(),
+      );
+    });
+
+    expect(cleared).toBe(true);
+  });
+});

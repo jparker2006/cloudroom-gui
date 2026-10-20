@@ -46,6 +46,11 @@ const promptDraftPersistTimers = new Map<string, number>();
 let promptDraftStorageObserverInitialized = false;
 const newThreadDraftRevs = new Map<string, string>();
 const unsavedPromptDraftKeys = new Set<string>();
+const promptDraftEditCounts = new Map<string, number>();
+
+function promptDraftEditRevision(storageKey: string): string {
+  return String(promptDraftEditCounts.get(storageKey) ?? 0);
+}
 export type NewThreadDraftNotice = "sent-elsewhere" | "moved-elsewhere" | "unreadable";
 const newThreadDraftNotices = new Map<string, NewThreadDraftNotice>();
 
@@ -571,6 +576,7 @@ function writePromptDraft(
 ): void {
   if (!storageKey || typeof window === "undefined") return;
 
+  promptDraftEditCounts.set(storageKey, (promptDraftEditCounts.get(storageKey) ?? 0) + 1);
   promptDraftCache.set(storageKey, {
     rawValue: null,
     draft: isPromptDraftEmpty(value) ? EMPTY_PROMPT_DRAFT : value,
@@ -1091,11 +1097,17 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [setDraftAndPersist, storageKey],
   );
 
+  const getRevision = useCallback(() => promptDraftEditRevision(storageKey), [storageKey]);
+
   const clearAfterSend = useCallback(
-    (expectedDraft: PromptDraftState): Promise<boolean> =>
-      isNewThreadProjectDraftKey(storageKey)
-        ? withDraftWriteLock(storageKey, () => clearIfCurrentMatches(expectedDraft))
-        : Promise.resolve(clearIfCurrentMatches(expectedDraft)),
+    (expectedDraft: PromptDraftState, sentRevision?: string): Promise<boolean> => {
+      const clearIfUnchanged = () =>
+        (sentRevision === undefined || sentRevision === promptDraftEditRevision(storageKey)) &&
+        clearIfCurrentMatches(expectedDraft);
+      return isNewThreadProjectDraftKey(storageKey)
+        ? withDraftWriteLock(storageKey, clearIfUnchanged)
+        : Promise.resolve(clearIfUnchanged());
+    },
     [clearIfCurrentMatches, storageKey],
   );
 
@@ -1151,6 +1163,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       clear,
       clearIfCurrentMatches,
       clearAfterSend,
+      getRevision,
       restoreIfEmpty,
       keepMyCopy,
       dismissNotice,
@@ -1167,6 +1180,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       draft.mentions,
       draft.text,
       getCurrent,
+      getRevision,
       keepMyCopy,
       removeAttachment,
       restoreIfEmpty,
