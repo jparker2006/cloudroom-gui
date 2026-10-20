@@ -72,4 +72,17 @@ describe("new-thread Cloud request evidence when the lock fails", () => {
 
     expect((await newThreadCloudroomRequest(BETA_DRAFT_KEY, request)).id).toBe("legacy-id");
   });
+
+  it("never writes the shared record key when it runs without the lock", async () => {
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: { request: () => Promise.reject(new DOMException("timed out", "AbortError")) },
+    });
+
+    const evidence = await newThreadCloudroomRequest(BETA_DRAFT_KEY, request);
+
+    expect(window.localStorage.getItem(BETA_RECORD_KEY)).toBeNull();
+    expect(evidence.recordKey).toBe(`${BETA_RECORD_KEY}:${evidence.id}`);
+  });
 });
+

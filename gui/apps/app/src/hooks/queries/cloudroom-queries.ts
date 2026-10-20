@@ -347,12 +347,19 @@ async function requestFingerprint(input: unknown): Promise<string> {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function withNewThreadRequestLock<T>(run: () => T): Promise<T> {
+function withNewThreadRequestLock<T>(run: (locked: boolean) => T): Promise<T> {
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  if (!locks) return Promise.resolve(run());
+  if (!locks) return Promise.resolve(run(false));
+  let started = false;
   return locks
-    .request("bb.promptbox.request", { signal: AbortSignal.timeout(2000) }, () => run())
-    .catch(() => run());
+    .request("bb.promptbox.request", { signal: AbortSignal.timeout(2000) }, () => {
+      started = true;
+      return run(true);
+    })
+    .catch((error: unknown) => {
+      if (started) throw error;
+      return run(false);
+    });
 }
 
 function newThreadRequestRecordKeys(draftKey: string): string[] {
@@ -369,8 +376,7 @@ export async function newThreadCloudroomRequest(
   input: unknown,
 ): Promise<NewThreadCloudroomRequest> {
   const fingerprint = await requestFingerprint(input);
-  const hasLocks = typeof navigator !== "undefined" && navigator.locks !== undefined;
-  return withNewThreadRequestLock(() => {
+  return withNewThreadRequestLock((locked) => {
     for (const recordKey of newThreadRequestRecordKeys(draftKey)) {
       const [recordFingerprint, id] = localStorage.getItem(recordKey)?.split(":") ?? [];
       if (recordFingerprint === fingerprint && id) return { id, fingerprint, recordKey };
@@ -378,7 +384,7 @@ export async function newThreadCloudroomRequest(
     const id = crypto.randomUUID();
     const ownKey = `cloudroom-request:${draftKey}`;
     const recordKey =
-      hasLocks && localStorage.getItem(ownKey) === null ? ownKey : `${ownKey}:${id}`;
+      locked && localStorage.getItem(ownKey) === null ? ownKey : `${ownKey}:${id}`;
     localStorage.setItem(recordKey, `${fingerprint}:${id}`);
     return { id, fingerprint, recordKey };
   });
