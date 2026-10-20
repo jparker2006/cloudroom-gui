@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import {
-  resolveProjectAttachmentFile,
-  verifiedProjectUploadPath,
-} from "../projects/attachments.js";
+import { resolveProjectAttachmentFile } from "../projects/attachments.js";
 import { and, asc, desc, eq, inArray, isNull, like } from "drizzle-orm";
 import {
   cloudroomThreads,
@@ -98,6 +95,50 @@ const openCloudChild = (child: { id: string; title: string | null }) =>
 const TEXT = ["native", "lineage", "context"];
 const services = new WeakMap<AppDeps["db"], Teleport>();
 
+export function withoutUnverifiedTeleportAttachments<
+  T extends {
+    attachments: string[];
+    undeliveredAttachments?: string[];
+    attachmentsVerified?: true;
+    manifest?: { files: readonly { kind: string }[] };
+  },
+>(state: T): T {
+  if (state.manifest?.files.some((file) => file.kind === "attachment"))
+    throw new ApiError(
+      409,
+      "teleport_update",
+      "This Teleport started before an update and its attachments cannot be verified. Cancel it and Teleport again.",
+    );
+  const undelivered = new Set([
+    ...(state.undeliveredAttachments ?? []),
+    ...state.attachments.map((path) => basename(path.replaceAll("\\", "/"))),
+  ]);
+  return {
+    ...state,
+    attachments: [],
+    ...(undelivered.size > 0 ? { undeliveredAttachments: [...undelivered] } : {}),
+    attachmentsVerified: true,
+  };
+}
+
+export function requireCapturedAttachmentsVerified(
+  files: readonly { kind: string; path?: string; origin?: string | undefined }[],
+  verified: readonly string[],
+): void {
+  if (
+    files.some(
+      (file) =>
+        file.kind === "attachment" &&
+        (!file.origin || !verified.includes(file.origin)),
+    )
+  )
+    throw new ApiError(
+      409,
+      "teleport_update",
+      "This Teleport captured an attachment that is not a verified upload of this thread's project. Cancel it and Teleport again.",
+    );
+}
+
 export function undeliveredAttachmentsLine(names: readonly string[]): string {
   return names.length === 0
     ? ""
@@ -166,39 +207,6 @@ class Teleport {
       .where(eq(cloudroomCommands.id, state.id))
       .run();
   }
-  private async reverifyAttachments(state: State): Promise<State> {
-    if (state.manifest?.files.some((file) => file.kind === "attachment"))
-      throw new ApiError(
-        409,
-        "teleport_update",
-        "This Teleport started before an update and its attachments cannot be verified. Cancel it and Teleport again.",
-      );
-    const projectIds = state.sessions.flatMap(
-      (source) => getThread(this.deps.db, source.threadId)?.projectId ?? [],
-    );
-    const attachments: string[] = [];
-    const undelivered = new Set(state.undeliveredAttachments ?? []);
-    for (const path of state.attachments) {
-      const verified = await verifiedProjectUploadPath(
-        this.deps.config.dataDir,
-        projectIds,
-        path,
-      );
-      if (verified) attachments.push(verified);
-      else undelivered.add(basename(path.replaceAll("\\", "/")));
-    }
-    const verified: State = {
-      ...state,
-      attachments,
-      ...(undelivered.size > 0
-        ? { undeliveredAttachments: [...undelivered] }
-        : {}),
-      attachmentsVerified: true,
-    };
-    this.save(verified);
-    return verified;
-  }
-
   private load(id: string): State {
     const row = this.deps.db
       .select({ input: cloudroomCommands.input })
@@ -772,7 +780,10 @@ class Teleport {
         "teleport_update",
         "Update the cloud core before using Teleport. The local task is stopped and preserved.",
       );
-    if (!state.attachmentsVerified) state = await this.reverifyAttachments(state);
+    if (!state.attachmentsVerified) {
+      state = withoutUnverifiedTeleportAttachments(state);
+      this.save(state);
+    }
     if (!state.manifest) {
       const rows = state.sessions.flatMap((source) =>
         this.deps.db
@@ -964,6 +975,7 @@ class Teleport {
         throw new Error(
           "Local capture returned no complete conversation. Update the local host before retrying.",
         );
+      requireCapturedAttachmentsVerified(capture.files, state.attachments);
       if (
         capability.teleport_lineage !== true &&
         capture.files.some((file) => file.kind === "lineage")

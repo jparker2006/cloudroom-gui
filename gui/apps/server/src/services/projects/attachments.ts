@@ -202,21 +202,6 @@ async function resolveStoredAttachment(
   return realDir ? containedUploadFile(realDir, candidate) : null;
 }
 
-export async function verifiedProjectUploadPath(
-  dataDir: string,
-  projectIds: readonly string[],
-  absolutePath: string,
-): Promise<string | null> {
-  for (const projectId of new Set(projectIds)) {
-    const realDir = await canonicalProjectAttachmentDir(dataDir, projectId);
-    const stored = realDir
-      ? await containedUploadFile(realDir, absolutePath)
-      : null;
-    if (stored) return stored.resolved;
-  }
-  return null;
-}
-
 export async function validatePromptAttachmentReferences(
   args: ValidatePromptAttachmentReferencesArgs,
 ): Promise<void> {

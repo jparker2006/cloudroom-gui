@@ -9,7 +9,7 @@ import { listQueuedCommands } from "../helpers/commands.js";
 import { cloudroom } from "../../src/services/cloudroom/commands.js";
 import { command, saveTeleportProgress } from "../../src/services/cloudroom/store.js";
 import { localQueueFromCloud } from "../../src/services/cloudroom/teleport-local.js";
-import { collectTeleportAttachments, teleportAttachmentPath, teleports, undeliveredAttachmentsLine } from "../../src/services/cloudroom/teleport.js";
+import { collectTeleportAttachments, requireCapturedAttachmentsVerified, withoutUnverifiedTeleportAttachments, teleportAttachmentPath, teleports, undeliveredAttachmentsLine } from "../../src/services/cloudroom/teleport.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import { seedEnvironment, seedHostSession, seedPrimaryHost, seedProjectWithSource, seedThread, seedThreadRuntimeState } from "../helpers/seed.js";
 import { createThread, getThread, setProjectGitRemoteUrlIfMissing, events, cloudroomThreads, cloudroomCommands } from "@cloudroom/db";
@@ -1308,4 +1308,20 @@ it("teleports only attachments that resolve inside the thread project's uploads"
   } finally {
     await rm(base, { recursive: true, force: true });
   }
+});
+
+it("refuses a Teleport capture whose attachments were not verified, such as a stale host cache", () => {
+  const files = [{ kind: "context", path: "gui-history.json" }, { kind: "attachment", path: "0-shot.png", origin: "/data/attachments/proj_b/shot.png" }];
+  expect(() => requireCapturedAttachmentsVerified(files, ["/data/attachments/proj_b/shot.png"])).not.toThrow();
+  expect(() => requireCapturedAttachmentsVerified(files, [])).toThrow("not a verified upload of this thread's project");
+  expect(() => requireCapturedAttachmentsVerified([...files, { kind: "attachment", path: "1-outside-marker.txt", origin: "/outside-marker.txt" }], ["/data/attachments/proj_b/shot.png"])).toThrow("Cancel it and Teleport again");
+  expect(() => requireCapturedAttachmentsVerified([{ kind: "attachment", path: "2-x.png" }], ["/data/attachments/proj_b/shot.png"])).toThrow();
+});
+
+it("drops attachments from Teleports saved before verification, and refuses ones that already captured them", () => {
+  const legacy = { id: "tp_old", attachments: ["/data/attachments/proj_b/x.png", "/Users/me/.ssh/id_rsa"], undeliveredAttachments: ["gone.png"] };
+  expect(withoutUnverifiedTeleportAttachments(legacy)).toEqual({ id: "tp_old", attachments: [], undeliveredAttachments: ["gone.png", "x.png", "id_rsa"], attachmentsVerified: true });
+  expect(withoutUnverifiedTeleportAttachments({ attachments: [] })).toEqual({ attachments: [], attachmentsVerified: true });
+  expect(() => withoutUnverifiedTeleportAttachments({ ...legacy, manifest: { files: [{ kind: "context" }, { kind: "attachment" }] } })).toThrow("Cancel it and Teleport again");
+  expect(withoutUnverifiedTeleportAttachments({ ...legacy, manifest: { files: [{ kind: "context" }] } }).attachments).toEqual([]);
 });

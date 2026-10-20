@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   copyProjectAttachments,
   readAttachment,
+  resolveProjectAttachmentFile,
   validatePromptAttachmentReferences,
-  verifiedProjectUploadPath,
   withoutUnverifiedAttachments,
 } from "./attachments.js";
 
@@ -175,15 +175,19 @@ describe("project attachments", () => {
     await expect(
       readAttachment(dataDir, "proj_b", "a.png"),
     ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      validatePromptAttachmentReferences({
+        dataDir,
+        projectId: "proj_b",
+        input: [{ type: "localImage", path: "a.png" }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
     expect(
-      await verifiedProjectUploadPath(dataDir, ["proj_b"], join(uploadsA, "a.png")),
+      await resolveProjectAttachmentFile(dataDir, "proj_b", "a.png"),
     ).toBeNull();
     expect(
-      await verifiedProjectUploadPath(dataDir, ["proj_b", "proj_a"], join(uploadsA, "a.png")),
+      await resolveProjectAttachmentFile(dataDir, "proj_a", "a.png"),
     ).toBe(join(uploadsA, "a.png"));
-    expect(
-      await verifiedProjectUploadPath(dataDir, ["../attachments/proj_a"], join(uploadsA, "a.png")),
-    ).toBeNull();
   });
 
   it("copies only to plain files inside the real target uploads folder", async () => {
