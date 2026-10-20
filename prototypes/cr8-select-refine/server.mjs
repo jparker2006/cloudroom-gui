@@ -191,6 +191,7 @@ const roomServer = createServer(async (req, res) => {
     return json(res, 200, { delivery: "sent" });
   }
   if (url.pathname === "/" || url.pathname === "/index.html") return serveFile(res, roomDir, "index.html");
+  if (url.pathname === "/element-context.js") return serveFile(res, join(root, "shared"), "element-context.js");
   return serveFile(res, roomDir, url.pathname);
 });
 

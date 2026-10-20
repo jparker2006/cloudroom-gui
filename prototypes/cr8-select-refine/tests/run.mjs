@@ -269,8 +269,26 @@ async function suite(engineName, browser, device, touch) {
     const state = await page.evaluate(() => ({ review: !!document.querySelector(".review") }));
     check("forged or foreign messages never create a selection", !state.review, state);
 
+    await inner().evaluate(() => {
+      const script = window.parent.document.createElement("script");
+      script.src = "/forge.js";
+      window.parent.document.body.append(script);
+    });
+    await page.waitForTimeout(300);
+    if ((await page.getAttribute("#select-toggle", "aria-pressed")) === "true") await page.click("#select-toggle");
     await page.click("#select-toggle");
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(500);
+    const spoof = await page.evaluate(() => ({
+      review: !!document.querySelector(".review"),
+      injected: !!document.querySelector(".review img") || window.__pwned === 1,
+      chips: [...document.querySelectorAll(".chips li")].map((li) => li.textContent).join(" | "),
+      caption: document.querySelector(".crop-caption")?.textContent ?? "",
+      sent: window.__cr8.sends,
+    }));
+    check("page-forged result: no HTML/script injection, secrets re-redacted, bad image and path dropped, nothing sent", !spoof.injected && !spoof.chips.includes("sk-live") && !spoof.chips.includes("passwd") && spoof.review && /invalid/.test(spoof.caption) && spoof.sent === 0, spoof);
+    await page.keyboard.press("Escape");
+    await page.click("#reload");
+    await page.waitForFunction(() => !document.getElementById("select-toggle").disabled && window.__cr8.state().generation >= 1);
     await select(page, inner, "#start-trial", touch);
     await page.click("#reload");
     await page.waitForTimeout(300);

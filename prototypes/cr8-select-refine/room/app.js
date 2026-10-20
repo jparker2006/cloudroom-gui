@@ -249,9 +249,68 @@ window.addEventListener("message", async (event) => {
       return;
     }
     if (selection && data.seq < selection.seq) return;
-    await showReview({ ...selecting, seq: data.seq, element: data.element, crop: data.crop });
+    const safe = sanitizeResult(data);
+    if (!safe) {
+      debug.rejected.push({ nonce: data.nonce, invalid: true });
+      return;
+    }
+    await showReview({ ...selecting, seq: data.seq, ...safe });
   }
 });
+
+const MAX_CROP_DATA_URL = 4 * 1024 * 1024;
+const { clean } = globalThis.__cr8ElementContext;
+
+function num(value, min = -100000, max = 100000) {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : null;
+}
+
+function rect(value) {
+  const r = { x: num(value?.x), y: num(value?.y), width: num(value?.width, 0), height: num(value?.height, 0) };
+  return Object.values(r).every((v) => v !== null) ? r : null;
+}
+
+function str(value, max) {
+  return typeof value === "string" ? clean(value, max) : "";
+}
+
+function sanitizeResult(data) {
+  const e = data.element;
+  if (!e || typeof e !== "object") return null;
+  const box = rect(e.rect);
+  const viewport = { width: num(e.viewport?.width, 1, 20000), height: num(e.viewport?.height, 1, 20000) };
+  if (!box || viewport.width === null || viewport.height === null) return null;
+  const source = e.sourceCandidate && typeof e.sourceCandidate.file === "string" && /^[\w./-]{1,200}$/.test(e.sourceCandidate.file) && !e.sourceCandidate.file.includes("..")
+    ? { file: e.sourceCandidate.file, line: num(e.sourceCandidate.line, 1, 1000000) }
+    : null;
+  const style = {};
+  for (const key of ["fontSize", "fontWeight", "color", "backgroundColor", "padding", "borderRadius"]) style[key] = str(e.style?.[key], 60);
+  const element = {
+    tag: /^[a-z][a-z0-9-]{0,40}$/.test(e.tag) ? e.tag : "element",
+    role: typeof e.role === "string" && /^[a-z-]{1,30}$/.test(e.role) ? e.role : null,
+    name: str(e.name, 120),
+    text: str(e.text, 200),
+    selector: str(e.selector, 300),
+    path: typeof e.path === "string" && e.path.startsWith("/") ? str(e.path, 200) : "/",
+    rect: box,
+    viewport,
+    style,
+    sourceCandidate: source,
+  };
+  const c = data.crop;
+  let crop;
+  if (c?.kind === "rendered" || c?.kind === "native") {
+    const target = rect(c.target);
+    const scale = num(c.scale, 0.5, 4);
+    const ok = typeof c.dataUrl === "string" && c.dataUrl.length < MAX_CROP_DATA_URL && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(c.dataUrl);
+    crop = ok && target && scale !== null
+      ? { kind: c.kind, dataUrl: c.dataUrl, target, scale, masks: Array.isArray(c.masks) ? c.masks.slice(0, 50).map(rect).filter(Boolean) : [] }
+      : { kind: "unavailable", reason: "The image from the preview was invalid." };
+  } else {
+    crop = { kind: "unavailable", reason: str(c?.reason, 160) || "No image was available." };
+  }
+  return { element, crop };
+}
 
 async function verifySource(projectId, candidate) {
   if (!candidate) return null;
