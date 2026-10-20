@@ -1,6 +1,7 @@
 import type {
   QueuedMessagePayload,
   QueuedMessageWaitingOn,
+  Thread,
   ThreadQueuedMessage,
 } from "@cloudroom/domain";
 import type { IconName } from "@cloudroom/shared-ui/icon";
@@ -47,8 +48,10 @@ export function isQueuedMessageSendNowAllowed(
 
 export function isPendingSteerQueuedMessage(
   message: Pick<ThreadQueuedMessage, "failureReason" | "initiator" | "waitingOn">,
+  threadStatus: Thread["status"] | undefined,
 ): boolean {
   return (
+    threadStatus === "active" &&
     message.initiator === "user" &&
     message.failureReason === null &&
     message.waitingOn?.kind === "turn-starting"

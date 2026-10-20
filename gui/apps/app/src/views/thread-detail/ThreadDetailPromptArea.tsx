@@ -504,8 +504,10 @@ export function ThreadDetailPromptArea({
   const queuedMessages = queuedMessagesQuery.data ?? EMPTY_QUEUED_MESSAGES;
   const stripQueuedMessages = useMemo(
     () =>
-      queuedMessages.filter((message) => !isPendingSteerQueuedMessage(message)),
-    [queuedMessages],
+      queuedMessages.filter(
+        (message) => !isPendingSteerQueuedMessage(message, thread.status),
+      ),
+    [queuedMessages, thread.status],
   );
   const queuedMessagesPending =
     queuedMessagesQuery.data === undefined && queuedMessageCount > 0;

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import type { ThreadQueuedMessage } from "@cloudroom/domain";
+import type { Thread, ThreadQueuedMessage } from "@cloudroom/domain";
 import type {
   ThreadQueuedMessageListResponse,
   ThreadTimelineResponse,
@@ -94,13 +94,39 @@ function cachedQueue(
   return queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1"));
 }
 
+function cachedThreadStatus(
+  queryClient: ReturnType<typeof makeQueryClient>,
+): Thread["status"] | undefined {
+  return queryClient.getQueryData<{ status: Thread["status"] }>(
+    threadQueryKey("thread-1"),
+  )?.status;
+}
+
+function setThreadStatus(
+  queryClient: ReturnType<typeof makeQueryClient>,
+  status: Thread["status"],
+) {
+  queryClient.setQueryData(threadQueryKey("thread-1"), {
+    id: "thread-1",
+    status,
+    updatedAt: 2,
+    runtime: { displayStatus: status, hostReconnectGraceExpiresAt: null },
+  });
+}
+
 function renderHandoff(queryClient: ReturnType<typeof makeQueryClient>) {
+  const props = () => ({
+    queue: cachedQueue(queryClient),
+    status: cachedThreadStatus(queryClient),
+    threadId: "thread-1",
+  });
   const hook = renderHook(
-    ({ queue, threadId }) => usePendingSteerHandoff(threadId, queue),
-    { initialProps: { queue: cachedQueue(queryClient), threadId: "thread-1" } },
+    ({ queue, status, threadId }) =>
+      usePendingSteerHandoff(threadId, status, queue),
+    { initialProps: props() },
   );
   const view = () => {
-    hook.rerender({ queue: cachedQueue(queryClient), threadId: "thread-1" });
+    hook.rerender(props());
     const timeline = appendPendingSteerRows(
       queryClient.getQueryData<ThreadTimelineResponse>(
         threadTimelineQueryKey("thread-1"),
@@ -112,7 +138,10 @@ function renderHandoff(queryClient: ReturnType<typeof makeQueryClient>) {
         : [],
     );
     const strip = (cachedQueue(queryClient) ?? [])
-      .filter((message) => !isPendingSteerQueuedMessage(message))
+      .filter(
+        (message) =>
+          !isPendingSteerQueuedMessage(message, cachedThreadStatus(queryClient)),
+      )
       .map((message) => message.id);
     return { strip, timeline };
   };
@@ -321,39 +350,109 @@ describe("steer queued until the turn starts", () => {
     ]);
   });
 
-  it("lets a departed steer go after the handoff window when no timeline row arrives", () => {
+  it("lets each departed steer go five seconds after it left when no timeline row arrives", () => {
     vi.useFakeTimers();
     const queryClient = makeQueryClient();
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
-      turnStartingSteer(),
+      turnStartingSteer({ id: "qmsg-a", createdAt: 10 }),
+      turnStartingSteer({
+        id: "qmsg-b",
+        createdAt: 11,
+        content: [{ type: "text", text: "second steer", mentions: [] }],
+      }),
     ]);
     const { view } = renderHandoff(queryClient);
 
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      turnStartingSteer({
+        id: "qmsg-b",
+        createdAt: 11,
+        content: [{ type: "text", text: "second steer", mentions: [] }],
+      }),
+    ]);
+    expect(view().timeline).toHaveLength(3);
+    act(() => vi.advanceTimersByTime(1_500));
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
-    expect(view()).toEqual(PENDING_VIEW);
+    expect(view().timeline).toHaveLength(3);
 
-    act(() => vi.advanceTimersByTime(4_999));
-    expect(view()).toEqual(PENDING_VIEW);
+    act(() => vi.advanceTimersByTime(3_499));
+    expect(view().timeline).toHaveLength(3);
     act(() => vi.advanceTimersByTime(1));
+    expect(view().timeline).toEqual(["first|accepted", "second steer|pending"]);
+    act(() => vi.advanceTimersByTime(1_500));
     expect(view()).toEqual({ strip: [], timeline: ["first|accepted"] });
   });
 
-  it("does not carry a departing steer into another thread", () => {
+  it("keeps an unfinished handoff across a switch to another thread and back", () => {
     const queryClient = makeQueryClient();
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
       turnStartingSteer(),
     ]);
     const { hook } = renderHandoff(queryClient);
-    expect(hook.result.current.map((message) => message.id)).toEqual([
-      "qmsg-steer",
-    ]);
+    const ids = () => hook.result.current.map((message) => message.id);
 
-    hook.rerender({ queue: [], threadId: "thread-1" });
-    expect(hook.result.current.map((message) => message.id)).toEqual([
-      "qmsg-steer",
+    hook.rerender({ queue: [], status: "active", threadId: "thread-1" });
+    expect(ids()).toEqual(["qmsg-steer"]);
+    hook.rerender({ queue: [], status: "active", threadId: "thread-2" });
+    expect(ids()).toEqual([]);
+    hook.rerender({ queue: [], status: "active", threadId: "thread-1" });
+    expect(ids()).toEqual(["qmsg-steer"]);
+  });
+
+  it("returns a steer to the strip when the thread stops before its turn starts", () => {
+    const queryClient = makeQueryClient();
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      turnStartingSteer(),
     ]);
-    hook.rerender({ queue: [], threadId: "thread-2" });
-    expect(hook.result.current).toEqual([]);
+    const { view } = renderHandoff(queryClient);
+    expect(view()).toEqual(PENDING_VIEW);
+
+    setThreadStatus(queryClient, "idle");
+    expect(view()).toEqual({ strip: ["qmsg-steer"], timeline: ["first|accepted"] });
+  });
+
+  it("keeps attachment-only steers apart from each other", () => {
+    const fileSteer = (id: string, path: string, createdAt: number) =>
+      turnStartingSteer({
+        id,
+        createdAt,
+        content: [{ type: "localFile", path }],
+      });
+    const queryClient = makeQueryClient();
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      fileSteer("qmsg-a", "/tmp/a.txt", 10),
+      fileSteer("qmsg-b", "/tmp/b.txt", 11),
+    ]);
+    const { hook } = renderHandoff(queryClient);
+    hook.rerender({
+      queue: cachedQueue(queryClient),
+      status: "active",
+      threadId: "thread-1",
+    });
+    const rows = appendPendingSteerRows(
+      [
+        userRow("first", "turn-1", 1),
+        {
+          ...userRow("", "steer-b", 12),
+          attachments: {
+            webImages: 0,
+            localImages: 0,
+            localFiles: 1,
+            imageUrls: [],
+            localImagePaths: [],
+            localFilePaths: ["/tmp/b.txt"],
+          },
+        } as TimelineRow,
+      ],
+      hook.result.current,
+    );
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "user"
+          ? [row.attachments?.localFilePaths ?? []]
+          : [],
+      ),
+    ).toEqual([[], ["/tmp/b.txt"], ["/tmp/a.txt"]]);
   });
 
   it("clears only the submitted draft and never restores over newer typing", () => {

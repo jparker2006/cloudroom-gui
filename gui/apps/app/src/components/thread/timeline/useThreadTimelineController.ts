@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useQueryClient,
   type QueryObserverResult,
 } from "@tanstack/react-query";
-import type { ThreadQueuedMessage } from "@cloudroom/domain";
+import type { Thread, ThreadQueuedMessage } from "@cloudroom/domain";
 import type {
   ThreadQueuedMessageListResponse,
   ThreadTimelineResponse,
+  TimelineConversationAttachments,
   TimelineRow,
 } from "@cloudroom/server-contract";
 import {
@@ -24,6 +25,7 @@ import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { buildPendingSteerTimelineRow } from "@/hooks/cache-owners/thread-runtime-cache-owner";
 import {
+  useThread,
   useThreadQueuedMessages,
   useThreadTimeline,
 } from "@/hooks/queries/thread-queries";
@@ -119,25 +121,54 @@ const PENDING_STEER_HANDOFF_MS = 5_000;
 const EMPTY_TIMELINE_ROWS: TimelineRow[] = [];
 
 interface PendingSteerState {
+  departed: readonly ThreadQueuedMessage[];
   queuedMessages: ThreadQueuedMessageListResponse | undefined;
-  shown: readonly ThreadQueuedMessage[];
   threadId: string;
+  threadStatus: Thread["status"] | undefined;
+  tracked: readonly ThreadQueuedMessage[];
 }
 
-function nextShownPendingSteers(
-  previous: readonly ThreadQueuedMessage[],
-  queuedMessages: ThreadQueuedMessageListResponse | undefined,
-): readonly ThreadQueuedMessage[] {
-  if (queuedMessages === undefined) return previous;
-  const queuedIds = new Set(queuedMessages.map((message) => message.id));
-  return [
-    ...previous.filter((message) => !queuedIds.has(message.id)),
-    ...queuedMessages.filter(isPendingSteerQueuedMessage),
-  ].sort((left, right) => left.createdAt - right.createdAt);
+function nextPendingSteerState(
+  previous: PendingSteerState,
+  next: Omit<PendingSteerState, "departed" | "tracked">,
+): PendingSteerState {
+  if (next.queuedMessages === undefined) {
+    return {
+      ...next,
+      departed: previous.departed,
+      tracked: previous.threadId === next.threadId ? previous.tracked : [],
+    };
+  }
+  const queuedIds = new Set(next.queuedMessages.map((message) => message.id));
+  const newlyDeparted =
+    previous.threadId === next.threadId
+      ? previous.tracked.filter((message) => !queuedIds.has(message.id))
+      : [];
+  return {
+    ...next,
+    departed: [...previous.departed, ...newlyDeparted].filter(
+      (message) =>
+        message.threadId !== next.threadId || !queuedIds.has(message.id),
+    ),
+    tracked: next.queuedMessages.filter((message) =>
+      isPendingSteerQueuedMessage(message, next.threadStatus),
+    ),
+  };
 }
 
-function steerMatchText(text: string): string {
-  return text.replace(/\s+/g, "");
+function steerMatchKey(
+  text: string,
+  attachments: TimelineConversationAttachments | null,
+): string {
+  return JSON.stringify([
+    text.replace(/\s+/g, ""),
+    attachments?.webImages ?? 0,
+    attachments?.localImages ?? 0,
+    attachments?.localFiles ?? 0,
+    attachments?.imageUrls ?? [],
+    attachments?.localImagePaths ?? [],
+    attachments?.localFilePaths ?? [],
+  ]);
 }
 
 export function appendPendingSteerRows(
@@ -149,13 +180,13 @@ export function appendPendingSteerRows(
   const appendedRows: TimelineRow[] = [];
   for (const pendingSteer of pendingSteers) {
     const pendingRow = buildPendingSteerTimelineRow(pendingSteer);
-    const pendingText = steerMatchText(pendingRow.text);
+    const pendingKey = steerMatchKey(pendingRow.text, pendingRow.attachments);
     const matchingRow = rows.find(
       (row) =>
         !claimedRowIds.has(row.id) &&
         row.kind === "conversation" &&
         row.role === "user" &&
-        steerMatchText(row.text) === pendingText &&
+        steerMatchKey(row.text, row.attachments) === pendingKey &&
         (isOptimisticTimelineRowId(row.id) ||
           row.createdAt >= pendingSteer.createdAt),
     );
@@ -170,44 +201,67 @@ export function appendPendingSteerRows(
 
 export function usePendingSteerHandoff(
   threadId: string,
+  threadStatus: Thread["status"] | undefined,
   queuedMessages: ThreadQueuedMessageListResponse | undefined,
 ): readonly ThreadQueuedMessage[] {
-  const [state, setState] = useState<PendingSteerState>(() => ({
-    queuedMessages,
-    shown: nextShownPendingSteers([], queuedMessages),
-    threadId,
-  }));
-  let shown = state.shown;
-  if (state.threadId !== threadId || state.queuedMessages !== queuedMessages) {
-    shown = nextShownPendingSteers(
-      state.threadId === threadId ? state.shown : [],
+  const [state, setState] = useState<PendingSteerState>(() =>
+    nextPendingSteerState(
+      { departed: [], queuedMessages, threadId, threadStatus, tracked: [] },
+      { queuedMessages, threadId, threadStatus },
+    ),
+  );
+  let current = state;
+  if (
+    state.threadId !== threadId ||
+    state.threadStatus !== threadStatus ||
+    state.queuedMessages !== queuedMessages
+  ) {
+    current = nextPendingSteerState(state, {
       queuedMessages,
-    );
-    setState({ queuedMessages, shown, threadId });
+      threadId,
+      threadStatus,
+    });
+    setState(current);
   }
-  const departedSteerIds =
-    queuedMessages === undefined
-      ? ""
-      : shown
-          .filter(
-            (message) =>
-              !queuedMessages.some((queued) => queued.id === message.id),
-          )
-          .map((message) => message.id)
-          .join(",");
+  const departedIds = current.departed.map((message) => message.id).join(",");
+  const departureTimers = useRef(new Map<string, number>());
   useEffect(() => {
-    if (departedSteerIds === "") return;
-    const timer = setTimeout(() => {
-      setState((current) => ({
-        ...current,
-        shown: current.shown.filter((message) =>
-          current.queuedMessages?.some((queued) => queued.id === message.id),
-        ),
-      }));
-    }, PENDING_STEER_HANDOFF_MS);
-    return () => clearTimeout(timer);
-  }, [departedSteerIds]);
-  return shown;
+    const timers = departureTimers.current;
+    const ids = new Set(departedIds === "" ? [] : departedIds.split(","));
+    for (const [id, timer] of timers) {
+      if (ids.has(id)) continue;
+      clearTimeout(timer);
+      timers.delete(id);
+    }
+    for (const id of ids) {
+      if (timers.has(id)) continue;
+      timers.set(
+        id,
+        window.setTimeout(() => {
+          timers.delete(id);
+          setState((latest) => ({
+            ...latest,
+            departed: latest.departed.filter((message) => message.id !== id),
+          }));
+        }, PENDING_STEER_HANDOFF_MS),
+      );
+    }
+  }, [departedIds]);
+  useEffect(() => {
+    const timers = departureTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+  return useMemo(
+    () =>
+      [
+        ...current.tracked,
+        ...current.departed.filter((message) => message.threadId === threadId),
+      ].sort((left, right) => left.createdAt - right.createdAt),
+    [current.departed, current.tracked, threadId],
+  );
 }
 
 export function useThreadTimelineController({
@@ -357,7 +411,12 @@ export function useThreadTimelineController({
   const { data: queuedMessages } = useThreadQueuedMessages(threadId, {
     enabled,
   });
-  const pendingSteers = usePendingSteerHandoff(threadId, queuedMessages);
+  const { data: thread } = useThread(threadId, { enabled });
+  const pendingSteers = usePendingSteerHandoff(
+    threadId,
+    thread?.status,
+    queuedMessages,
+  );
   const timelineRows = useMemo(
     () =>
       latestTimeline === undefined

@@ -266,8 +266,11 @@ function EmbeddedThreadChatWithComposer({
   const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId);
   const stripQueuedMessages = useMemo(
     () =>
-      queuedMessages.filter((message) => !isPendingSteerQueuedMessage(message)),
-    [queuedMessages],
+      queuedMessages.filter(
+        (message) =>
+          !isPendingSteerQueuedMessage(message, threadQuery.data?.status),
+      ),
+    [queuedMessages, threadQuery.data?.status],
   );
 
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
