@@ -641,3 +641,46 @@ describe("clearing a new-thread draft after a send", () => {
   });
 });
 
+
+describe("the new-thread save check", () => {
+  function renderAlpha() {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    return result;
+  }
+
+  it.each([
+    ["moved", JSON.stringify({ rev: "1111111111111111", moved: true }), "moved-elsewhere"],
+    ["discarded", JSON.stringify({ rev: "2222222222222222", discarded: true }), "moved-elsewhere"],
+    ["unreadable", "{not json", "unreadable"],
+    [
+      "unreadable item",
+      JSON.stringify({ text: "x", attachments: [{ bogus: true }], rev: "3333333333333333" }),
+      "unreadable",
+    ],
+  ])("never writes over a %s record and keeps this window's text", (_, stored, notice) => {
+    const result = renderAlpha();
+    window.localStorage.setItem(ALPHA_KEY, stored);
+
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    expect(window.localStorage.getItem(ALPHA_KEY)).toBe(stored);
+    expect(result.current.text).toBe("mine, edited");
+    expect(result.current.notice).toBe(notice);
+  });
+
+  it("writes over a sent marker and says the draft was sent from another window", () => {
+    const result = renderAlpha();
+    window.localStorage.setItem(
+      ALPHA_KEY,
+      JSON.stringify({ rev: "4444444444444444", sent: true }),
+    );
+
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    expect(storedRecord(ALPHA_KEY).text).toBe("mine, edited");
+    expect(result.current.notice).toBe("sent-elsewhere");
+  });
+});

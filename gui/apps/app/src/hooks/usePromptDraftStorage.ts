@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@cloudroom/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@cloudroom/client-core";
+import { readNewThreadRecord } from "./new-thread-draft-record";
 import type {
   ThreadTimelineAddToChatHandler,
   ThreadTimelineAddToChatSource,
@@ -44,6 +45,20 @@ const promptDraftPersistTimers = new Map<string, number>();
 let promptDraftStorageObserverInitialized = false;
 const newThreadDraftRevs = new Map<string, string>();
 const unsavedPromptDraftKeys = new Set<string>();
+export type NewThreadDraftNotice = "sent-elsewhere" | "moved-elsewhere" | "unreadable";
+const newThreadDraftNotices = new Map<string, NewThreadDraftNotice>();
+
+function holdInMemory(
+  storageKey: string,
+  cachedEntry: PromptDraftCacheEntry,
+  rawValue: string,
+  notice: NewThreadDraftNotice,
+): false {
+  unsavedPromptDraftKeys.add(storageKey);
+  newThreadDraftNotices.set(storageKey, notice);
+  cachedEntry.rawValue = rawValue;
+  return false;
+}
 const NEW_THREAD_DRAFT_KEY_PREFIX = `${PROMPT_DRAFT_STORAGE_PREFIX}-new-thread-`;
 
 function isNewThreadProjectDraftKey(storageKey: string): boolean {
@@ -181,12 +196,26 @@ function reconcileWithStoredNewThreadDraft(
   cachedEntry: PromptDraftCacheEntry,
 ): boolean {
   const rawValue = readStoredPromptDraftValue(storageKey);
-  const storedRev = readStoredRev(rawValue);
-  if (rawValue === null || !storedRev || storedRev === newThreadDraftRevs.get(storageKey)) {
+  if (rawValue === null) return true;
+  const record = readNewThreadRecord(rawValue);
+  if (record.kind === "unreadable") {
+    return holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
+  }
+  if (record.kind === "moved" || record.kind === "discarded") {
+    return holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
+  }
+  if (record.kind === "missing") return true;
+  const storedRev = record.rev;
+  if (!storedRev || storedRev === newThreadDraftRevs.get(storageKey)) {
+    return true;
+  }
+  if (record.kind === "sent") {
+    newThreadDraftNotices.set(storageKey, "sent-elsewhere");
+    newThreadDraftRevs.set(storageKey, storedRev);
     return true;
   }
 
-  const storedDraft = parsePromptDraftStorage(rawValue);
+  const storedDraft = record.draft;
   if (arePromptDraftStatesEqual(storedDraft, cachedEntry.draft)) {
     newThreadDraftRevs.set(storageKey, storedRev);
     cachedEntry.rawValue = rawValue;
@@ -552,6 +581,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       getCurrent,
       subscribe,
       isUnsaved: unsavedPromptDraftKeys.has(storageKey),
+      notice: newThreadDraftNotices.get(storageKey) ?? null,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
