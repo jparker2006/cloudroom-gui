@@ -2115,13 +2115,14 @@ function usePullAssociation(threadId: string) {
   const saveSequence = useRef(0);
 
   const accept = useCallback(
-    (current: number, result: PullAssociation) => {
+    (current: number, result: PullAssociation): boolean => {
       if (current !== generation.current || result.threadId !== threadId) {
-        return;
+        return false;
       }
       setAssociation(result);
       setError(null);
       setLoading(false);
+      return true;
     },
     [threadId],
   );
@@ -2141,7 +2142,7 @@ function usePullAssociation(threadId: string) {
 
   const choose = useCallback(
     (pull: PullRef | null): Promise<boolean> => {
-      const current = ++generation.current;
+      generation.current += 1;
       const save = ++saveSequence.current;
       setSaving(true);
       setSaveError(null);
@@ -2149,8 +2150,8 @@ function usePullAssociation(threadId: string) {
         .call("setPullForThread", { threadId, pull })
         .then(
           (result) => {
-            accept(current, result);
-            return save === saveSequence.current;
+            if (save !== saveSequence.current) return false;
+            return accept(++generation.current, result);
           },
           (err: unknown) => {
             if (save === saveSequence.current) {

@@ -991,3 +991,144 @@ describe("session PR panel accessibility corrections", () => {
     slot.lifecycle.unmount();
   });
 });
+
+describe("session PR panel save and refresh overlap", () => {
+  const trackedPull43 = {
+    repo: "acme/widgets",
+    number: 43,
+    kind: "pr",
+    title: "Pull 43",
+    state: "OPEN",
+    author: "octocat",
+    labels: [],
+    assignees: [],
+    url: "https://github.com/acme/widgets/pull/43",
+    body: "",
+    updatedAt: "2026-10-01T00:00:00.000Z",
+  };
+
+  async function saveWhileRefreshing(refreshDuringSave: boolean) {
+    let resolveSave: (value: unknown) => void = () => {};
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: (input: never) => {
+        const { number } = input as { number: number };
+        return { pull: pull(number), fetchedAt: new Date().toISOString() };
+      },
+      listItems: () => ({ items: [trackedPull43] }),
+      setPullForThread: () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Change…" }).click(),
+    );
+    await settle();
+    await act(async () => slot.getByText("acme/widgets#43").click());
+    await settle();
+    if (refreshDuringSave) {
+      await act(async () =>
+        slot.getByRole("button", { name: "Refresh" }).click(),
+      );
+      await settle();
+    }
+    resolveSave(
+      association(
+        "thr-1",
+        { kind: "selected", repo: "acme/widgets", number: 43 },
+        {
+          selection: {
+            repo: "acme/widgets",
+            number: 43,
+            id: "PR_43",
+            selectedAt: "2026-10-01T00:00:00.000Z",
+          },
+        },
+      ),
+    );
+    await settle();
+    await settle();
+    return slot;
+  }
+
+  it("shows the saved PR when no refresh overlaps the save", async () => {
+    const slot = await saveWhileRefreshing(false);
+
+    expect(slot.getByRole("status").textContent).toBe(
+      "Saved acme/widgets#43 for this session.",
+    );
+    expect(slot.container.textContent).toContain("Pull 43");
+    expect(slot.container.textContent).not.toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps a successful save when a refresh overlaps it", async () => {
+    const slot = await saveWhileRefreshing(true);
+
+    expect(slot.getByRole("status").textContent).toBe(
+      "Saved acme/widgets#43 for this session.",
+    );
+    expect(slot.container.textContent).toContain("Pull 43");
+    expect(slot.container.textContent).not.toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+
+  it("ignores a refresh that started before the save finished but answers after it", async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    let resolveRead: (value: unknown) => void = () => {};
+    let reads = 0;
+    const slot = render({
+      pullForThread: () => {
+        reads += 1;
+        if (reads === 1) return candidate(42, ["workspace"]);
+        return new Promise((resolve) => {
+          resolveRead = resolve;
+        });
+      },
+      getPull: (input: never) => {
+        const { number } = input as { number: number };
+        return { pull: pull(number), fetchedAt: new Date().toISOString() };
+      },
+      listItems: () => ({ items: [trackedPull43] }),
+      setPullForThread: () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Change…" }).click(),
+    );
+    await settle();
+    await act(async () => slot.getByText("acme/widgets#43").click());
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+    resolveSave(
+      association(
+        "thr-1",
+        { kind: "selected", repo: "acme/widgets", number: 43 },
+        {
+          selection: {
+            repo: "acme/widgets",
+            number: 43,
+            id: "PR_43",
+            selectedAt: "2026-10-01T00:00:00.000Z",
+          },
+        },
+      ),
+    );
+    await settle();
+    resolveRead(candidate(42, ["workspace"]));
+    await settle();
+    await settle();
+
+    expect(slot.container.textContent).toContain("Pull 43");
+    expect(slot.container.textContent).not.toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+});
