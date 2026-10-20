@@ -11,6 +11,14 @@ Failed refreshes retain the last available measurements with a retry notice.
 Account authentication failures and plans without reported limits have separate
 states; unavailable usage is never represented as zero consumption.
 
+Each quota window shows remaining allowance derived only from the reported used
+percentage; over-limit windows show zero remaining and stay marked over limit.
+Each account shows its last successful measurement time (`observedAt`), which
+cached reads and failed refreshes never advance. When a window's reset passed
+after that measurement, remaining allowance is unavailable until a successful
+refresh. The read-only detail content (`UsageDetails`) is shared by the settings
+page and can be reused by other surfaces.
+
 Settings → Agents → Usage contains the usage page, using its
 full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Both surfaces share the plugin’s aggregation and cache. Neither display is required for source
 plugins to publish their usage.
