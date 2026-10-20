@@ -549,9 +549,9 @@ describe("recorded compactions", () => {
     ]);
   });
 
-  it("does not tie a notice after an unrelated turn error to that error", () => {
+  it("explains a refused notice after an error or interruption without tying it to the error", () => {
     expect(RECORDED_COMPACTION_GAP_TEXT["conflicting-notices"]).toBe(
-      "A compaction notice arrived after an error in the same turn, so it isn't counted.",
+      "A compaction notice arrived after an error or interruption in the same turn, so it isn't counted.",
     );
   });
 

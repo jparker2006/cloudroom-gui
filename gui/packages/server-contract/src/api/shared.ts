@@ -62,7 +62,7 @@ export const RECORDED_COMPACTION_GAP_TEXT: Record<
     "Some compactions were matched to their notices by turn, not by ID, so they may be off.",
   "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
   "conflicting-notices":
-    "A compaction notice arrived after an error in the same turn, so it isn't counted.",
+    "A compaction notice arrived after an error or interruption in the same turn, so it isn't counted.",
   forked: "Records copied from the source thread may be incomplete.",
   "imported-history": "Imported history may be missing compaction records.",
   "provider-unverified":
