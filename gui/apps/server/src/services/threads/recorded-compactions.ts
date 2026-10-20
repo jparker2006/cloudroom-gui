@@ -19,12 +19,6 @@ import type {
 
 export const RECORDED_COMPACTIONS_LIST_LIMIT = 50;
 
-const PROVIDERS_REPORTING_LOCAL_COMPACTIONS = new Set([
-  "claude-code",
-  "codex",
-  "pi",
-]);
-
 interface CompactionState {
   id: string;
   turnId: string | null;
@@ -45,15 +39,14 @@ function parseData(row: StoredEventRow): Record<string, unknown> {
   }
 }
 
-function threadGaps(thread: Thread): RecordedCompactionGap[] {
+function threadGaps(
+  thread: Thread,
+  providerReportsCompactions: boolean,
+): RecordedCompactionGap[] {
   const gaps: RecordedCompactionGap[] = [];
   if (thread.originKind === "fork") gaps.push("forked");
-  if (thread.executionTarget === "cloud" && thread.providerId !== "codex") {
-    gaps.push("cloud-auto-not-reported");
-  }
-  if (!PROVIDERS_REPORTING_LOCAL_COMPACTIONS.has(thread.providerId)) {
-    gaps.push("provider-unverified");
-  }
+  if (thread.executionTarget === "cloud") gaps.push("cloud-auto-not-reported");
+  if (!providerReportsCompactions) gaps.push("provider-unverified");
   return gaps;
 }
 
@@ -86,12 +79,15 @@ export function buildRecordedCompactions(
   db: DbConnection,
   thread: Thread,
   sequenceEnd: number,
+  providerReportsCompactions: boolean,
 ): RecordedCompactionsList {
   const rows = listRecordedCompactionEventRows(db, {
     threadId: thread.id,
     sequenceEnd,
   });
-  const gaps = new Set<RecordedCompactionGap>(threadGaps(thread));
+  const gaps = new Set<RecordedCompactionGap>(
+    threadGaps(thread, providerReportsCompactions),
+  );
   const compactions: CompactionState[] = [];
   const byItemId = new Map<string, CompactionState>();
   const clears: Array<{ id: string; at: number; sequence: number }> = [];

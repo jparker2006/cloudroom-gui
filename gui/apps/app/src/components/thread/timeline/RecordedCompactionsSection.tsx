@@ -9,10 +9,10 @@ import { useThreadRecordedCompactions } from "@/hooks/queries/thread-queries";
 
 const GAP_TEXT: Record<RecordedCompactionGap, string> = {
   "ambiguous-legacy": "Some older records couldn't be told apart.",
-  "cloud-auto-not-reported": "Automatic compactions in Cloud aren't reported.",
+  "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
   forked: "Records copied from the source thread may be incomplete.",
   "imported-history": "Imported history has no compaction records.",
-  "provider-unverified": "This agent's compaction reporting isn't verified.",
+  "provider-unverified": "This agent may not report compactions.",
   rewound: "Edited or rewound messages removed some history.",
   teleported: "Part of this thread ran on another machine.",
   "unhandled-compaction-event": "Some compaction events couldn't be placed.",

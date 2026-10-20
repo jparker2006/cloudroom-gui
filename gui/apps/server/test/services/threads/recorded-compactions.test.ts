@@ -129,11 +129,16 @@ function operation(
   });
 }
 
-function build(db: DbConnection, thread: Thread) {
+function build(
+  db: DbConnection,
+  thread: Thread,
+  providerReportsCompactions = true,
+) {
   return buildRecordedCompactions(
     db,
     thread,
     sequenceByThread.get(thread.id) ?? 0,
+    providerReportsCompactions,
   );
 }
 
@@ -309,8 +314,8 @@ describe("recorded compactions", () => {
       ],
     });
 
-    const unverified = setup({ providerId: "acp-cursor" });
-    expect(build(unverified.db, unverified.thread).gaps).toEqual([
+    const unverified = setup();
+    expect(build(unverified.db, unverified.thread, false).gaps).toEqual([
       "provider-unverified",
     ]);
   });
@@ -385,6 +390,7 @@ describe("recorded compactions", () => {
       maxInlineOutputChars: null,
       maxSeq: sequenceByThread.get(thread.id) ?? 0,
       page: { kind: "latest", segmentLimit: 20 },
+      providerReportsCompactions: true,
     }).response.recordedCompactions;
     expect(summary).toEqual({
       revision: first.revision,

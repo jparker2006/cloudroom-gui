@@ -145,7 +145,7 @@ it("explains partial history and never shows a bare zero", () => {
   expect(screen.getByText("Estimated context")).toBeTruthy();
   expect(screen.getByText("None in recorded history")).toBeTruthy();
   expect(screen.getByRole("note").textContent).toBe(
-    "Partial history. Automatic compactions in Cloud aren't reported. Part of this thread ran on another machine.",
+    "Partial history. Cloud may not report automatic compactions. Part of this thread ran on another machine.",
   );
 });
 
