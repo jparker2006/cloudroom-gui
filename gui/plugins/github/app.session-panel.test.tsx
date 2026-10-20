@@ -313,6 +313,60 @@ describe("session PR panel freshness and truth", () => {
     slot.lifecycle.unmount();
   });
 
+  it("announces the outcome of refreshing the match from the no-match view", async () => {
+    const slot = render({
+      pullForThread: () => association("thr-1", { kind: "none" }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+
+    expect(slot.getByRole("status").textContent).toBe(
+      "Pull request match refreshed.",
+    );
+    slot.lifecycle.unmount();
+  });
+
+  it("announces a failed match refresh even before any match loaded", async () => {
+    const slot = render({
+      pullForThread: () => {
+        throw new Error("HTTP 502 Bad Gateway");
+      },
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+
+    expect(slot.getByRole("status").textContent).toBe(
+      "Couldn’t refresh this session’s pull request match.",
+    );
+    slot.lifecycle.unmount();
+  });
+
+  it("does not claim earlier data when a refresh fails with none", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      getPull: () => {
+        throw new Error("HTTP 502 Bad Gateway");
+      },
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+
+    expect(slot.container.textContent).not.toContain("Pull 42");
+    expect(slot.getByRole("status").textContent).toBe(
+      "Refreshing pull request details failed.",
+    );
+    slot.lifecycle.unmount();
+  });
+
   it("never shows unknown, absent, or neutral-only checks as passing", async () => {
     for (const [checks, expected] of [
       [null, "Checks unknown"],
@@ -1072,6 +1126,67 @@ describe("session PR panel save and refresh overlap", () => {
     );
     expect(slot.container.textContent).toContain("Pull 43");
     expect(slot.container.textContent).not.toContain("Pull 42");
+    slot.lifecycle.unmount();
+  });
+
+  it("does not flash a refresh that started before the save while the save is pending", async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    let resolveRead: (value: unknown) => void = () => {};
+    let reads = 0;
+    const slot = render({
+      pullForThread: () => {
+        reads += 1;
+        if (reads === 1) return candidate(42, ["workspace"]);
+        return new Promise((resolve) => {
+          resolveRead = resolve;
+        });
+      },
+      getPull: (input: never) => {
+        const { number } = input as { number: number };
+        return { pull: pull(number), fetchedAt: new Date().toISOString() };
+      },
+      listItems: () => ({ items: [trackedPull43] }),
+      setPullForThread: () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Change…" }).click(),
+    );
+    await settle();
+    await act(async () => slot.getByText("acme/widgets#43").click());
+    await settle();
+    resolveRead(association("thr-1", { kind: "none" }));
+    await settle();
+
+    expect(slot.container.textContent).not.toContain(
+      "No pull request matches this session",
+    );
+    expect(slot.container.textContent).toContain("Pull 42");
+
+    resolveSave(
+      association(
+        "thr-1",
+        { kind: "selected", repo: "acme/widgets", number: 43 },
+        {
+          selection: {
+            repo: "acme/widgets",
+            number: 43,
+            id: "PR_43",
+            selectedAt: "2026-10-01T00:00:00.000Z",
+          },
+        },
+      ),
+    );
+    await settle();
+    await settle();
+    expect(slot.container.textContent).toContain("Pull 43");
     slot.lifecycle.unmount();
   });
 

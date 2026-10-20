@@ -1351,7 +1351,7 @@ export default async function plugin(bb: BbPluginApi) {
         `GitHub resolved ${repo}#${number} to ${identity.repo}#${number}. Choose ${identity.repo}#${number} instead.`,
       );
     }
-    return { repo, number, id: view.id };
+    return { repo: identity.repo, number, id: view.id };
   }
 
   async function mergeByIdentity(

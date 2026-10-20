@@ -2036,7 +2036,7 @@ function PullDetailBody({
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <PullStateBadge state={pull.state} />
         <ReviewDecisionBadge decision={pull.reviewDecision} />
-        <span className="font-mono">
+        <span className="min-w-0 break-all font-mono">
           {pull.baseRefName} ← {pull.headRefName}
         </span>
         <span>
@@ -2539,6 +2539,25 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     previousError.current = session.error;
   }, [session.error, association]);
 
+  const userReload = useRef(false);
+  const wasLoading = useRef(session.loading);
+  useEffect(() => {
+    if (wasLoading.current && !session.loading && userReload.current) {
+      userReload.current = false;
+      setAnnouncement(
+        session.error === null
+          ? "Pull request match refreshed."
+          : "Couldn’t refresh this session’s pull request match.",
+      );
+    }
+    wasLoading.current = session.loading;
+  }, [session.loading, session.error]);
+  const { reload } = session;
+  const reloadFromHeading = useCallback(() => {
+    userReload.current = true;
+    reload();
+  }, [reload]);
+
   const closeChooser = useCallback(() => {
     setChoosing(false);
     setReturnFocus((count) => count + 1);
@@ -2587,7 +2606,10 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
         {liveRegion}
         {session.error !== null ? (
           <>
-            <SessionHeading busy={session.loading} onRefresh={session.reload} />
+            <SessionHeading
+              busy={session.loading}
+              onRefresh={reloadFromHeading}
+            />
             <FailureNotice
               reason={classifyGhFailure(session.error)}
               message={session.error}
@@ -2681,7 +2703,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     return (
       <div ref={containerRef} className="flex flex-col gap-3">
         {liveRegion}
-        <SessionHeading busy={session.loading} onRefresh={session.reload} />
+        <SessionHeading busy={session.loading} onRefresh={reloadFromHeading} />
         {staleMatch}
         {chooser ?? (
           <>
@@ -2880,11 +2902,19 @@ function SessionPullDetail({
         identityProblem ??
           (detail.error === null
             ? "Pull request details refreshed."
-            : "Refreshing pull request details failed. Showing earlier data."),
+            : detail.pull === null
+              ? "Refreshing pull request details failed."
+              : "Refreshing pull request details failed. Showing earlier data."),
       );
     }
     wasRefreshing.current = detail.refreshing;
-  }, [detail.refreshing, detail.error, identityProblem, onAnnounce]);
+  }, [
+    detail.refreshing,
+    detail.error,
+    detail.pull,
+    identityProblem,
+    onAnnounce,
+  ]);
 
   return (
     <>

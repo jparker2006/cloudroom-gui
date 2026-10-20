@@ -662,6 +662,34 @@ describe("explicit pull request selection", () => {
     expect(await selection(host, "thr_a")).toBeUndefined();
   });
 
+  it("saves the repository name GitHub reports, not the typed casing", async () => {
+    writeFileSync(
+      join(binDir, "gh"),
+      `#!/usr/bin/env bash
+case "$*" in
+  "--version") echo "gh version 2.96.0 (fake)";;
+  "auth status --hostname github.com --active") echo "authenticated";;
+  "pr view 43 -R ACME/Widgets --json id,number,url") printf '%s\\n' '{"id":"PR_node_43","number":43,"url":"https://github.com/acme/widgets/pull/43"}';;
+  *) printf '%s\\n' '[]';;
+esac
+`,
+    );
+    chmodSync(join(binDir, "gh"), 0o755);
+    const world = newWorld();
+    world.environments.thr_a = null;
+    const host = await loadPlugin(world);
+
+    await expect(
+      host.harness.callRpc("setPullForThread", {
+        threadId: "thr_a",
+        pull: { repo: "ACME/Widgets", number: 43 },
+      }),
+    ).resolves.toMatchObject({
+      selection: { repo: "acme/widgets", number: 43, id: "PR_node_43" },
+      resolution: { kind: "selected", repo: "acme/widgets", number: 43 },
+    });
+  });
+
   it("applies association writes in request order", async () => {
     writeFileSync(
       join(binDir, "gh"),
