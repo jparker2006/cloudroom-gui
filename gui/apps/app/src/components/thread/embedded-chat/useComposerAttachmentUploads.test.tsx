@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearLocalAttachmentPreviews,
+  getLocalAttachmentPreviewSrc,
+  registerLocalAttachmentPreview,
+} from "@/lib/attachment-local-previews";
 import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 import type { PromptDraftAttachment } from "@cloudroom/client-core";
 import { BbHttpError } from "@cloudroom/sdk/browser";
@@ -29,6 +34,18 @@ function makeInlineSession(
 describe("useComposerAttachmentUploads", () => {
   beforeEach(() => {
     mocks.upload.mockReset();
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = () => "blob:late-upload";
+        static revokeObjectURL = vi.fn();
+      },
+    );
+  });
+
+  afterEach(() => {
+    clearLocalAttachmentPreviews();
+    vi.unstubAllGlobals();
   });
 
   it("keeps bottom and queued attachment operations independent", async () => {
@@ -42,6 +59,7 @@ describe("useComposerAttachmentUploads", () => {
     const { result } = renderHook(() =>
       useComposerAttachmentUploads({
         projectId: "proj_1",
+        draftStorageKey: "draft:thread_1",
         addDraftAttachment: vi.fn(),
         inlineEditSessionId: inline.editSessionId,
         inlineSessionRef: inlineRef,
@@ -100,6 +118,7 @@ describe("useComposerAttachmentUploads", () => {
       ({ inline }: { inline: InlineComposerDraftSession | null }) =>
         useComposerAttachmentUploads({
           projectId: "proj_1",
+          draftStorageKey: "draft:thread_1",
           addDraftAttachment: vi.fn(),
           inlineEditSessionId: inline?.editSessionId ?? null,
           inlineSessionRef: inlineRef,
@@ -219,5 +238,193 @@ describe("useComposerAttachmentUploads", () => {
     expect(addSecondAttachment).not.toHaveBeenCalled();
     expect(result.current.attachmentError).toBeNull();
     expect(result.current.isAttachingFiles).toBe(false);
+  });
+
+  it("keeps uploading after a failure and reports each file's state", async () => {
+    const second = createDeferredPromise<PromptDraftAttachment>();
+    mocks.upload
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockReturnValueOnce(second.promise);
+    const addAttachment = vi.fn();
+    const { result } = renderHook(() =>
+      useDraftAttachmentUploads({
+        projectId: "proj_1",
+        target: { key: "draft", addAttachment },
+      }),
+    );
+
+    let batch!: Promise<void>;
+    act(() => {
+      batch = result.current.handleAttachFiles([
+        new File(["a"], "a.png", { type: "image/png" }),
+        new File(["b"], "b.txt"),
+      ]);
+    });
+    await act(async () => {});
+    expect(
+      result.current.pendingAttachments.map(({ name, status }) => ({
+        name,
+        status,
+      })),
+    ).toEqual([
+      { name: "a.png", status: "failed" },
+      { name: "b.txt", status: "uploading" },
+    ]);
+    expect(result.current.isAttachingFiles).toBe(true);
+
+    await act(async () => {
+      second.resolve({
+        type: "localFile",
+        path: "b-stored.txt",
+        name: "b.txt",
+        sizeBytes: 1,
+      });
+      await batch;
+    });
+    expect(addAttachment).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingAttachments).toEqual([
+      expect.objectContaining({
+        name: "a.png",
+        status: "failed",
+        error: "Upload failed",
+      }),
+    ]);
+    expect(result.current.attachmentError).toBe("Failed to attach: a.png");
+    expect(result.current.isAttachingFiles).toBe(false);
+  });
+
+  it("does not attach a file removed while it was uploading", async () => {
+    const upload = createDeferredPromise<PromptDraftAttachment>();
+    mocks.upload.mockReturnValueOnce(upload.promise);
+    const addAttachment = vi.fn();
+    const { result } = renderHook(() =>
+      useDraftAttachmentUploads({
+        projectId: "proj_1",
+        target: { key: "draft", addAttachment },
+      }),
+    );
+
+    let batch!: Promise<void>;
+    act(() => {
+      batch = result.current.handleAttachFiles([new File(["a"], "a.txt")]);
+    });
+    act(() => {
+      result.current.dismissPendingAttachment(
+        result.current.pendingAttachments[0]!.id,
+      );
+    });
+    expect(result.current.pendingAttachments).toEqual([]);
+    await act(async () => {
+      registerLocalAttachmentPreview(
+        "a-stored.txt",
+        new Blob(["image"], { type: "image/png" }),
+      );
+      upload.resolve({
+        type: "localFile",
+        path: "a-stored.txt",
+        name: "a.txt",
+        sizeBytes: 1,
+      });
+      await batch;
+    });
+    expect(addAttachment).not.toHaveBeenCalled();
+    expect(getLocalAttachmentPreviewSrc("a-stored.txt")).toBeNull();
+    expect(result.current.attachmentError).toBeNull();
+  });
+
+  it("does not attach an inline upload to another thread with the same edit session id", async () => {
+    const upload = createDeferredPromise<PromptDraftAttachment>();
+    mocks.upload.mockReturnValueOnce(upload.promise);
+    const setFirstDraft = vi.fn();
+    const setSecondDraft = vi.fn();
+    const inlineRef = { current: makeInlineSession(1, setFirstDraft) };
+    const { result, rerender } = renderHook(
+      ({ draftStorageKey }) =>
+        useComposerAttachmentUploads({
+          projectId: "proj_1",
+          draftStorageKey,
+          addDraftAttachment: vi.fn(),
+          inlineEditSessionId: 1,
+          inlineSessionRef: inlineRef,
+        }),
+      { initialProps: { draftStorageKey: "thread-a" } },
+    );
+    let batch!: Promise<void>;
+    act(() => {
+      batch = result.current.handleAttachInlineFiles([
+        new File(["a"], "a.txt"),
+      ]);
+    });
+    inlineRef.current = makeInlineSession(1, setSecondDraft);
+    rerender({ draftStorageKey: "thread-b" });
+    expect(result.current.inlinePendingAttachments).toEqual([]);
+    await act(async () => {
+      upload.resolve({
+        type: "localFile",
+        path: "stored-a.txt",
+        name: "a.txt",
+        sizeBytes: 1,
+      });
+      await batch;
+    });
+    expect(setFirstDraft).not.toHaveBeenCalled();
+    expect(setSecondDraft).not.toHaveBeenCalled();
+  });
+
+  it("keeps a bottom upload in the draft that started it when the thread changes", async () => {
+    const upload = createDeferredPromise<PromptDraftAttachment>();
+    mocks.upload.mockReturnValueOnce(upload.promise);
+    const addToThreadA = vi.fn();
+    const addToThreadB = vi.fn();
+    const inlineRef = { current: null };
+    const { result, rerender } = renderHook(
+      ({
+        draftStorageKey,
+        addDraftAttachment,
+      }: {
+        draftStorageKey: string;
+        addDraftAttachment: (attachment: PromptDraftAttachment) => void;
+      }) =>
+        useComposerAttachmentUploads({
+          projectId: "proj_1",
+          draftStorageKey,
+          addDraftAttachment,
+          inlineEditSessionId: null,
+          inlineSessionRef: inlineRef,
+        }),
+      {
+        initialProps: {
+          draftStorageKey: "draft:thread_a",
+          addDraftAttachment: addToThreadA,
+        },
+      },
+    );
+
+    let batch!: Promise<void>;
+    act(() => {
+      batch = result.current.handleAttachBottomFiles([
+        new File(["a"], "a.txt"),
+      ]);
+    });
+    expect(result.current.bottomPendingAttachments).toHaveLength(1);
+
+    rerender({
+      draftStorageKey: "draft:thread_b",
+      addDraftAttachment: addToThreadB,
+    });
+    expect(result.current.bottomPendingAttachments).toEqual([]);
+    expect(result.current.isAttachingBottomFiles).toBe(false);
+
+    await act(async () => {
+      upload.resolve({
+        type: "localFile",
+        path: "a-stored.txt",
+        name: "a.txt",
+        sizeBytes: 1,
+      });
+      await batch;
+    });
+    expect(addToThreadB).not.toHaveBeenCalled();
+    expect(addToThreadA).not.toHaveBeenCalled();
   });
 });

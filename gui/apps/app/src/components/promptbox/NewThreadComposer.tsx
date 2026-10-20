@@ -72,7 +72,7 @@ import type { ExperimentalComposerSubmitOptions } from "@get-bb/plugin-sdk";
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useNewThreadAttachmentUploads } from "./useNewThreadAttachmentUploads";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
@@ -1265,53 +1265,22 @@ export function NewThreadComposer({
     });
   }, [seed?.initialPrompt, seedInitialPrompt]);
   const [composerError, setComposerError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isUploadingRef = useRef(false);
   const isCopyingAttachmentsRef = useRef(false);
   const isSubmittingRef = useRef(false);
-  const uploadPromptAttachment = useUploadPromptAttachment();
-  const uploadTargetKey = `${projectId}\0${promptDraft.storageKey}`;
-  const currentUploadTargetRef = useRef(uploadTargetKey);
-  useEffect(() => {
-    currentUploadTargetRef.current = uploadTargetKey;
-  }, [uploadTargetKey]);
-  const handleAttachFiles = useCallback(
-    async (files: File[]) => {
-      if (!projectId || files.length === 0 || isUploadingRef.current) return;
-      const capturedTarget = `${projectId}\0${promptDraft.storageKey}`;
-      setComposerError(null);
-      isUploadingRef.current = true;
-      setIsUploading(true);
-      try {
-        for (const file of files) {
-          try {
-            const uploaded = await uploadPromptAttachment.mutateAsync({
-              projectId,
-              file,
-            });
-            if (currentUploadTargetRef.current !== capturedTarget) return;
-            promptDraft.addAttachment(uploaded);
-          } catch (error) {
-            if (currentUploadTargetRef.current === capturedTarget) {
-              setComposerError(
-                getMutationErrorMessage({
-                  error,
-                  fallbackMessage: "Attachment upload failed",
-                }),
-              );
-            }
-            break;
-          }
-        }
-      } finally {
-        isUploadingRef.current = false;
-        setIsUploading(false);
-      }
-    },
-    [projectId, promptDraft, uploadPromptAttachment],
-  );
+  const {
+    handleAttachFiles,
+    isUploading,
+    isUploadingRef,
+    pendingAttachments,
+    dismissPendingAttachment,
+  } = useNewThreadAttachmentUploads({
+    projectId,
+    storageKey: promptDraft.storageKey,
+    addAttachment: promptDraft.addAttachment,
+    setError: setComposerError,
+  });
   const handleProjectChange = useCallback(
     async (nextProjectId: string | null) => {
       const nextValue = nextProjectId ?? PERSONAL_PROJECT_ID;
@@ -1785,6 +1754,8 @@ export function NewThreadComposer({
             onRemove: promptDraft.removeAttachment,
             isAttaching: isUploading || isCopyingAttachments,
             error: composerError,
+            pending: pendingAttachments,
+            onDismissPending: dismissPendingAttachment,
           }}
           promptActions={promptActions}
           modeConfig={{

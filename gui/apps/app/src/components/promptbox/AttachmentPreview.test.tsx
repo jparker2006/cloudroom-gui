@@ -1,12 +1,83 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearLocalAttachmentPreviews,
   registerLocalAttachmentPreview,
 } from "@/lib/attachment-local-previews";
+import type { PromptDraftAttachment } from "@cloudroom/client-core";
 import { AttachmentPreview } from "./AttachmentPreview";
+import type { PendingAttachment } from "./pending-attachments";
+
+vi.mock("@/components/secondary-panel/FilePreview", () => ({
+  FilePreview: ({
+    state,
+  }: {
+    state: { kind: string; file?: { contents: string }; message?: string };
+  }) => <pre>{state.file?.contents ?? state.message ?? state.kind}</pre>,
+}));
+
+const mixedAttachments: PromptDraftAttachment[] = [
+  {
+    type: "localImage",
+    path: "shot-1-abc.png",
+    name: "shot.png",
+    mimeType: "image/png",
+    sizeBytes: 2048,
+  },
+  {
+    type: "localFile",
+    path: "notes-2-def.md",
+    name: "notes.md",
+    mimeType: "text/markdown",
+    sizeBytes: 0,
+  },
+  {
+    type: "localFile",
+    path: "bundle-3-ghi.zip",
+    name: "bundle.zip",
+    mimeType: "application/zip",
+    sizeBytes: 3 * 1024 * 1024,
+  },
+  {
+    type: "localFile",
+    path: "/Users/me/outside.log",
+    name: "outside.log",
+    sizeBytes: 0,
+  },
+];
+
+const pendingEntries: PendingAttachment[] = [
+  {
+    id: "p1",
+    name: "queued-report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 10,
+    status: "queued",
+  },
+  {
+    id: "p2",
+    name: "uploading.png",
+    mimeType: "image/png",
+    sizeBytes: 10,
+    status: "uploading",
+  },
+  {
+    id: "p3",
+    name: "IMG_0001.heic",
+    mimeType: "image/heic",
+    sizeBytes: 10,
+    status: "failed",
+    error: "HEIC images are not supported.",
+  },
+];
 
 describe("AttachmentPreview", () => {
   const revoked: string[] = [];
@@ -30,8 +101,86 @@ describe("AttachmentPreview", () => {
   afterEach(() => {
     cleanup();
     clearLocalAttachmentPreviews();
+    vi.unstubAllGlobals();
     Reflect.deleteProperty(URL, "createObjectURL");
     Reflect.deleteProperty(URL, "revokeObjectURL");
+  });
+
+  it("uses the source project for image and file previews after a draft changes project", async () => {
+    const fetchPreview = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        text: async () => "Source project notes",
+      });
+    vi.stubGlobal("fetch", fetchPreview);
+    const attachments = mixedAttachments
+      .slice(0, 2)
+      .map((attachment) => ({ ...attachment, projectId: "source-project" }));
+    const { getByRole, findByText } = render(
+      <AttachmentPreview
+        attachmentProjectId="destination-project"
+        attachments={attachments}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={vi.fn()}
+      />,
+    );
+    expect(getByRole("img", { name: "shot.png" }).getAttribute("src")).toBe(
+      "/api/v1/projects/source-project/attachments/content?path=shot-1-abc.png",
+    );
+    fireEvent.click(getByRole("button", { name: /^Preview notes\.md/ }));
+    expect(await findByText("Source project notes")).toBeTruthy();
+    expect(fetchPreview).toHaveBeenCalledWith(
+      "/api/v1/projects/source-project/attachments/content?path=notes-2-def.md",
+      expect.anything(),
+    );
+  });
+
+  it("inspects text through the project attachment contract and aborts on detach", async () => {
+    const fetchPreview = vi
+      .fn()
+      .mockResolvedValue({ ok: true, text: async () => "# Attachment notes" });
+    vi.stubGlobal("fetch", fetchPreview);
+    const props = {
+      attachmentProjectId: "proj_1",
+      attachments: mixedAttachments.slice(1, 2),
+      expandedImageIndex: null,
+      onExpandedImageIndexChange: vi.fn(),
+    };
+    const { getByRole, findByText, rerender, queryByRole } = render(
+      <AttachmentPreview {...props} />,
+    );
+    fireEvent.click(getByRole("button", { name: /^Preview notes\.md/ }));
+    expect(await findByText("# Attachment notes")).toBeTruthy();
+    expect(fetchPreview).toHaveBeenCalledWith(
+      "/api/v1/projects/proj_1/attachments/content?path=notes-2-def.md",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    const signal = fetchPreview.mock.calls[0]![1].signal as AbortSignal;
+    rerender(<AttachmentPreview {...props} attachments={[]} />);
+    expect(signal.aborted).toBe(true);
+    expect(queryByRole("region", { name: "Preview notes.md" })).toBeNull();
+  });
+
+  it("explains a failed content preview without detaching the file", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    const onRemoveAttachment = vi.fn();
+    const { getByRole, findByText } = render(
+      <AttachmentPreview
+        attachmentProjectId="proj_1"
+        attachments={mixedAttachments.slice(1, 2)}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+      />,
+    );
+    fireEvent.click(getByRole("button", { name: /^Preview notes\.md/ }));
+    expect(
+      await findByText(
+        "Couldn't load this attachment preview. It is still attached.",
+      ),
+    ).toBeTruthy();
+    expect(onRemoveAttachment).not.toHaveBeenCalled();
   });
 
   it("renders a just-picked image from its local object URL and revokes it on remove", () => {
@@ -133,5 +282,178 @@ describe("AttachmentPreview", () => {
     expect(
       fileRemoveButton.firstElementChild?.classList.contains("size-4"),
     ).toBe(true);
+  });
+
+  it.each(["rows", "cards"] as const)(
+    "shows truthful states, metadata and inspect targets (%s)",
+    (variant) => {
+      const { container, getByRole, getByText, queryByText } = render(
+        <AttachmentPreview
+          variant={variant}
+          attachmentProjectId="proj_1"
+          attachments={mixedAttachments}
+          pending={pendingEntries}
+          expandedImageIndex={null}
+          onExpandedImageIndexChange={() => {}}
+          onRemoveAttachment={() => {}}
+          onDismissPending={() => {}}
+        />,
+      );
+
+      expect(container.textContent).not.toContain("0 B");
+      expect(getByText("ZIP · 3.0 MB")).toBeTruthy();
+      expect(getByRole("button", { name: /^Preview shot\.png/ })).toBeTruthy();
+      expect(getByRole("button", { name: /^Preview notes\.md/ })).toBeTruthy();
+      expect(
+        getByRole("group", { name: /queued-report\.pdf, Queued/ }),
+      ).toBeTruthy();
+      expect(
+        getByRole("group", { name: /uploading\.png, Uploading…/ }),
+      ).toBeTruthy();
+      expect(
+        getByRole("group", {
+          name: /IMG_0001\.heic, Failed, HEIC images are not supported\./,
+        }),
+      ).toBeTruthy();
+      expect(getByRole("status").textContent).toBe(
+        "1 uploading, 1 queued, 1 failed: IMG_0001.heic",
+      );
+      expect(
+        getByRole("button", { name: "Dismiss failed upload IMG_0001.heic" }),
+      ).toBeTruthy();
+
+      fireEvent.click(getByRole("button", { name: /^bundle\.zip/ }));
+      expect(
+        getByText(
+          "Preview not available for ZIP files. bundle.zip is still attached.",
+        ),
+      ).toBeTruthy();
+      fireEvent.click(getByRole("button", { name: /^outside\.log/ }));
+      expect(queryByText(/bundle\.zip is still attached/)).toBeNull();
+      expect(
+        getByText(
+          "Preview not available for files outside this project's attachments. outside.log is still attached.",
+        ),
+      ).toBeTruthy();
+    },
+  );
+
+  it("removes with the keyboard and moves focus to the next item, then the editor", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const onRestoreEditorFocus = vi.fn();
+    const onRemoveAttachment = vi.fn();
+    const { getByRole, rerender } = render(
+      <AttachmentPreview
+        attachmentProjectId="proj_1"
+        attachments={mixedAttachments.slice(1, 3)}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={() => {}}
+        onRemoveAttachment={onRemoveAttachment}
+        onRestoreEditorFocus={onRestoreEditorFocus}
+      />,
+    );
+
+    const notes = getByRole("button", { name: /^Preview notes\.md/ });
+    notes.focus();
+    fireEvent.keyDown(notes, { key: "Delete" });
+    expect(onRemoveAttachment).toHaveBeenCalledWith("notes-2-def.md");
+    rerender(
+      <AttachmentPreview
+        attachmentProjectId="proj_1"
+        attachments={mixedAttachments.slice(2, 3)}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={() => {}}
+        onRemoveAttachment={onRemoveAttachment}
+        onRestoreEditorFocus={onRestoreEditorFocus}
+      />,
+    );
+    act(() => frames.shift()?.(0));
+    expect(document.activeElement).toBe(
+      getByRole("button", { name: /^bundle\.zip/ }),
+    );
+    expect(onRestoreEditorFocus).not.toHaveBeenCalled();
+
+    fireEvent.click(getByRole("button", { name: "Remove bundle.zip" }), {
+      detail: 0,
+    });
+    expect(onRemoveAttachment).toHaveBeenLastCalledWith("bundle-3-ghi.zip");
+    expect(onRestoreEditorFocus).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back cleanly when a thumbnail cannot load", () => {
+    const onExpandedImageIndexChange = vi.fn();
+    const { getByRole, getAllByRole, getByText } = render(
+      <AttachmentPreview
+        attachmentProjectId="proj_1"
+        attachments={[
+          mixedAttachments[0]!,
+          {
+            type: "localImage",
+            path: "second-4-jkl.png",
+            name: "second.png",
+            sizeBytes: 0,
+          },
+        ]}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={onExpandedImageIndexChange}
+        onRemoveAttachment={() => {}}
+      />,
+    );
+
+    fireEvent.error(getAllByRole("img", { name: "shot.png" })[0]!);
+    const broken = getByRole("button", { name: /^shot\.png, PNG · 2 KB$/ });
+    expect(within(broken).getByText("No preview")).toBeTruthy();
+    fireEvent.click(broken);
+    expect(onExpandedImageIndexChange).not.toHaveBeenCalled();
+    expect(
+      getByText("Couldn't load a preview of shot.png. It is still attached."),
+    ).toBeTruthy();
+
+    fireEvent.click(getByRole("button", { name: /^Preview second\.png/ }));
+    expect(onExpandedImageIndexChange).toHaveBeenCalledWith(0);
+  });
+
+  it("dismisses pending entries without touching draft attachments", () => {
+    const onDismissPending = vi.fn();
+    const onRemoveAttachment = vi.fn();
+    const { getByRole } = render(
+      <AttachmentPreview
+        attachments={[]}
+        pending={pendingEntries}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={() => {}}
+        onRemoveAttachment={onRemoveAttachment}
+        onDismissPending={onDismissPending}
+      />,
+    );
+    fireEvent.click(getByRole("button", { name: "Remove uploading.png" }));
+    fireEvent.click(
+      getByRole("button", { name: "Dismiss failed upload IMG_0001.heic" }),
+    );
+    expect(onDismissPending.mock.calls).toEqual([["p2"], ["p3"]]);
+    expect(onRemoveAttachment).not.toHaveBeenCalled();
+  });
+
+  it("summarizes pending work in compact mode without controls", () => {
+    const { container } = render(
+      <AttachmentPreview
+        compact
+        attachments={mixedAttachments.slice(0, 1)}
+        pending={pendingEntries}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={() => {}}
+        onRemoveAttachment={() => {}}
+      />,
+    );
+    const chip = container.querySelector("[data-promptbox-attachments]");
+    expect(chip?.getAttribute("aria-label")).toBe(
+      "4 attachments, 1 uploading, 1 queued, 1 failed: IMG_0001.heic",
+    );
+    expect(chip?.querySelectorAll("button")).toHaveLength(0);
   });
 });

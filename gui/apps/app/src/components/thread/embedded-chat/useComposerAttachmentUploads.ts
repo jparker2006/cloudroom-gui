@@ -2,11 +2,17 @@ import { useCallback, useRef, useState } from "react";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { BbHttpError } from "@/lib/sdk";
+import { releaseLocalAttachmentPreview } from "@/lib/attachment-local-previews";
 import type { PromptDraftAttachment } from "@cloudroom/client-core";
+import {
+  usePendingAttachments,
+  type PendingAttachment,
+} from "@/components/promptbox/pending-attachments";
 import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 
 interface UseComposerAttachmentUploadsArgs {
   projectId: string;
+  draftStorageKey: string;
   addDraftAttachment: (attachment: PromptDraftAttachment) => void;
   inlineEditSessionId: number | null;
   inlineSessionRef: React.RefObject<InlineComposerDraftSession | null>;
@@ -17,10 +23,14 @@ interface UseComposerAttachmentUploadsResult {
   setBottomAttachmentError: (error: string | null) => void;
   handleAttachBottomFiles: (files: File[]) => Promise<void>;
   isAttachingBottomFiles: boolean;
+  bottomPendingAttachments: readonly PendingAttachment[];
+  dismissBottomPendingAttachment: (id: string) => void;
   inlineAttachmentError: string | null;
   setInlineAttachmentError: (error: string | null) => void;
   handleAttachInlineFiles: (files: File[]) => Promise<void>;
   isAttachingInlineFiles: boolean;
+  inlinePendingAttachments: readonly PendingAttachment[];
+  dismissInlinePendingAttachment: (id: string) => void;
 }
 
 interface DraftAttachmentUploadTarget {
@@ -38,6 +48,8 @@ interface UseDraftAttachmentUploadsResult {
   setAttachmentError: (error: string | null) => void;
   handleAttachFiles: (files: File[]) => Promise<void>;
   isAttachingFiles: boolean;
+  pendingAttachments: readonly PendingAttachment[];
+  dismissPendingAttachment: (id: string) => void;
 }
 
 interface DraftAttachmentOperationState {
@@ -69,6 +81,8 @@ export function useDraftAttachmentUploads({
   const uploadPromptAttachment = useUploadPromptAttachment();
   const targetRef = useRef(target);
   targetRef.current = target;
+  const pendingAttachments = usePendingAttachments(target?.key ?? null);
+  const { queue, start, settle, fail } = pendingAttachments;
   const [operation, setOperation] = useState<DraftAttachmentOperationState>({
     error: null,
     pendingCount: 0,
@@ -103,20 +117,28 @@ export function useDraftAttachmentUploads({
       }));
       const failedFiles: string[] = [];
       let rejectionReason: string | null = null;
+      const pendingIds = queue(capturedTargetKey, files);
       try {
-        for (const file of files) {
+        for (const [index, file] of files.entries()) {
+          const pendingId = pendingIds[index];
+          if (pendingId === undefined || !start(pendingId)) continue;
           try {
             const uploaded = await uploadPromptAttachment.mutateAsync({
               projectId,
               file,
             });
             const currentTarget = targetRef.current;
-            if (currentTarget?.key === capturedTargetKey) {
+            if (settle(pendingId) && currentTarget?.key === capturedTargetKey) {
               currentTarget.addAttachment(uploaded);
+            } else {
+              releaseLocalAttachmentPreview(uploaded.path);
             }
           } catch (error) {
-            failedFiles.push(file.name);
-            rejectionReason ??= uploadRejectionReason(error);
+            const reason = uploadRejectionReason(error);
+            if (fail(pendingId, reason ?? "Upload failed")) {
+              failedFiles.push(file.name);
+              rejectionReason ??= reason;
+            }
           }
         }
       } finally {
@@ -135,7 +157,7 @@ export function useDraftAttachmentUploads({
         );
       }
     },
-    [projectId, uploadPromptAttachment],
+    [fail, projectId, queue, settle, start, uploadPromptAttachment],
   );
 
   return {
@@ -143,11 +165,14 @@ export function useDraftAttachmentUploads({
     setAttachmentError,
     handleAttachFiles,
     isAttachingFiles: isCurrentOperation && operation.pendingCount > 0,
+    pendingAttachments: pendingAttachments.pending,
+    dismissPendingAttachment: pendingAttachments.dismiss,
   };
 }
 
 export function useComposerAttachmentUploads({
   projectId,
+  draftStorageKey,
   addDraftAttachment,
   inlineEditSessionId,
   inlineSessionRef,
@@ -157,9 +182,14 @@ export function useComposerAttachmentUploads({
     setAttachmentError: setBottomAttachmentError,
     handleAttachFiles: handleAttachBottomFiles,
     isAttachingFiles: isAttachingBottomFiles,
+    pendingAttachments: bottomPendingAttachments,
+    dismissPendingAttachment: dismissBottomPendingAttachment,
   } = useDraftAttachmentUploads({
     projectId,
-    target: { key: "bottom", addAttachment: addDraftAttachment },
+    target: {
+      key: `bottom\0${projectId}\0${draftStorageKey}`,
+      addAttachment: addDraftAttachment,
+    },
   });
   const addInlineAttachment = useCallback(
     (uploaded: PromptDraftAttachment) => {
@@ -180,12 +210,14 @@ export function useComposerAttachmentUploads({
     setAttachmentError: setInlineAttachmentError,
     handleAttachFiles: handleAttachInlineFiles,
     isAttachingFiles: isAttachingInlineFiles,
+    pendingAttachments: inlinePendingAttachments,
+    dismissPendingAttachment: dismissInlinePendingAttachment,
   } = useDraftAttachmentUploads({
     projectId,
     target:
       inlineEditSessionId !== null
         ? {
-            key: String(inlineEditSessionId),
+            key: `inline\0${projectId}\0${draftStorageKey}\0${inlineEditSessionId}`,
             addAttachment: addInlineAttachment,
           }
         : null,
@@ -196,9 +228,13 @@ export function useComposerAttachmentUploads({
     setBottomAttachmentError,
     handleAttachBottomFiles,
     isAttachingBottomFiles,
+    bottomPendingAttachments,
+    dismissBottomPendingAttachment,
     inlineAttachmentError,
     setInlineAttachmentError,
     handleAttachInlineFiles,
     isAttachingInlineFiles,
+    inlinePendingAttachments,
+    dismissInlinePendingAttachment,
   };
 }

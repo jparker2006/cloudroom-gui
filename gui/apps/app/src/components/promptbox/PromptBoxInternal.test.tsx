@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { Editor } from "@tiptap/core";
 import type { PromptTextMention, ReasoningLevel } from "@cloudroom/domain";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
@@ -2062,6 +2063,49 @@ describe("PromptBoxInternal plugin composer actions", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("announces a project attachment error once while switching composer layouts", () => {
+    const message =
+      "photo.png can't be moved to another project. Remove it and attach again.";
+    const props = createPromptBoxProps({
+      value: "Keep this draft",
+      compact: { isCompact: true },
+      attachments: {
+        items: [
+          {
+            type: "localImage",
+            path: "photo.png",
+            name: "photo.png",
+            sizeBytes: 1,
+          },
+        ],
+        error: message,
+        onRemove: vi.fn(),
+      },
+    });
+    const { rerender } = render(<PromptBoxInternal {...props} />);
+    expect(
+      screen.getAllByRole("alert").map((alert) => alert.textContent),
+    ).toEqual([message]);
+    expect(
+      screen.getByRole("alert").closest("[inert], [aria-hidden=true]"),
+    ).toBeNull();
+    rerender(<PromptBoxInternal {...props} compact={{ isCompact: false }} />);
+    expect(
+      screen.getAllByRole("alert").map((alert) => alert.textContent),
+    ).toEqual([message]);
+    expect(
+      screen.getByRole("button", { name: "Remove photo.png" }),
+    ).toBeTruthy();
+    expect(getPromptEditorElement().textContent).toBe("Keep this draft");
+    rerender(
+      <PromptBoxInternal
+        {...props}
+        attachments={{ ...props.attachments, error: null }}
+      />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("shows only an attachment count when compact and removal controls when expanded", () => {
     const items: NonNullable<
       NonNullable<PromptBoxProps["attachments"]>["items"]
@@ -2105,6 +2149,84 @@ describe("PromptBoxInternal compact layout", () => {
       />,
     );
     expect(document.querySelector("[data-promptbox-attachments]")).toBeNull();
+  });
+
+  it("keeps text, caret and focus when an attachment is removed or dismissed", async () => {
+    const onChange = vi.fn();
+    const onSubmit = vi.fn();
+    const onDismissPending = vi.fn();
+    function Harness() {
+      const [items, setItems] = useState<
+        NonNullable<NonNullable<PromptBoxProps["attachments"]>["items"]>
+      >([
+        { type: "localFile", name: "a.txt", path: "a.txt", sizeBytes: 1 },
+        { type: "localFile", name: "b.txt", path: "b.txt", sizeBytes: 1 },
+      ]);
+      return (
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "hello world",
+            onChange,
+            onSubmit,
+            attachments: {
+              items,
+              projectId: "proj_1",
+              onRemove: (path) =>
+                setItems((current) =>
+                  current.filter((item) => item.path !== path),
+                ),
+              pending: [
+                {
+                  id: "p1",
+                  name: "c.heic",
+                  sizeBytes: 1,
+                  status: "failed",
+                  error: "HEIC images are not supported.",
+                },
+              ],
+              onDismissPending,
+            },
+          })}
+        />
+      );
+    }
+    render(<Harness />);
+    const editorElement = getPromptEditorElement();
+    const editor = (editorElement as HTMLElement & { editor: Editor }).editor;
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    act(() => {
+      editor.commands.setTextSelection(4);
+    });
+    screen.getByRole("button", { name: "Remove a.txt" }).focus();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove a.txt" }), {
+      detail: 1,
+    });
+    for (let frame = 0; frame < 2; frame += 1) {
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+    }
+    expect(screen.queryByRole("button", { name: "Remove a.txt" })).toBeNull();
+    expect(document.activeElement).toBe(editorElement);
+    expect(editor.state.selection.from).toBe(4);
+    expect(editor.getText()).toBe("hello world");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss failed upload c.heic" }),
+      { detail: 1 },
+    );
+    expect(onDismissPending).toHaveBeenCalledWith("p1");
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit (Enter)" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it("shows attachment upload progress on the submit button", () => {
