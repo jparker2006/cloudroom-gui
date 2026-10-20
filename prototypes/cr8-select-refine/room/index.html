@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Cloudroom — select and refine prototype</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div id="app" class="layout-a">
+    <aside id="sidebar" aria-label="Threads"></aside>
+    <section id="chat" aria-label="Thread">
+      <header id="thread-header"></header>
+      <nav id="mobile-tabs" aria-label="Thread views">
+        <button type="button" data-tab="chat" aria-pressed="true">Chat</button>
+        <button type="button" data-tab="preview" aria-pressed="false">Preview</button>
+      </nav>
+      <div id="timeline" aria-live="polite"></div>
+      <div id="queue" aria-label="Queued messages"></div>
+      <div id="review-slot-chat"></div>
+      <form id="composer" aria-label="Composer">
+        <textarea id="draft" rows="2" aria-label="Message"></textarea>
+        <div class="composer-row">
+          <span id="run-state"></span>
+          <button type="button" id="finish-turn" class="ghost">Finish turn</button>
+          <button type="submit" id="composer-send" class="primary">Send</button>
+        </div>
+      </form>
+    </section>
+    <section id="preview" aria-label="Preview">
+      <div id="preview-toolbar">
+        <span id="preview-address"></span>
+        <button type="button" id="reload" class="icon" aria-label="Reload preview">↻</button>
+        <button type="button" id="select-toggle" class="select" aria-pressed="false" disabled>Select</button>
+      </div>
+      <div id="select-hint" role="status" hidden>
+        <span>Tap an element to choose it. Drag to scroll.</span>
+        <button type="button" id="select-cancel" class="ghost">Cancel</button>
+      </div>
+      <div id="preview-body"></div>
+      <div id="review-slot-preview"></div>
+    </section>
+  </div>
+  <template id="review-template">
+    <section class="review" role="region" aria-label="Change request for selected element">
+      <div class="review-target"></div>
+      <figure class="crop">
+        <div class="crop-stage"><canvas class="crop-canvas" aria-label="Selected element image"></canvas></div>
+        <figcaption class="crop-caption"></figcaption>
+        <div class="crop-tools">
+          <button type="button" data-action="redact" aria-pressed="false">Hide area</button>
+          <button type="button" data-action="undo-redact" disabled>Undo</button>
+          <button type="button" data-action="remove-image">Remove image</button>
+        </div>
+      </figure>
+      <ul class="chips" aria-label="Element details sent with the request"></ul>
+      <label class="request-label">What should change?
+        <textarea class="request-text" rows="3" placeholder="e.g. Make this button full width and use the brand green"></textarea>
+      </label>
+      <p class="review-note"></p>
+      <div class="review-actions">
+        <button type="button" data-action="parent" aria-label="Select parent element">↑ Parent</button>
+        <button type="button" data-action="child" aria-label="Select child element">↓ Child</button>
+        <span class="spacer"></span>
+        <button type="button" data-action="cancel" class="ghost">Cancel</button>
+        <button type="button" data-action="send" class="primary">Send</button>
+      </div>
+    </section>
+  </template>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

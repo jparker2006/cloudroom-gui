@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="cloudroom-app-origin" content="__CLOUDROOM_APP_ORIGIN__">
+  <title>Preview</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
+    #frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    #catcher { position: absolute; inset: 0; display: none; touch-action: none; cursor: crosshair; outline: none; z-index: 2; }
+    body.selecting #catcher { display: block; }
+    .box { box-sizing: border-box; position: absolute; pointer-events: none; display: none; border-radius: 3px; z-index: 3; }
+    #hover { border: 2px dashed #6b8cff; background: rgba(107, 140, 255, 0.08); }
+    #picked { border: 2px solid #bfff00; box-shadow: 0 0 0 1px #111, 0 0 0 9999px rgba(0, 0, 0, 0.28); }
+    #tag { position: absolute; display: none; z-index: 4; pointer-events: none; font: 600 12px/1 system-ui, sans-serif; background: #111; color: #bfff00; padding: 4px 6px; border-radius: 4px; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <iframe id="frame" title="Project preview"></iframe>
+  <div id="catcher" tabindex="0" role="application" aria-roledescription="element picker" aria-label="Selection mode. Tap or click an element to choose it. Drag to scroll. Tab moves between elements, Enter chooses, Escape cancels."></div>
+  <div id="hover" class="box"></div>
+  <div id="picked" class="box"></div>
+  <div id="tag" aria-hidden="true"></div>
+  <script src="element-context.js"></script>
+  <script src="render.js"></script>
+  <script src="shell.js"></script>
+</body>
+</html>
