@@ -4,9 +4,17 @@ import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
-import { useServerConnectionGracePeriodElapsed } from "@/hooks/queries/connection-aware-query-state";
+import { useElapsedWhile, useServerConnectionGracePeriodElapsed } from "@/hooks/queries/connection-aware-query-state";
 import { wsManager } from "@/lib/ws";
-import { checkMacAgain, isMacUnreachableThroughRelay } from "@/cloud/cloud-server";
+import {
+  checkMacAgain,
+  getLastMacProbe,
+  isMacUnreachableThroughRelay,
+  onRelayFreshRead,
+  relayFeedLostAt,
+  subscribeMacProbe,
+  subscribeRelayFeeds,
+} from "@/cloud/cloud-server";
 import {
   getStaleConversationLabel,
   getThreadConnectionStatus,
@@ -47,6 +55,7 @@ const CONNECTION_KINDS: ReadonlySet<ThreadConnectionStatusView["kind"]> = new Se
   "status-unreadable",
   "cloud-reconnecting",
   "relay-unreachable",
+  "relay-mac-answered",
   "recovered",
 ]);
 
@@ -131,6 +140,12 @@ function holdStaleCopy(queryClient: QueryClient, threadId: string, label: string
   current?.unsubscribe();
   const queryHash = JSON.stringify(threadTimelineQueryKey(threadId));
   const held: HeldStaleCopy = { label, queryClient, freshReadStarted: false, unsubscribe: () => {} };
+  if (isMacUnreachableThroughRelay()) {
+    held.unsubscribe = onRelayFreshRead(threadId, () => releaseStaleCopy(threadId));
+    heldStaleCopies.set(threadId, held);
+    emitHeldStaleCopies();
+    return;
+  }
   const stopWatchingConnection = wsManager.onConnectionStateChange(() => {
     if (wsManager.getConnectionState() !== "connected") held.freshReadStarted = false;
   });
@@ -164,12 +179,14 @@ function holdStaleCopy(queryClient: QueryClient, threadId: string, label: string
 export function useStaleConversationLabel(threadId: string, hasRows: boolean): string | null {
   const queryClient = useQueryClient();
   const socket = useServerConnectionState();
-  const liveLabel = getStaleConversationLabel({
-    socket,
-    graceElapsed: useServerConnectionGracePeriodElapsed(),
-    disconnectedAt: wsManager.getDisconnectedAt(),
-    hasRows,
-  });
+  const socketGraceElapsed = useServerConnectionGracePeriodElapsed();
+  const relayLostAt = useSyncExternalStore(subscribeRelayFeeds, () => relayFeedLostAt(threadId), () => null);
+  const relayGraceElapsed = useElapsedWhile(relayLostAt !== null);
+  const liveLabel = getStaleConversationLabel(
+    relayLostAt === null
+      ? { socket, graceElapsed: socketGraceElapsed, disconnectedAt: wsManager.getDisconnectedAt(), hasRows }
+      : { socket: "reconnecting", graceElapsed: relayGraceElapsed, disconnectedAt: relayLostAt, hasRows },
+  );
   const heldLabel = useSyncExternalStore(
     subscribeHeldStaleCopies,
     () => heldStaleCopies.get(threadId)?.label ?? null,
@@ -179,7 +196,7 @@ export function useStaleConversationLabel(threadId: string, hasRows: boolean): s
     if (liveLabel) holdStaleCopy(queryClient, threadId, liveLabel);
   }, [liveLabel, queryClient, threadId]);
   useEffect(() => {
-    if (liveLabel || socket !== "connected") return;
+    if (liveLabel || socket !== "connected" || isMacUnreachableThroughRelay()) return;
     const held = heldStaleCopies.get(threadId);
     if (!held || held.freshReadStarted) return;
     if (queryClient.getQueryState(threadTimelineQueryKey(threadId))?.fetchStatus === "fetching") return;
@@ -225,12 +242,14 @@ export function ThreadConnectionStatus({
   const socket = useServerConnectionState();
   const graceElapsed = useServerConnectionGracePeriodElapsed();
   const browserOffline = useBrowserOffline();
+  const macProbe = useSyncExternalStore(subscribeMacProbe, getLastMacProbe, () => null);
   const evidence = {
     socket,
     graceElapsed,
     browserOffline,
     disconnectedAt: wsManager.getDisconnectedAt(),
     relayMacUnreachable: isMacUnreachableThroughRelay(),
+    relayMacProbe: macProbe,
     host,
     cloud: cloud && {
       statusReadError: cloud.statusReadError,
@@ -278,7 +297,7 @@ export function ThreadConnectionStatus({
         }
         setCoolingDown(true);
         if (action === "refresh-connection") wsManager.reconnectNow();
-        else if (action === "check-mac") checkMacAgain();
+        else if (action === "check-mac") void checkMacAgain();
         else cloud?.refetch();
       }}
     />

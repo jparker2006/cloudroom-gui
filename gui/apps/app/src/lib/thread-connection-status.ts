@@ -15,6 +15,7 @@ export interface ThreadConnectionEvidence {
   disconnectedAt: number | null;
   recovered: boolean;
   relayMacUnreachable?: boolean;
+  relayMacProbe?: "offline" | "reachable" | "unknown" | null;
   host?: { reconnecting: boolean; graceExpiresAt: number | null };
   cloud: {
     statusReadError: Error | null;
@@ -35,6 +36,7 @@ export interface ThreadConnectionStatusView {
     | "failed-start"
     | "provider-auth"
     | "relay-unreachable"
+    | "relay-mac-answered"
     | "host-reconnecting"
     | "recovered";
   icon: IconName;
@@ -193,6 +195,23 @@ export function getThreadConnectionStatus(
       announce: "polite",
     };
   }
+  if (evidence.relayMacUnreachable && evidence.relayMacProbe === "reachable") {
+    return {
+      kind: "relay-mac-answered",
+      icon: "Laptop",
+      spin: false,
+      tone: "ok",
+      status: "Your Mac answered",
+      details: [
+        {
+          label: "This page",
+          text: "Still uses the phone relay. Reload Cloudroom to switch back to your Mac.",
+        },
+      ],
+      actions: ["check-mac"],
+      announce: "polite",
+    };
+  }
   if (evidence.relayMacUnreachable) {
     return {
       kind: "relay-unreachable",
@@ -200,6 +219,7 @@ export function getThreadConnectionStatus(
       spin: false,
       tone: "attention",
       status: "Can't reach your Mac",
+      ...(evidence.relayMacProbe === "unknown" ? { meta: "couldn't check just now" } : {}),
       details: [
         {
           label: "Cause",

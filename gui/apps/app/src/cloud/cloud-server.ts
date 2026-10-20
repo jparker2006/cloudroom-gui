@@ -2,7 +2,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { wsManager } from "@/lib/ws";
 import { cloudApi, SignedOutError, type CloudThreadSummary } from "./cloud-api";
 import { PRE_TRANSPORT_REFUSAL_CODE } from "@/lib/send-delivery";
-import { macOffline } from "./cloud-mode";
+import { probeMac, reloadApp, type MacProbe } from "./cloud-mode";
 import {
   CloudThreadEvents,
   cloudTimelineRows,
@@ -35,6 +35,55 @@ const object = (value: unknown): Json =>
     ? (value as Json)
     : {};
 
+const relayFeeds = new Map<string, { lostAt: number | null; epoch: number }>();
+const relayFeedListeners = new Set<() => void>();
+const relayFreshListeners = new Map<string, Set<() => void>>();
+
+function relayFeed(threadId: string) {
+  let feed = relayFeeds.get(threadId);
+  if (!feed) {
+    feed = { lostAt: null, epoch: 0 };
+    relayFeeds.set(threadId, feed);
+  }
+  return feed;
+}
+
+function markRelayFeedLost(threadId: string): void {
+  const feed = relayFeed(threadId);
+  feed.epoch += 1;
+  feed.lostAt ??= Date.now();
+  for (const listener of relayFeedListeners) listener();
+}
+
+function markRelayFeedFresh(threadId: string, epoch: number): void {
+  const feed = relayFeed(threadId);
+  if (feed.epoch !== epoch) return;
+  if (feed.lostAt !== null) {
+    feed.lostAt = null;
+    for (const listener of relayFeedListeners) listener();
+  }
+  for (const listener of relayFreshListeners.get(threadId) ?? []) listener();
+}
+
+export function relayFeedLostAt(threadId: string): number | null {
+  return relayFeeds.get(threadId)?.lostAt ?? null;
+}
+
+export function subscribeRelayFeeds(listener: () => void): () => void {
+  relayFeedListeners.add(listener);
+  return () => relayFeedListeners.delete(listener);
+}
+
+export function onRelayFreshRead(threadId: string, listener: () => void): () => void {
+  let listeners = relayFreshListeners.get(threadId);
+  if (!listeners) {
+    listeners = new Set();
+    relayFreshListeners.set(threadId, listeners);
+  }
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 class CloudThread {
   readonly events: CloudThreadEvents;
   private ready: Promise<void> | null = null;
@@ -57,8 +106,16 @@ class CloudThread {
   }
 
   async load(): Promise<void> {
-    const history = await cloudApi.history(this.id, this.events.cursor);
+    const epoch = relayFeed(this.id).epoch;
+    let history;
+    try {
+      history = await cloudApi.history(this.id, this.events.cursor);
+    } catch (failure) {
+      markRelayFeedLost(this.id);
+      throw failure;
+    }
     if (this.events.add(history.records)) this.announce();
+    markRelayFeedFresh(this.id, epoch);
     if (history.awake) this.listen(true);
   }
 
@@ -68,6 +125,7 @@ class CloudThread {
     this.unlisten = cloudApi.listen(this.id, this.events.cursor, {
       open: () => {
         this.delay = 2000;
+        if (relayFeedLostAt(this.id) !== null) void this.load().catch(() => undefined);
       },
       records: (records) => {
         if (this.events.add(records)) this.announce();
@@ -76,6 +134,7 @@ class CloudThread {
         this.unlisten = null;
       },
       error: () => {
+        markRelayFeedLost(this.id);
         this.unlisten = null;
         if (document.visibilityState !== "visible") return;
         this.retry = setTimeout(() => this.listen(), this.delay);
@@ -141,7 +200,10 @@ class CloudServer {
         for (const thread of this.threads.values()) thread.pause();
         return;
       }
-      checkMacAgain();
+      void probeMac().then((result) => {
+        recordMacProbe(result);
+        if (result === "reachable") reloadApp();
+      });
       this.list = null;
       for (const thread of this.threads.values())
         void thread.load().catch(() => undefined);
@@ -498,10 +560,25 @@ export function isMacUnreachableThroughRelay(): boolean {
   return macUnreachableThroughRelay;
 }
 
-export function checkMacAgain(): void {
-  void macOffline().then((offline) => {
-    if (!offline) window.location.reload();
-  });
+let lastMacProbe: MacProbe | null = null;
+const macProbeListeners = new Set<() => void>();
+
+function recordMacProbe(result: MacProbe): void {
+  lastMacProbe = result;
+  for (const listener of macProbeListeners) listener();
+}
+
+export function getLastMacProbe(): MacProbe | null {
+  return lastMacProbe;
+}
+
+export function subscribeMacProbe(listener: () => void): () => void {
+  macProbeListeners.add(listener);
+  return () => macProbeListeners.delete(listener);
+}
+
+export async function checkMacAgain(): Promise<void> {
+  recordMacProbe(await probeMac());
 }
 
 export function installCloudServer(): void {

@@ -11,7 +11,7 @@ const live = vi.hoisted(() => ({
   disconnectedAt: 0 as number | null,
 }));
 vi.mock("@/hooks/useServerConnectionState", () => ({ useServerConnectionState: () => live.state }));
-vi.mock("@/hooks/queries/connection-aware-query-state", () => ({
+vi.mock("@/hooks/queries/connection-aware-query-state", () => ({ useElapsedWhile: (active: boolean) => active,
   useServerConnectionGracePeriodElapsed: () => live.state !== "connected",
 }));
 vi.mock("@/lib/ws", () => ({

@@ -62,7 +62,7 @@ export function getConnectionAwareQueryState({
   return { status: "ready" };
 }
 
-function useElapsedWhile(active: boolean): boolean {
+export function useElapsedWhile(active: boolean): boolean {
   const [elapsed, setElapsed] = useState(false);
 
   useEffect(() => {

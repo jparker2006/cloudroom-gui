@@ -10,7 +10,7 @@ import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 const live = vi.hoisted(() => ({ state: "connected" as "connected" | "reconnecting", grace: false, disconnectedAt: null as number | null }));
 vi.mock("@/hooks/queries/system-queries", () => ({ useSystemConfig: () => ({ data: undefined }) }));
 vi.mock("@/hooks/useServerConnectionState", () => ({ useServerConnectionState: () => live.state }));
-vi.mock("@/hooks/queries/connection-aware-query-state", () => ({ useServerConnectionGracePeriodElapsed: () => live.grace }));
+vi.mock("@/hooks/queries/connection-aware-query-state", () => ({ useElapsedWhile: (active: boolean) => active, useServerConnectionGracePeriodElapsed: () => live.grace }));
 vi.mock("@/lib/ws", () => ({ wsManager: { getDisconnectedAt: () => live.disconnectedAt, getConnectionState: () => live.state, onConnectionStateChange: () => () => {}, reconnectNow: vi.fn() } }));
 
 const { ThreadTimelineSurface } = await import("./ThreadTimelineSurface");
