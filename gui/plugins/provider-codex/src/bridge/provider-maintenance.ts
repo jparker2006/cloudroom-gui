@@ -314,6 +314,12 @@ const codexUsageResponseSchema = z.object({
     .nullish(),
 });
 
+function reportedUsage(value: unknown): { reportedUsedPercent?: number } {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? { reportedUsedPercent: value }
+    : {};
+}
+
 function usageWindow(
   value: z.infer<typeof codexUsageWindowSchema> | null | undefined,
   fallbackLabel: string,
@@ -331,6 +337,7 @@ function usageWindow(
     label:
       value.limit_window_seconds === 604_800 ? "Weekly limit" : fallbackLabel,
     usedPercent: clampPercent(value.used_percent),
+    ...reportedUsage(value.used_percent),
     resetsAt:
       value.reset_at == null || !Number.isFinite(value.reset_at)
         ? null

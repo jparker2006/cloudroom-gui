@@ -130,6 +130,11 @@ export interface PluginSidebarFooterActionProps {}
 export interface ExperimentalSidebarFooterDisclosureProps {
   /** Hide this disclosure without affecting another plugin's open disclosure. */
   dismiss(): void;
+  /**
+   * Hide this disclosure and navigate to this plugin's detail page in Tools,
+   * the same destination as `ExperimentalSidebarFooterActionContext`.
+   */
+  openPluginDetails(): void;
 }
 
 /** Display and accessibility metadata for a host-owned sidebar shortcut. */

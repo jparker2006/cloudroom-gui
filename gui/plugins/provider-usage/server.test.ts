@@ -5,6 +5,7 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 import { usageListMethod, usageFetchMethod } from "./usage-source-contract.js";
+import type { UsageSnapshot } from "./usage-schema.js";
 
 it("lists cheaply, fetches only the selected source/provider, preserves failed measurements, and evicts removed resources", async () => {
   let enabled = true;
@@ -60,6 +61,7 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
         windows: [
           {
             id: "week",
+            kind: "weekly",
             label: "Weekly",
             usedPercent: 42,
             resetsAt: null,
@@ -392,6 +394,7 @@ it("fetches every provider on a selected machine when no provider is named", asy
                   windows: [
                     {
                       id: "week",
+                      kind: "weekly",
                       label: "Weekly",
                       usedPercent: 42,
                       resetsAt: null,
@@ -427,4 +430,363 @@ it("fetches every provider on a selected machine when no provider is named", asy
   } finally {
     await harness.lifecycle.dispose();
   }
+});
+
+type FakeRpc = (args: {
+  method: string;
+  input: { resourceId?: string };
+}) => Promise<unknown>;
+
+function freshnessHost(callRpc: FakeRpc, accounts = false) {
+  const host = createFakePluginHost({
+    pluginId: "provider-usage",
+    sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host", name: "Mac", status: "connected" }),
+        ],
+      },
+      providers: {
+        list: async () => [
+          { id: "claude-code", displayName: "Claude Code", logoUrl: null },
+        ],
+      },
+      plugins: {
+        experimental_discoverRpc: async ({ method = "" } = {}) =>
+          method === usageListMethod
+            ? [{ pluginId: "pool", displayName: "Pool", method }]
+            : accounts
+              ? [{ pluginId: "accounts", displayName: "Accounts", method }]
+              : [],
+        callRpc: vi.fn((args) => callRpc(args as Parameters<FakeRpc>[0])),
+      },
+    },
+  });
+  plugin(host.bb);
+  return host;
+}
+
+function measurement(
+  resourceId: string,
+  observedAt: number | null,
+  usedPercent: number,
+) {
+  return {
+    observedAt,
+    usage: {
+      status: "ok",
+      accountEmail: `${resourceId}@example.com`,
+      planLabel: null,
+      windows: [
+        {
+          id: "week",
+          kind: "weekly",
+          label: "Weekly",
+          usedPercent,
+          resetsAt: null,
+          model: null,
+          cost: null,
+        },
+      ],
+    },
+  };
+}
+
+it("carries each measurement's observedAt and never advances it on cached reads or failed refreshes", async () => {
+  const failing = new Set<string>();
+  let fetches = 0;
+  const observed: Record<string, number | null> = { a: 1_000, b: null };
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: ["a", "b"].map((id) => ({
+          id,
+          providerId: "claude-code",
+          label: id,
+          scope: { kind: "shared" },
+        })),
+      };
+    fetches += 1;
+    if (failing.has(input.resourceId!)) throw new Error("down");
+    return measurement(input.resourceId!, observed[input.resourceId!]!, 40);
+  });
+  const read = async (force: boolean) =>
+    (await host.harness.behavior.callRpc("getUsage", {
+      force,
+      machineIds: ["source:pool"],
+      providerId: null,
+      maxAgeMs: 60_000,
+    })) as UsageSnapshot;
+  const providers = async (force: boolean) =>
+    (await read(force)).machines.find(
+      (machine) => machine.id === "source:pool",
+    )!.providers;
+
+  expect(await providers(false)).toMatchObject([
+    { id: "pool:a", observedAt: 1_000 },
+    { id: "pool:b", observedAt: null },
+  ]);
+  const afterFirst = fetches;
+  observed.a = 9_000;
+  expect((await providers(false))[0]).toMatchObject({
+    id: "pool:a",
+    observedAt: 1_000,
+  });
+  expect(fetches).toBe(afterFirst);
+
+  failing.add("a");
+  const partial = await providers(true);
+  expect(partial[0]).toMatchObject({
+    id: "pool:a",
+    observedAt: 1_000,
+    refreshFailed: true,
+    usage: { windows: [{ usedPercent: 40 }] },
+  });
+  expect(partial[1]).toMatchObject({ id: "pool:b", observedAt: null });
+  expect(partial[1].refreshFailed).toBeUndefined();
+
+  failing.clear();
+  expect((await providers(true))[0]).toMatchObject({ observedAt: 9_000 });
+  expect((await providers(true))[0].refreshFailed).toBeUndefined();
+});
+
+it("gives merged accounts their own observedAt and never invents a percentage for a hit limit", async () => {
+  const host = freshnessHost(async ({ method }) => {
+    if (method === usageListMethod)
+      return {
+        resources: [
+          {
+            id: "local",
+            providerId: "claude-code",
+            label: "Claude Code",
+            scope: { kind: "host", hostId: "host", hostName: "Mac" },
+          },
+        ],
+      };
+    if (method === "accounts.list")
+      return [
+        {
+          id: "local",
+          email: "mac@example.com",
+          plan: null,
+          inUse: true,
+          observedAt: 999,
+          windows: [],
+        },
+        {
+          id: "measured",
+          email: "measured@example.com",
+          plan: null,
+          inUse: false,
+          observedAt: 2_000,
+          windows: [
+            {
+              kind: "five-hour",
+              label: "Weekly",
+              usedPercent: 120,
+              resetsAt: null,
+            },
+          ],
+        },
+        {
+          id: "failing",
+          email: "failing@example.com",
+          plan: null,
+          inUse: false,
+          error: "Claude usage failed.",
+          observedAt: 1_500,
+          windows: [{ label: "Weekly", usedPercent: 30, resetsAt: 1e17 }],
+        },
+        {
+          id: "limited",
+          email: "limited@example.com",
+          plan: null,
+          inUse: false,
+          limitedUntil: 5_000_000_000_000,
+          windows: [],
+        },
+      ];
+    return measurement("local", 7_000, 10);
+  }, true);
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["host"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  const providers = snapshot.machines.find(
+    (machine) => machine.id === "host",
+  )!.providers;
+  expect(providers).toMatchObject([
+    { accountId: "local", observedAt: 7_000 },
+    {
+      accountId: "measured",
+      observedAt: 2_000,
+      usage: { windows: [{ kind: "five-hour", usedPercent: 120 }] },
+    },
+    {
+      accountId: "failing",
+      observedAt: 1_500,
+      refreshFailed: true,
+      usage: { windows: [{ usedPercent: 30, resetsAt: null }] },
+    },
+    {
+      accountId: "limited",
+      observedAt: null,
+      usage: { windows: [{ label: "Limit hit", usedPercent: null }] },
+    },
+  ]);
+  expect(providers[0]!.refreshFailed).toBeUndefined();
+  expect(providers[1]!.refreshFailed).toBeUndefined();
+  expect(
+    snapshot.machines.find((machine) => machine.id === "host")!.error,
+  ).toBe("Some usage could not be refreshed.");
+});
+
+it("preserves window kind and identity through aggregation for pacing", async () => {
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: [
+          {
+            id: "a",
+            providerId: "claude-code",
+            label: "a",
+            scope: { kind: "shared" },
+          },
+        ],
+      };
+    return measurement(input.resourceId!, 1_000, 40);
+  });
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["source:pool"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  expect(
+    snapshot.machines.find((machine) => machine.id === "source:pool")!
+      .providers[0]!.usage,
+  ).toMatchObject({ windows: [{ id: "week", kind: "weekly" }] });
+});
+
+it("keeps the last account list and flags it when accounts.list fails", async () => {
+  let failing = false;
+  const host = freshnessHost(async ({ method }) => {
+    if (method === usageListMethod) return { resources: [] };
+    if (method === "accounts.list") {
+      if (failing) throw new Error("accounts down");
+      return [
+        {
+          id: "saved",
+          email: "saved@example.com",
+          plan: null,
+          inUse: true,
+          observedAt: 4_000,
+          windows: [{ label: "Weekly", usedPercent: 50, resetsAt: null }],
+        },
+      ];
+    }
+    throw new Error("unexpected");
+  }, true);
+  const read = async () =>
+    (
+      (await host.harness.behavior.callRpc("getUsage", {
+        force: false,
+        machineIds: ["host"],
+        providerId: null,
+        maxAgeMs: 60_000,
+      })) as UsageSnapshot
+    ).machines.find((machine) => machine.id === "host")!;
+  expect((await read()).providers[0]).toMatchObject({
+    accountId: "saved",
+    observedAt: 4_000,
+  });
+  expect((await read()).providers[0]!.refreshFailed).toBeUndefined();
+  failing = true;
+  const failed = await read();
+  expect(failed.providers[0]).toMatchObject({
+    accountId: "saved",
+    observedAt: 4_000,
+    refreshFailed: true,
+    usage: { windows: [{ usedPercent: 50 }] },
+  });
+  expect(failed.error).toBe("Some usage could not be refreshed.");
+});
+
+it("aggregates raw over-limit and zero source usage without capping or dropping", async () => {
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: ["over", "zero"].map((id) => ({
+          id,
+          providerId: "claude-code",
+          label: id,
+          scope: { kind: "shared" },
+        })),
+      };
+    return measurement(
+      input.resourceId!,
+      1_000,
+      input.resourceId === "over" ? 130 : 0,
+    );
+  });
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["source:pool"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  const providers = snapshot.machines.find(
+    (machine) => machine.id === "source:pool",
+  )!.providers;
+  expect(providers[0]!.usage).toMatchObject({
+    windows: [{ usedPercent: 130 }],
+  });
+  expect(providers[1]!.usage).toMatchObject({ windows: [{ usedPercent: 0 }] });
+});
+
+it("carries the legacy capped marker from a source into aggregation", async () => {
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: ["legacy", "raw"].map((id) => ({
+          id,
+          providerId: "claude-code",
+          label: id,
+          scope: { kind: "shared" },
+        })),
+      };
+    const value = measurement(input.resourceId!, 1_000, 100);
+    return {
+      ...value,
+      usage: {
+        ...value.usage,
+        windows: value.usage.windows.map((window) => ({
+          ...window,
+          usedPercentCapped: input.resourceId === "legacy",
+        })),
+      },
+    };
+  });
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["source:pool"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  const [legacy, raw] = snapshot.machines.find(
+    (machine) => machine.id === "source:pool",
+  )!.providers;
+  expect(legacy!.usage).toMatchObject({
+    windows: [{ usedPercent: 100, usedPercentCapped: true }],
+  });
+  expect(
+    raw!.usage?.status === "ok" ? raw!.usage.windows[0] : undefined,
+  ).not.toHaveProperty("usedPercentCapped");
 });
