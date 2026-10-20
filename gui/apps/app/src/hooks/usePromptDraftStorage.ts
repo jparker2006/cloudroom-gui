@@ -382,6 +382,10 @@ function keepNewThreadDraftOnIncomingChange(storageKey: string): boolean {
     holdInMemory(storageKey, cachedEntry, rawValue, "moved-elsewhere");
     return true;
   }
+  if (record.kind === "unreadable" && rawValue !== null) {
+    holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
+    return true;
+  }
   const myRev = newThreadDraftRevs.get(storageKey);
   if (
     record.kind === "draft" &&

@@ -1216,3 +1216,20 @@ describe("review fixes: failed saves", () => {
     ).toBe("newest, not saved");
   });
 });
+
+describe("review fixes: unreadable change from another window", () => {
+  it("keeps this window's text and says the saved draft can't be read", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), "{bad");
+
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: alphaKey() }));
+    });
+
+    expect(result.current.text).toBe("mine");
+    expect(result.current.notice).toBe("unreadable");
+  });
+});
