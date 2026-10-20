@@ -43,6 +43,7 @@ import {
   findSidebarNavigationThreadPlaceholder,
 } from "../cache-owners/query-cache";
 import { useSidebarNavigationThreadSelection } from "./sidebar-navigation-query";
+import { useQueryRefreshFailure } from "./query-refresh-failure";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -380,6 +381,7 @@ interface UseChildThreadsArgs {
 
 interface UseChildThreadsResult {
   data: ThreadListResponse | undefined;
+  hasRefreshFailure: boolean;
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
@@ -402,11 +404,12 @@ export function useChildThreads({
     useSidebarNavigationThreadSelection(selectChildren);
   const shouldFetch =
     enabled && sidebarChildren === undefined && !isBootstrapPending;
+  const fallbackQueryKey =
+    shouldFetch && parentThreadId
+      ? threadListQueryKey({ archived: false, parentThreadId })
+      : disabledThreadListQueryKey({ archived: false });
   const fallbackQuery = useQuery<ThreadListResponse>({
-    queryKey:
-      shouldFetch && parentThreadId
-        ? threadListQueryKey({ archived: false, parentThreadId })
-        : disabledThreadListQueryKey({ archived: false }),
+    queryKey: fallbackQueryKey,
     queryFn: ({ signal }) =>
       sdk.threads.list({
         archived: false,
@@ -419,10 +422,12 @@ export function useChildThreads({
     enabled: shouldFetch,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
+  const fallbackHasRefreshFailure = useQueryRefreshFailure(fallbackQueryKey, shouldFetch);
   const derivedChildren = enabled ? sidebarChildren : undefined;
   if (derivedChildren !== undefined) {
     return {
       data: derivedChildren,
+      hasRefreshFailure: false,
       isError: false,
       isFetching: false,
       isLoading: false,
@@ -431,6 +436,7 @@ export function useChildThreads({
   const waitingForBootstrap = enabled && isBootstrapPending;
   return {
     data: fallbackQuery.data,
+    hasRefreshFailure: fallbackHasRefreshFailure,
     isError: fallbackQuery.isError,
     isFetching: fallbackQuery.isFetching || waitingForBootstrap,
     isLoading: fallbackQuery.isLoading || waitingForBootstrap,

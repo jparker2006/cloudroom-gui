@@ -151,8 +151,12 @@ export function useInstallDesktopUpdate() {
   });
 }
 
+export async function fetchCloudroomThreadStatus(threadId: string, signal?: AbortSignal) {
+  return threadStatusSchema.parse(await (await fetchWithAppSurface(`/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}`, { signal })).json());
+}
+
 export function useCloudroomThread(threadId: string, enabled: boolean) {
-  return useQuery({ queryKey: ["cloudroom-thread", threadId], enabled, queryFn: async ({ signal }) => threadStatusSchema.parse(await (await fetchWithAppSurface(`/api/v1/cloudroom/threads/${encodeURIComponent(threadId)}`, { signal })).json()), refetchInterval: 1500 });
+  return useQuery({ queryKey: ["cloudroom-thread", threadId], enabled, queryFn: ({ signal }) => fetchCloudroomThreadStatus(threadId, signal), refetchInterval: 1500 });
 }
 
 export function useSetCloudReasoning(threadId: string) {
