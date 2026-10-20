@@ -556,7 +556,7 @@ export function RootComposeView() {
               reasoningLevel: request.reasoningLevel,
               serviceTier: request.serviceTier,
             });
-      if (createRequest === null) return;
+      if (createRequest === null) return false;
       const thread = await createThread.mutateAsync(
         sendAt === undefined
           ? createRequest

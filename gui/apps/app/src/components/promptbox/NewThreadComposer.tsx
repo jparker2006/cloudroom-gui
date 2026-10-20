@@ -231,7 +231,9 @@ export interface NewThreadComposerProps {
   seed?: NewThreadComposerSeed;
   resetKey?: string | number | null;
   preferReadyProviderWhenUnset?: boolean;
-  onSubmit: (request: NewThreadComposerSubmission) => void | Promise<void>;
+  onSubmit: (
+    request: NewThreadComposerSubmission,
+  ) => void | false | Promise<void | false>;
   focusRequest?: number;
   children: (state: NewThreadComposerState) => ReactNode;
 }
@@ -1634,7 +1636,7 @@ export function NewThreadComposer({
       setIsSubmitting(true);
       setComposerError(null);
       try {
-        await onSubmit(request);
+        const created = (await onSubmit(request)) !== false;
         promptDraft.clearIfCurrentMatches(submittedDraft);
         if (executionTarget === "cloud")
           clearCloudroomRequestId(promptDraft.storageKey);
@@ -1643,6 +1645,7 @@ export function NewThreadComposer({
           setExecutionTarget(startingExecutionTarget(true));
           setCloudPicked(false);
         }
+        return created;
       } catch (submitError) {
         setComposerError(
           getMutationErrorMessage({
@@ -1682,11 +1685,13 @@ export function NewThreadComposer({
   const handleSubmit = useCallback(
     async (blockedReason: string | null) => {
       try {
-        await submitDraft(blockedReason, null);
-        recordRecentProject(projectId);
+        const created = await submitDraft(blockedReason, null);
+        if (created && selectionScope === "new-thread") {
+          recordRecentProject(projectId);
+        }
       } catch {}
     },
-    [projectId, recordRecentProject, submitDraft],
+    [projectId, recordRecentProject, selectionScope, submitDraft],
   );
   useEffect(() => {
     submitProgrammaticallyRef.current = async (

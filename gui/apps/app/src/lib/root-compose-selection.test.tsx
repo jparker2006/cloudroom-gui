@@ -230,8 +230,11 @@ describe("recent projects", () => {
       throw new DOMException("Full", "QuotaExceededError");
     });
     const { result } = setup();
-    act(() => result.current.record("proj_a"));
-    expect(result.current.ids).toEqual(["proj_a"]);
+    act(() => {
+      result.current.record("proj_a");
+      result.current.record("proj_b");
+    });
+    expect(result.current.ids).toEqual(["proj_b", "proj_a"]);
     expect(window.localStorage.getItem(RECENT_PROJECTS_STORAGE_KEY)).toBeNull();
   });
 });

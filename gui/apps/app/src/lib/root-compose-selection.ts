@@ -150,6 +150,34 @@ export function addRecentProject(
   return Object.fromEntries([[scope, entries], ...otherScopes]);
 }
 
+function mergeRecentProjects(
+  stored: RecentProjectsByScope,
+  inMemory: RecentProjectsByScope,
+): RecentProjectsByScope {
+  const merged: Record<string, readonly RecentProject[]> = { ...stored };
+  for (const [scope, entries] of Object.entries(inMemory)) {
+    const byId = new Map<string, RecentProject>();
+    for (const entry of [
+      ...(stored[scope] ?? NO_RECENT_PROJECTS),
+      ...entries,
+    ]) {
+      const existing = byId.get(entry.id);
+      if (existing === undefined || entry.usedAt > existing.usedAt) {
+        byId.set(
+          entry.id,
+          existing === undefined
+            ? entry
+            : { ...existing, usedAt: entry.usedAt },
+        );
+      }
+    }
+    merged[scope] = [...byId.values()]
+      .sort((a, b) => b.usedAt - a.usedAt)
+      .slice(0, MAX_RECENT_PROJECTS_PER_SCOPE);
+  }
+  return merged;
+}
+
 export function useRecentProjectIds(scope: string | null): readonly string[] {
   const byScope = useAtomValue(recentProjectsAtom);
   const entries = scope === null ? undefined : byScope[scope];
@@ -176,7 +204,14 @@ export function useRecordRecentProject(): (projectId: string) => void {
         ),
         EMPTY_RECENT_PROJECTS,
       );
-      setRecentProjects(addRecentProject(latest, scope, projectId, Date.now()));
+      setRecentProjects((current) =>
+        addRecentProject(
+          mergeRecentProjects(latest, current),
+          scope,
+          projectId,
+          Date.now(),
+        ),
+      );
     },
     [queryClient, setRecentProjects],
   );
