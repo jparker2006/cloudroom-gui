@@ -1,10 +1,9 @@
 // oxlint-disable-next-line no-restricted-imports
 import type { Stats } from "node:fs";
 // oxlint-disable-next-line no-restricted-imports
-import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import {
   basename,
-  dirname,
   extname,
   isAbsolute,
   join,
@@ -168,22 +167,54 @@ export async function withoutUnverifiedAttachments(
   ];
 }
 
+async function canonicalProjectAttachmentDir(
+  dataDir: string,
+  projectId: string,
+): Promise<string | null> {
+  if (!/^[A-Za-z0-9_-]+$/u.test(projectId)) return null;
+  const [realRoot, realDir] = await Promise.all([
+    realpath(join(dataDir, "attachments")).catch(() => null),
+    realpath(projectAttachmentDir(dataDir, projectId)).catch(() => null),
+  ]);
+  return realRoot && realDir === join(realRoot, projectId) ? realDir : null;
+}
+
+async function containedUploadFile(
+  realDir: string,
+  candidatePath: string,
+): Promise<{ fileStat: Stats; resolved: string } | null> {
+  const realFile = await realpath(candidatePath).catch(() => null);
+  const resolved = realFile
+    ? resolveContainedPath({ rootPath: realDir, candidatePath: realFile })
+    : null;
+  const fileStat = resolved ? await stat(resolved).catch(() => null) : null;
+  return resolved && fileStat?.isFile() ? { fileStat, resolved } : null;
+}
+
 async function resolveStoredAttachment(
   dataDir: string,
   projectId: string,
   relativePath: string,
 ): Promise<{ fileStat: Stats; resolved: string } | null> {
   const dir = projectAttachmentDir(dataDir, projectId);
-  const [realDir, realFile] = await Promise.all([
-    realpath(dir).catch(() => null),
-    realpath(resolveAttachmentPath(dir, relativePath)).catch(() => null),
-  ]);
-  const resolved =
-    realDir && realFile
-      ? resolveContainedPath({ rootPath: realDir, candidatePath: realFile })
+  const candidate = resolveAttachmentPath(dir, relativePath);
+  const realDir = await canonicalProjectAttachmentDir(dataDir, projectId);
+  return realDir ? containedUploadFile(realDir, candidate) : null;
+}
+
+export async function verifiedProjectUploadPath(
+  dataDir: string,
+  projectIds: readonly string[],
+  absolutePath: string,
+): Promise<string | null> {
+  for (const projectId of new Set(projectIds)) {
+    const realDir = await canonicalProjectAttachmentDir(dataDir, projectId);
+    const stored = realDir
+      ? await containedUploadFile(realDir, absolutePath)
       : null;
-  const fileStat = resolved ? await stat(resolved).catch(() => null) : null;
-  return resolved && fileStat?.isFile() ? { fileStat, resolved } : null;
+    if (stored) return stored.resolved;
+  }
+  return null;
 }
 
 export async function validatePromptAttachmentReferences(
@@ -289,32 +320,70 @@ export async function copyProjectAttachments(
 
   const uniquePaths = [...new Set(attachmentPaths)];
   const targetDir = projectAttachmentDir(dataDir, targetProjectId);
+  for (const attachmentPath of uniquePaths) {
+    resolveAttachmentPath(targetDir, attachmentPath);
+    if (sanitizeFilename(attachmentPath) !== attachmentPath) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Attachment path must be a stored attachment file name",
+      );
+    }
+  }
+  const sources = await Promise.all(
+    uniquePaths.map(async (attachmentPath) => ({
+      attachmentPath,
+      content: (await readAttachment(dataDir, sourceProjectId, attachmentPath))
+        .content,
+    })),
+  );
+  await mkdir(targetDir, { recursive: true });
+  const realTargetDir = await canonicalProjectAttachmentDir(
+    dataDir,
+    targetProjectId,
+  );
+  if (!realTargetDir) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "The target project's attachment folder is not usable",
+    );
+  }
+  const sameAsExisting = async (
+    attachmentPath: string,
+    targetPath: string,
+    content: Buffer,
+  ): Promise<boolean> => {
+    const existing = await lstat(targetPath).catch(() => null);
+    if (!existing) return false;
+    if (
+      !existing.isFile() ||
+      !(await readFile(targetPath)).equals(content)
+    ) {
+      throw attachmentCopyConflict(attachmentPath);
+    }
+    return true;
+  };
   const attachments = await Promise.all(
-    uniquePaths.map(async (attachmentPath) => {
-      const content = (
-        await readAttachment(dataDir, sourceProjectId, attachmentPath)
-      ).content;
-      const targetPath = resolveAttachmentPath(targetDir, attachmentPath);
-      const existing = await readFile(targetPath).catch(() => null);
-      if (existing && !existing.equals(content)) {
-        throw attachmentCopyConflict(attachmentPath);
-      }
-      return { attachmentPath, content, exists: existing !== null, targetPath };
+    sources.map(async ({ attachmentPath, content }) => {
+      const targetPath = join(realTargetDir, attachmentPath);
+      return {
+        attachmentPath,
+        content,
+        exists: await sameAsExisting(attachmentPath, targetPath, content),
+        targetPath,
+      };
     }),
   );
 
   await Promise.all(
     attachments.map(async ({ attachmentPath, content, exists, targetPath }) => {
       if (exists) return;
-      await mkdir(dirname(targetPath), { recursive: true });
       try {
         await writeFile(targetPath, content, { flag: "wx" });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const existing = await readFile(targetPath).catch(() => null);
-        if (!existing?.equals(content)) {
-          throw attachmentCopyConflict(attachmentPath);
-        }
+        await sameAsExisting(attachmentPath, targetPath, content);
       }
     }),
   );

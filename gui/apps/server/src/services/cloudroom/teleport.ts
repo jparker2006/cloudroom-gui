@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import { resolveProjectAttachmentFile } from "../projects/attachments.js";
+import {
+  resolveProjectAttachmentFile,
+  verifiedProjectUploadPath,
+} from "../projects/attachments.js";
 import { and, asc, desc, eq, inArray, isNull, like } from "drizzle-orm";
 import {
   cloudroomThreads,
@@ -59,6 +62,7 @@ interface State {
   }[];
   attachments: string[];
   undeliveredAttachments?: string[];
+  attachmentsVerified?: true;
   queuedIds: string[];
   queued: TeleportManifest["queued"];
   model: string;
@@ -162,6 +166,39 @@ class Teleport {
       .where(eq(cloudroomCommands.id, state.id))
       .run();
   }
+  private async reverifyAttachments(state: State): Promise<State> {
+    if (state.manifest?.files.some((file) => file.kind === "attachment"))
+      throw new ApiError(
+        409,
+        "teleport_update",
+        "This Teleport started before an update and its attachments cannot be verified. Cancel it and Teleport again.",
+      );
+    const projectIds = state.sessions.flatMap(
+      (source) => getThread(this.deps.db, source.threadId)?.projectId ?? [],
+    );
+    const attachments: string[] = [];
+    const undelivered = new Set(state.undeliveredAttachments ?? []);
+    for (const path of state.attachments) {
+      const verified = await verifiedProjectUploadPath(
+        this.deps.config.dataDir,
+        projectIds,
+        path,
+      );
+      if (verified) attachments.push(verified);
+      else undelivered.add(basename(path.replaceAll("\\", "/")));
+    }
+    const verified: State = {
+      ...state,
+      attachments,
+      ...(undelivered.size > 0
+        ? { undeliveredAttachments: [...undelivered] }
+        : {}),
+      attachmentsVerified: true,
+    };
+    this.save(verified);
+    return verified;
+  }
+
   private load(id: string): State {
     const row = this.deps.db
       .select({ input: cloudroomCommands.input })
@@ -508,6 +545,7 @@ class Teleport {
       sessions,
       attachments,
       ...(undeliveredAttachments.length > 0 ? { undeliveredAttachments } : {}),
+      attachmentsVerified: true,
       queuedIds: queuedRows.map((row) => row.id),
       queued,
       ...execution,
@@ -734,6 +772,7 @@ class Teleport {
         "teleport_update",
         "Update the cloud core before using Teleport. The local task is stopped and preserved.",
       );
+    if (!state.attachmentsVerified) state = await this.reverifyAttachments(state);
     if (!state.manifest) {
       const rows = state.sessions.flatMap((source) =>
         this.deps.db

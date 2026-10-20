@@ -8,6 +8,7 @@ import * as sync from "../../src/services/cloudroom/sync.js";
 import { listQueuedCommands } from "../helpers/commands.js";
 import { cloudroom } from "../../src/services/cloudroom/commands.js";
 import { command, saveTeleportProgress } from "../../src/services/cloudroom/store.js";
+import { localQueueFromCloud } from "../../src/services/cloudroom/teleport-local.js";
 import { collectTeleportAttachments, teleportAttachmentPath, teleports, undeliveredAttachmentsLine } from "../../src/services/cloudroom/teleport.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import { seedEnvironment, seedHostSession, seedPrimaryHost, seedProjectWithSource, seedThread, seedThreadRuntimeState } from "../helpers/seed.js";
@@ -1245,6 +1246,15 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     expect(command(harness.db, "legacy-at-limit")?.state).toBe("failed");
     expect(service.threadStatus(thread.id)?.error).toContain(`Attachment "${onlyInA}" could not be delivered, and the message is too long to tell the agent`);
     expect(atLimit).toHaveLength(32768);
+    const local = await localQueueFromCloud(harness.deps, thread.id, projectB.id);
+    const localContent = (id: string) => local.find((message) => message.id === id)?.content;
+    expect(localContent("continues")).toEqual([{ type: "text", text: "continues", mentions: [] }, { type: "localImage", path }]);
+    for (const id of ["legacy-bare-name", "legacy-escaping", "legacy-absolute"]) {
+      expect(localContent(id)).toEqual([
+        { type: "text", text: id, mentions: [] },
+        { type: "text", text: `[Attachments not delivered (missing, or not an upload of this project; you have not seen them, so ask the user to attach them again if the task depends on them): ${onlyInA}.]`, mentions: [] },
+      ]);
+    }
     for (const id of ["legacy-bare-name", "legacy-escaping", "legacy-absolute"]) {
       const prompt = prompts.find((item) => item.request_id === id)!;
       expect(prompt.attachments ?? []).toEqual([]);

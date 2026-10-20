@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import {
   copyProjectAttachments,
   readAttachment,
   validatePromptAttachmentReferences,
+  verifiedProjectUploadPath,
   withoutUnverifiedAttachments,
 } from "./attachments.js";
 
@@ -162,6 +163,51 @@ describe("project attachments", () => {
         mentions: [],
       },
     ]);
+  });
+
+  it("never trusts a project uploads folder that is a symlink to another project", async () => {
+    const dataDir = await realpath(await makeTempDir());
+    const uploadsA = join(dataDir, "attachments", "proj_a");
+    await mkdir(uploadsA, { recursive: true });
+    await writeFile(join(uploadsA, "a.png"), "a");
+    await symlink(uploadsA, join(dataDir, "attachments", "proj_b"));
+
+    await expect(
+      readAttachment(dataDir, "proj_b", "a.png"),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(
+      await verifiedProjectUploadPath(dataDir, ["proj_b"], join(uploadsA, "a.png")),
+    ).toBeNull();
+    expect(
+      await verifiedProjectUploadPath(dataDir, ["proj_b", "proj_a"], join(uploadsA, "a.png")),
+    ).toBe(join(uploadsA, "a.png"));
+    expect(
+      await verifiedProjectUploadPath(dataDir, ["../attachments/proj_a"], join(uploadsA, "a.png")),
+    ).toBeNull();
+  });
+
+  it("copies only to plain files inside the real target uploads folder", async () => {
+    const dataDir = await realpath(await makeTempDir());
+    const source = join(dataDir, "attachments", "proj_source");
+    const outside = join(dataDir, "outside");
+    await mkdir(join(source, "nested"), { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(source, "shot.png"), "shot");
+    await writeFile(join(source, "nested", "new.png"), "nested");
+    await mkdir(join(dataDir, "attachments", "proj_linkfile"), { recursive: true });
+    await symlink(join(outside, "planted.png"), join(dataDir, "attachments", "proj_linkfile", "shot.png"));
+    await symlink(outside, join(dataDir, "attachments", "proj_linkdir"));
+
+    await expect(
+      copyProjectAttachments(dataDir, "proj_source", "proj_target", ["nested/new.png"]),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      copyProjectAttachments(dataDir, "proj_source", "proj_linkfile", ["shot.png"]),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      copyProjectAttachments(dataDir, "proj_source", "proj_linkdir", ["shot.png"]),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await readdir(outside)).toEqual([]);
   });
 
   it("does not partially copy when one source attachment is missing", async () => {

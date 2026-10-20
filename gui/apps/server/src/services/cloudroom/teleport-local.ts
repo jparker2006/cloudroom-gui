@@ -68,6 +68,12 @@ export async function teleportToLocal(deps: AppDeps, threadId: string): Promise<
   }
 }
 
+export function localQueueFromCloud(deps: AppDeps, threadId: string, projectId: string) {
+  return Promise.all(cloudroom(deps).queue(threadId).map(async (message) => ({
+    ...message, content: await withoutUnverifiedAttachments(deps.config.dataDir, projectId, message.content),
+  })));
+}
+
 async function run(deps: AppDeps, threadId: string, step: (value: TeleportLocalStep) => void): Promise<{ conflicts: number }> {
   const thread = getThread(deps.db, threadId);
   const saved = binding(deps.db, threadId);
@@ -107,9 +113,7 @@ async function run(deps: AppDeps, threadId: string, step: (value: TeleportLocalS
   const conflicts = await applyChanges(environment.path, changes.archive, randomUUID(), changes.base);
   step("switching");
 
-  const queued = await Promise.all(cloudroom(deps).queue(threadId).map(async (message) => ({
-    ...message, content: await withoutUnverifiedAttachments(deps.config.dataDir, thread.projectId, message.content),
-  })));
+  const queued = await localQueueFromCloud(deps, threadId, thread.projectId);
   deps.db.transaction((tx) => {
     for (const message of queued)
       createQueuedThreadMessageInTransaction(tx, {
