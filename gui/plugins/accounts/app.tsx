@@ -18,6 +18,7 @@ import {
   ACCOUNTS_CHANGED,
   LOCAL,
   MAX_ACCOUNTS,
+  nextResetAt,
   resetPassedText,
   type AccountView,
   type Provider,
@@ -88,6 +89,16 @@ function AccountTile({
   onSignInAgain?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [, rerenderAtReset] = useState(0);
+  const nextReset = nextResetAt(account.windows, Date.now());
+  useEffect(() => {
+    if (nextReset === null) return;
+    const timer = window.setTimeout(
+      () => rerenderAtReset((tick) => tick + 1),
+      Math.min(nextReset - Date.now() + 1, 2 ** 31 - 1),
+    );
+    return () => window.clearTimeout(timer);
+  }, [nextReset]);
   const local = account.id === LOCAL;
   const fallback =
     account.email ?? (local ? "This Mac" : `Account ${index + 1}`);

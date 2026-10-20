@@ -212,7 +212,7 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
   }
 });
 
-it("passes reported over-limit and zero usage through unchanged", async () => {
+it("passes usage above 100% and zero from system.usageLimits through unchanged", async () => {
   const { bb, harness } = createFakePluginHost({
     sdk: {
       hosts: {

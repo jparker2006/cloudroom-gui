@@ -23,9 +23,12 @@ windows say why pace is unavailable. The read-only detail content
 surfaces. "View usage details" in the sidebar card opens that page on the same
 source.
 
-Known limits: the provider bridge contract caps local Claude Code, Codex and
-cloud Claude usage at 100%, so their over-limit amounts are not visible; Codex
-accounts kept by the website report no measurement time or window length.
+Known limits: the provider bridge contract caps local Claude Code, Codex, ACP
+and cloud Claude usage at 100%, so their over-limit amounts are not visible and
+pace deficits near the cap are understated. Codex accounts kept by the website
+report no measurement time, window type or length: they show their reported
+usage with "Last update unavailable", get no pace, and become unavailable once
+their reported reset passes.
 
 Settings → Agents → Usage contains the usage page, using its
 full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Both surfaces share the plugin’s aggregation and cache. Neither display is required for source

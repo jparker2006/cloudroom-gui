@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { UsageMachine, UsageProvider } from "./usage-schema.js";
 
@@ -377,4 +377,28 @@ it("shows even-window pacing as of each account's own measurement without leakin
     slot.getAllByText(/Compared with even usage through this window/).length,
   ).toBe(2);
   expect(slot.getAllByText(/As of/).length).toBe(2);
+});
+
+it("ignores a usage-details request that expired before the page opened", async () => {
+  const { requestUsageDetailsMachine } = await import("./settings.js");
+  const app = await loadPluginApp(() => import("./app"));
+  const start = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+  requestUsageDetailsMachine("source:second");
+  clock.mockReturnValue(start + 11_000);
+  const result = {
+    machines: [
+      { ...machine("source:first", [account("one")]), displayName: "First" },
+      { ...machine("source:second", [account("two")]), displayName: "Second" },
+    ],
+  };
+  const slot = renderSlot(
+    app.settingsSections[0]!,
+    {},
+    { rpc: { getUsage: () => result } },
+  );
+  expect(
+    (await slot.findByRole("button", { name: "Usage source" })).textContent,
+  ).toContain("First");
+  clock.mockRestore();
 });

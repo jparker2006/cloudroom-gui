@@ -147,22 +147,25 @@ export function UsageSettingsContent({
   );
 }
 
-let requestedMachineId: string | null = null;
+const REQUEST_TTL_MS = 10_000;
+let requested: { machineId: string | null; at: number } | null = null;
 const requestListeners = new Set<(machineId: string | null) => void>();
 
 export function requestUsageDetailsMachine(machineId: string | null): void {
-  if (requestListeners.size === 0) requestedMachineId = machineId;
+  if (requestListeners.size === 0) requested = { machineId, at: Date.now() };
   for (const listener of requestListeners) listener(machineId);
 }
 
 export function UsageSettings() {
   const rpc = useRpc<typeof providerUsageRpcContract>();
   const [machines, setMachines] = useState<UsageMachine[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => requestedMachineId,
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    requested !== null && Date.now() - requested.at < REQUEST_TTL_MS
+      ? requested.machineId
+      : null,
   );
   useEffect(() => {
-    requestedMachineId = null;
+    requested = null;
     requestListeners.add(setSelectedId);
     return () => {
       requestListeners.delete(setSelectedId);

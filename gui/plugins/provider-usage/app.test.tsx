@@ -611,6 +611,11 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   const slot = renderSlot(item, { dismiss: vi.fn(), openPluginDetails });
   await slot.findByText("fresh@example.com");
   expect(slot.getByText("72% left")).toBeTruthy();
+  expect(
+    slot.getByText(
+      "Pace in percentage points. Compared with even usage through this window.",
+    ),
+  ).toBeTruthy();
   expect(slot.getByText("updated 4 min ago")).toBeTruthy();
   expect(slot.getByText("updated 2 hr ago")).toBeTruthy();
   expect(slot.getByText("Couldn’t refresh")).toBeTruthy();

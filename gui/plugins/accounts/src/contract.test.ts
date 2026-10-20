@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { resetPassedText } from "./contract.js";
+import { nextResetAt, resetPassedText } from "./contract.js";
 
 const now = Date.parse("2026-10-20T12:00:00.000Z");
 const hour = 3600_000;
@@ -26,4 +26,20 @@ it("does not claim a last update when the measurement time is unknown", () => {
 
 it("keeps usage measured after the reset", () => {
   expect(resetPassedText({ resetsAt: now - hour }, now - 1, now)).toBeNull();
+});
+
+it("schedules the tile's next re-check at the earliest future reset", () => {
+  expect(
+    nextResetAt(
+      [
+        { resetsAt: now + 2 * hour },
+        { resetsAt: now + hour },
+        { resetsAt: null },
+      ],
+      now,
+    ),
+  ).toBe(now + hour);
+  expect(
+    nextResetAt([{ resetsAt: now - hour }, { resetsAt: null }], now),
+  ).toBeNull();
 });

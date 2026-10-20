@@ -15,6 +15,16 @@ export const usageWindowSchema = z.object({
 });
 export type UsageWindow = z.infer<typeof usageWindowSchema>;
 
+export function nextResetAt(
+  windows: readonly Pick<UsageWindow, "resetsAt">[],
+  now: number,
+): number | null {
+  const future = windows.flatMap((window) =>
+    window.resetsAt !== null && window.resetsAt > now ? [window.resetsAt] : [],
+  );
+  return future.length === 0 ? null : Math.min(...future);
+}
+
 export function resetPassedText(
   window: Pick<UsageWindow, "resetsAt">,
   observedAt: number | null,
