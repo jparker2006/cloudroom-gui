@@ -24,21 +24,19 @@ function ancestorIds(
   return ancestors;
 }
 
-function fitPreferenceLimit(
+function dropOldestStaleIds(
   ids: string[],
-  keep: ReadonlySet<string>,
+  parentIds: ReadonlySet<string>,
+  excess: number,
 ): string[] {
-  let excess = ids.length - UI_PREFERENCE_LIST_MAX_LENGTH;
   if (excess <= 0) return ids;
-  return ids
-    .filter((id) => {
-      if (excess > 0 && !keep.has(id)) {
-        excess -= 1;
-        return false;
-      }
-      return true;
-    })
-    .slice(-UI_PREFERENCE_LIST_MAX_LENGTH);
+  return ids.filter((id) => {
+    if (excess > 0 && !parentIds.has(id)) {
+      excess -= 1;
+      return false;
+    }
+    return true;
+  });
 }
 
 export function collapseAllSubthreadIds(
@@ -54,10 +52,16 @@ export function collapseAllSubthreadIds(
   }
   const kept = current.filter((id) => !keepOpen.has(id));
   const seen = new Set(kept);
-  const next = fitPreferenceLimit(
-    [...kept, ...[...parentIds].filter((id) => !seen.has(id))],
+  const added = [...parentIds].filter((id) => !seen.has(id));
+  const pruned = dropOldestStaleIds(
+    kept,
     parentIds,
+    kept.length + added.length - UI_PREFERENCE_LIST_MAX_LENGTH,
   );
+  const next = [
+    ...pruned,
+    ...added.slice(0, UI_PREFERENCE_LIST_MAX_LENGTH - pruned.length),
+  ];
   if (
     next.length === current.length &&
     next.every((id, index) => id === current[index])

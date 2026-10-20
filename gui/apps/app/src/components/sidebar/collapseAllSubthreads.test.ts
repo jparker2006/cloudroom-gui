@@ -80,6 +80,15 @@ describe("collapseAllSubthreadIds", () => {
     ).toBe(true);
   });
 
+  it("never reopens a collapsed parent when parents alone exceed the limit", () => {
+    const threads = Array.from({ length: 10_001 }, (_, index) => [
+      thread(`p${index}`),
+      thread(`p${index}_child`, `p${index}`),
+    ]).flat();
+    const current = Array.from({ length: 10_000 }, (_, index) => `p${index}`);
+    expect(collapseAllSubthreadIds(current, threads, null)).toBe(current);
+  });
+
   it("does not loop on a parent cycle", () => {
     const threads = [thread("x", "y"), thread("y", "x")];
     expect(collapseAllSubthreadIds([], threads, "x")).toEqual([]);
