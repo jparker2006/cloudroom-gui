@@ -251,6 +251,10 @@ function relabelCollidingContexts(
   ]);
   const keptTexts = new Map<string, string>();
   const occurrences = new Map<string, number>();
+  const bindingsPerLabel = new Map<string, number>();
+  for (const context of source.contexts ?? []) {
+    bindingsPerLabel.set(context.label, (bindingsPerLabel.get(context.label) ?? 0) + 1);
+  }
   const renames: { start: number; from: string; to: string }[] = [];
   const contexts: PromptDraftContext[] = [];
   for (const context of source.contexts ?? []) {
@@ -269,8 +273,14 @@ function relabelCollidingContexts(
     }
     reserved.add(label);
     const from = messageContextLine(context.label);
-    const start = nthIndexOf(source.text, from, occurrence);
-    if (start !== -1) renames.push({ start, from, to: messageContextLine(label) });
+    const isLastBinding = occurrence === (bindingsPerLabel.get(context.label) ?? 1) - 1;
+    for (
+      let index = occurrence, start = nthIndexOf(source.text, from, occurrence);
+      start !== -1 && (index === occurrence || isLastBinding);
+      index += 1, start = nthIndexOf(source.text, from, index)
+    ) {
+      renames.push({ start, from, to: messageContextLine(label) });
+    }
     contexts.push({ label, text: context.text });
   }
 

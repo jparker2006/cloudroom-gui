@@ -994,18 +994,21 @@ function collectNewThreadDraftsInMemory(
     if (storedRow) storedRow.draft = draft;
     else rows.push({ kind: "unlisted-project", key: storageKey, projectId, draft });
   }
-  const unique = rows.filter(
-    (row, index) =>
-      !row.draft ||
-      !rows
-        .slice(0, index)
-        .some(
+  const unique: NewThreadDraftNotShown[] = [];
+  for (const row of rows) {
+    const same = row.draft
+      ? unique.findIndex(
           (earlier) =>
             earlier.projectId === row.projectId &&
             earlier.draft !== undefined &&
             arePromptDraftStatesEqual(earlier.draft, row.draft!),
-        ),
-  );
+        )
+      : -1;
+    if (same === -1) unique.push(row);
+    else if (isNewThreadProjectDraftKey(row.key) && !isNewThreadProjectDraftKey(unique[same]!.key)) {
+      unique[same] = row;
+    }
+  }
   rows.splice(0, rows.length, ...unique);
 }
 

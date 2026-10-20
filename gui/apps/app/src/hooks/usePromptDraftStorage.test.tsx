@@ -1890,3 +1890,25 @@ describe("send clear without a revision", () => {
     await expect(clear(result.current.getCurrent())).resolves.toBe(false);
   });
 });
+
+describe("Sol third-round fixes", () => {
+  it("lists the draft's own key, not its recovery copy, when a first save fails after the recovery write", () => {
+    const unlisted = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}r` });
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === unlisted.storageKey) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      unlisted.setDraft({ text: "first save failed", mentions: [], attachments: [] });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(listedNotShown([alphaId()]).map((row) => row.key)).toEqual([unlisted.storageKey]);
+  });
+});

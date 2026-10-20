@@ -521,3 +521,16 @@ describe("appendPromptDraft repeated moves", () => {
     ]);
   });
 });
+
+describe("appendPromptDraft repeated placeholders", () => {
+  it("renames every placeholder of a single moved context", () => {
+    const once = appendMessageContextToDraft(emptyPromptDraftState(), "source words", 7);
+    const twice = appendMessageContextToDraft(once, "source words", 7);
+    const target = appendMessageContextToDraft(emptyPromptDraftState(), "target words", 7);
+
+    const sent = JSON.stringify(promptDraftToInput(appendPromptDraft(target, twice)));
+
+    expect(sent.match(/source words/g)).toHaveLength(2);
+    expect(sent.match(/target words/g)).toHaveLength(1);
+  });
+});
