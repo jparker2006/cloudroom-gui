@@ -16,17 +16,15 @@ import {
   type SubagentFreshness,
   type SubagentNode,
   type SubagentSummary,
-  type SubagentTotal,
 } from "./subagent-model";
 
 export interface SubagentViewProps {
   roots: readonly SubagentNode[];
   summary: SubagentSummary;
-  total: SubagentTotal;
   freshness: SubagentFreshness;
   listState: "ready" | "loading" | "error";
   now: number;
-  getExecution: (entry: SubagentEntry) => SubagentExecution;
+  useExecution: (entry: SubagentEntry) => SubagentExecution;
   onCardExpand?: (entry: SubagentEntry) => void;
   defaultExpandedIds?: ReadonlySet<string>;
 }
@@ -81,29 +79,20 @@ export function SubagentBucketGlyph({
 
 export function SubagentScopeNote({
   summary,
-  total,
   freshness,
   listState,
   now,
-  stacked = false,
-}: Pick<SubagentViewProps, "summary" | "total" | "freshness" | "listState" | "now"> & {
-  stacked?: boolean;
-}) {
+}: Pick<SubagentViewProps, "summary" | "freshness" | "listState" | "now">) {
   const parts: ReactNode[] = [];
   if (listState === "ready") {
     parts.push(<span key="scope">Open, non-archived threads you can see</span>);
-  }
-  if (total.state === "unavailable") {
-    parts.push(<span key="total">Total including archived: unknown</span>);
-  } else if (total.state === "known" && summary.unlistedDirect) {
     parts.push(
-      <span key="total">
-        {summary.unlistedDirect} more archived or hidden, not shown
+      <span key="nested">
+        {summary.nestedCount === null
+          ? "Nested threads not loaded"
+          : "Archived nested threads not counted"}
       </span>,
     );
-  }
-  if (listState === "ready") {
-    parts.push(<span key="nested">Archived nested threads not counted</span>);
   }
   if (freshness.state === "paused") {
     parts.push(
@@ -111,22 +100,11 @@ export function SubagentScopeNote({
         Updates paused
         {freshness.since !== null
           ? ` · last known ${formatRelativeTime({ timestamp: freshness.since, now })}`
-          : ""}
+          : " · showing last known"}
       </span>,
     );
   }
-  return (
-    <p
-      className={cn(
-        "text-xs text-muted-foreground",
-        stacked
-          ? "grid gap-0.5"
-          : "flex flex-wrap gap-x-2 gap-y-0.5 [&>*+*]:before:mr-2 [&>*+*]:before:content-['·']",
-      )}
-    >
-      {parts}
-    </p>
-  );
+  return <p className="grid gap-0.5 text-xs text-muted-foreground">{parts}</p>;
 }
 
 export function SubagentCountLine({
@@ -146,12 +124,14 @@ export function SubagentCountLine({
     <span className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-left", className)}>
       <span className="shrink-0 font-medium text-foreground">
         {direct === 0 ? "No open subagents" : direct === 1 ? "1 subagent" : `${direct} subagents`}
-        {summary.nestedCount > 0 ? (
-          <span className="font-normal text-muted-foreground">
-            {" "}+ {summary.nestedCount} nested
-          </span>
-        ) : null}
-        {summary.nestedCount > 0 ? <span className="sr-only">. Status across all {direct + summary.nestedCount}:</span> : null}
+        <span className="font-normal text-muted-foreground">
+          {summary.nestedCount === null
+            ? " · nested not loaded"
+            : summary.nestedCount > 0
+              ? ` + ${summary.nestedCount} nested`
+              : null}
+        </span>
+        {direct > 0 ? <span className="sr-only">. Direct subagents:</span> : null}
       </span>
       {BUCKET_ORDER.filter((bucket) => summary.buckets[bucket] > 0).map((bucket) => (
         <span
@@ -176,11 +156,12 @@ function ExecutionText({ execution }: { execution: SubagentExecution }) {
       return <span className="text-muted-foreground">Not recorded</span>;
     case "recorded":
       return (
-        <span className="break-all">
-          {execution.model}
+        <span className="grid">
+          <span className="[overflow-wrap:anywhere]">{execution.model}</span>
           <span className="text-muted-foreground">
-            {" · effort "}
-            {execution.effort ?? "not recorded"}
+            {execution.effort === null
+              ? "Effort not recorded"
+              : `Effort setting: ${execution.effort}`}
           </span>
         </span>
       );
@@ -189,7 +170,7 @@ function ExecutionText({ execution }: { execution: SubagentExecution }) {
 
 function FactRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 text-xs">
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 text-xs">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-foreground">{children}</dd>
     </div>
@@ -220,34 +201,45 @@ function FlagChips({ entry }: { entry: SubagentEntry }) {
   );
 }
 
+function ExecutionFact({
+  entry,
+  useExecution,
+}: {
+  entry: SubagentEntry;
+  useExecution: SubagentViewProps["useExecution"];
+}) {
+  const execution = useExecution(entry);
+  return <ExecutionText execution={execution} />;
+}
+
 function CardDetails({
   entry,
   now,
-  execution,
+  useExecution,
+  nestedNotLoaded,
 }: {
   entry: SubagentEntry;
   now: number;
-  execution: SubagentExecution;
+  useExecution: SubagentViewProps["useExecution"];
+  nestedNotLoaded: boolean;
 }) {
   const status = getSubagentStatus(entry);
   const { task } = getSubagentTask(entry);
   return (
     <dl className="grid gap-1.5">
-      {task ? (
-        <FactRow label="Task">
+      <FactRow label="Prompt preview">
+        {task ? (
           <span className="whitespace-pre-wrap break-words">{task}</span>
-        </FactRow>
-      ) : (
-        <FactRow label="Task">
+        ) : (
           <span className="text-muted-foreground">Not recorded</span>
-        </FactRow>
-      )}
+        )}
+      </FactRow>
       <FactRow label="Status">
         {status.label}
         <span className="text-muted-foreground"> · {status.detail}</span>
       </FactRow>
       <FactRow label="Model">
-        <ExecutionText execution={execution} />
+        <ExecutionFact entry={entry} useExecution={useExecution} />
       </FactRow>
       <FactRow label="Runs on">
         {entry.providerId}
@@ -263,6 +255,11 @@ function CardDetails({
       <FactRow label="Last change">
         {formatRelativeTime({ timestamp: entry.updatedAt, now })}
       </FactRow>
+      {nestedNotLoaded ? (
+        <FactRow label="Nested">
+          <span className="text-muted-foreground">Not loaded</span>
+        </FactRow>
+      ) : null}
     </dl>
   );
 }
@@ -288,7 +285,7 @@ interface TaskCardProps {
   node: SubagentNode;
   depth: number;
   now: number;
-  getExecution: SubagentViewProps["getExecution"];
+  useExecution: SubagentViewProps["useExecution"];
   onCardExpand?: SubagentViewProps["onCardExpand"];
   defaultExpandedIds?: ReadonlySet<string>;
   density: "card" | "row";
@@ -298,7 +295,7 @@ export function SubagentTaskCard({
   node,
   depth,
   now,
-  getExecution,
+  useExecution,
   onCardExpand,
   defaultExpandedIds,
   density,
@@ -352,7 +349,7 @@ export function SubagentTaskCard({
           ) : null}
           <span className="flex min-w-0 flex-wrap items-center gap-1.5 empty:hidden">
             <FlagChips entry={entry} />
-            {node.descendantCount > 0 ? (
+            {node.descendantCount ? (
               <span className="text-[11px] leading-5 text-muted-foreground">
                 {node.descendantCount === 1 ? "1 nested" : `${node.descendantCount} nested`}
               </span>
@@ -373,12 +370,20 @@ export function SubagentTaskCard({
           id={bodyId}
           className={cn("grid gap-2 pb-2", isCard ? "px-3 pl-9" : "pr-2 pl-8")}
         >
-          <CardDetails entry={entry} now={now} execution={getExecution(entry)} />
+          <CardDetails
+            entry={entry}
+            now={now}
+            useExecution={useExecution}
+            nestedNotLoaded={node.descendantCount === null}
+          />
           <OpenThreadLink entry={entry} className="justify-self-start" />
           {node.children.length > 0 ? (
             <div className="grid gap-1">
               <p className="text-xs text-muted-foreground">
-                Spawned by this thread · {node.descendantCount} open
+                Spawned by this thread · {node.children.length} direct
+                {node.descendantCount !== null && node.descendantCount > node.children.length
+                  ? ` · ${node.descendantCount - node.children.length} nested deeper`
+                  : ""}
               </p>
               <ul
                 aria-label={`Threads spawned by ${title}`}
@@ -390,7 +395,7 @@ export function SubagentTaskCard({
                     node={child}
                     depth={depth + 1}
                     now={now}
-                    getExecution={getExecution}
+                    useExecution={useExecution}
                     onCardExpand={onCardExpand}
                     defaultExpandedIds={defaultExpandedIds}
                     density="row"
@@ -408,8 +413,7 @@ export function SubagentTaskCard({
 export function SubagentEmptyOrError({
   listState,
   summary,
-  total,
-}: Pick<SubagentViewProps, "listState" | "summary" | "total">) {
+}: Pick<SubagentViewProps, "listState" | "summary">) {
   if (listState === "error") {
     return (
       <p className="px-3 py-2 text-xs text-destructive" role="status">
@@ -426,13 +430,7 @@ export function SubagentEmptyOrError({
   }
   if (summary.directCount === 0) {
     return (
-      <p className="px-3 py-2 text-xs text-muted-foreground">
-        {summary.unlistedDirect
-          ? `No open subagents. ${summary.unlistedDirect} archived or hidden not shown.`
-          : total.state === "known"
-            ? "No subagents."
-            : "No open subagents listed."}
-      </p>
+      <p className="px-3 py-2 text-xs text-muted-foreground">No open subagents listed.</p>
     );
   }
   return null;

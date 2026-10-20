@@ -26,7 +26,7 @@ export type SubagentEntry = Pick<
 export interface SubagentNode {
   entry: SubagentEntry;
   children: SubagentNode[];
-  descendantCount: number;
+  descendantCount: number | null;
 }
 
 export type SubagentTone = "working" | "attention" | "error" | "neutral";
@@ -51,16 +51,12 @@ export type SubagentBucket =
   | "not-started"
   | "idle";
 
-export type SubagentTotal =
-  | { state: "loading" }
-  | { state: "unavailable" }
-  | { state: "known"; directChildCount: number };
+export type SubagentCoverage = "all-visible" | "direct-only";
 
 export interface SubagentSummary {
   directCount: number;
-  nestedCount: number;
+  nestedCount: number | null;
   buckets: Record<SubagentBucket, number>;
-  unlistedDirect: number | null;
 }
 
 export type SubagentExecution =
@@ -77,34 +73,42 @@ const STATUS_COPY: Record<
   ThreadRuntimeDisplayStatus,
   Omit<SubagentStatus, "running">
 > = {
-  active: { tone: "working", label: "Working", detail: "A turn is running" },
-  starting: { tone: "working", label: "Starting", detail: "Starting a turn" },
+  active: {
+    tone: "working",
+    label: "Active",
+    detail: "Recorded as active · may include a message not yet delivered",
+  },
+  starting: { tone: "working", label: "Starting", detail: "Recorded as starting" },
   provisioning: {
     tone: "working",
     label: "Provisioning",
-    detail: "Preparing its workspace",
+    detail: "Recorded as preparing its workspace",
   },
-  stopping: { tone: "working", label: "Stopping", detail: "Stopping a turn" },
+  stopping: { tone: "working", label: "Stopping", detail: "Recorded as stopping" },
   "host-reconnecting": {
     tone: "attention",
     label: "Host reconnecting",
-    detail: "Was working when its host link dropped",
+    detail: "Recorded as active; its host link dropped",
   },
   "waiting-for-host": {
     tone: "attention",
     label: "Waiting for host",
-    detail: "Was working; its host is offline",
+    detail: "Recorded as active; its host is offline",
   },
   pending: {
     tone: "neutral",
-    label: "Not started",
-    detail: "No turn has been sent yet",
+    label: "Pending",
+    detail: "Recorded as pending · may be waiting for setup or files",
   },
-  error: { tone: "error", label: "Failed", detail: "Its last turn failed" },
+  error: {
+    tone: "error",
+    label: "Error",
+    detail: "Recorded as error · cause not shown here",
+  },
   idle: {
     tone: "neutral",
     label: "Idle",
-    detail: "No turn running · outcome not recorded here",
+    detail: "Not recorded as active · outcome not recorded here",
   },
 };
 
@@ -162,6 +166,7 @@ export function getSubagentTask(entry: SubagentEntry): {
 export function buildSubagentTree(
   rootThreadId: string,
   entries: readonly SubagentEntry[],
+  coverage: SubagentCoverage = "all-visible",
 ): SubagentNode[] {
   const byParent = new Map<string, SubagentEntry[]>();
   for (const entry of entries) {
@@ -181,10 +186,10 @@ export function buildSubagentTree(
       return {
         entry,
         children: nested,
-        descendantCount: nested.reduce(
-          (sum, node) => sum + 1 + node.descendantCount,
-          0,
-        ),
+        descendantCount:
+          coverage === "direct-only"
+            ? null
+            : nested.reduce((sum, node) => sum + 1 + (node.descendantCount ?? 0), 0),
       };
     });
   };
@@ -193,7 +198,7 @@ export function buildSubagentTree(
 
 export function summarizeSubagents(
   roots: readonly SubagentNode[],
-  total: SubagentTotal,
+  coverage: SubagentCoverage = "all-visible",
 ): SubagentSummary {
   const buckets: Record<SubagentBucket, number> = {
     working: 0,
@@ -203,29 +208,22 @@ export function summarizeSubagents(
     "not-started": 0,
     idle: 0,
   };
-  let nestedCount = 0;
-  const visit = (node: SubagentNode, depth: number) => {
-    buckets[getSubagentBucket(node.entry)] += 1;
-    if (depth > 0) nestedCount += 1;
-    for (const child of node.children) visit(child, depth + 1);
-  };
-  for (const root of roots) visit(root, 0);
+  for (const root of roots) buckets[getSubagentBucket(root.entry)] += 1;
   return {
     directCount: roots.length,
-    nestedCount,
+    nestedCount:
+      coverage === "direct-only"
+        ? null
+        : roots.reduce((sum, root) => sum + (root.descendantCount ?? 0), 0),
     buckets,
-    unlistedDirect:
-      total.state === "known"
-        ? Math.max(0, total.directChildCount - roots.length)
-        : null,
   };
 }
 
 export const SUBAGENT_BUCKET_LABELS: Record<SubagentBucket, string> = {
-  working: "working",
+  working: "active",
   "needs-input": "need input",
-  failed: "failed",
+  failed: "error",
   host: "host issue",
-  "not-started": "not started",
+  "not-started": "pending",
   idle: "idle",
 };

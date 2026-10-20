@@ -1,21 +1,17 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { makeThreadListEntry } from "../../../../.ladle/story-fixtures";
 import {
   buildSubagentTree,
   summarizeSubagents,
+  type SubagentCoverage,
   type SubagentEntry,
   type SubagentExecution,
   type SubagentFreshness,
-  type SubagentTotal,
 } from "./subagent-model";
 import type { SubagentViewProps } from "./SubagentCards";
-import {
-  SubagentComposerCard,
-  SubagentHeaderChip,
-  SubagentPanelSection,
-} from "./SubagentDirections";
+import { SubagentHeaderChip, SubagentPanelSection } from "./SubagentPanel";
 
-export default { title: "thread/subagents/Directions" };
+export default { title: "thread/subagents/Info panel" };
 
 const NOW = 1_792_480_000_000;
 const MIN = 60_000;
@@ -50,14 +46,14 @@ const MIXED: SubagentEntry[] = [
   child("thr_c1", ROOT, {
     title: "Data sources investigation",
     titleFallback:
-      "You are a scoped, READ-ONLY source investigator. Map every client-available fact per child thread without loading transcripts, including list entry fields, sidebar bootstrap population, fallback list filters, recorded model and effort, and access control.",
+      "You are a scoped, READ-ONLY source investigator. Map every client-available fac",
     displayStatus: "active",
     createdAt: NOW - 50 * MIN,
     updatedAt: NOW - 20_000,
   }),
   child("thr_c2", ROOT, {
     title: "Independent review (Sol)",
-    titleFallback: "Review the two subagent visibility directions for truth, accessibility, and regressions.",
+    titleFallback: "Review the two subagent visibility directions for truth, accessibility, and re",
     displayStatus: "idle",
     hasPendingInteraction: true,
     createdAt: NOW - 45 * MIN,
@@ -127,7 +123,7 @@ const EXECUTION: Record<string, SubagentExecution> = {
   thr_c1: { state: "recorded", model: "claude-haiku-5-5", effort: "high" },
   thr_c2: { state: "recorded", model: "gpt-6.1-sol", effort: "medium" },
   thr_g1: { state: "recorded", model: "gpt-6-luna", effort: "high" },
-  thr_g2: { state: "unavailable", reason: "cloud status request failed" },
+  thr_g2: { state: "unavailable", reason: "couldn’t load" },
   thr_gg1: { state: "loading" },
   thr_c3: { state: "not-recorded" },
   thr_c4: { state: "recorded", model: "claude-opus-5-5[1m]", effort: null },
@@ -135,19 +131,27 @@ const EXECUTION: Record<string, SubagentExecution> = {
 
 function scenario({
   entries = MIXED,
-  total = { state: "known", directChildCount: 8 } as SubagentTotal,
+  coverage = "all-visible" as SubagentCoverage,
   freshness = { state: "live" } as SubagentFreshness,
   listState = "ready" as SubagentViewProps["listState"],
 } = {}): SubagentViewProps {
-  const roots = listState === "ready" ? buildSubagentTree(ROOT, entries) : [];
+  const roots =
+    listState === "ready"
+      ? buildSubagentTree(
+          ROOT,
+          coverage === "direct-only"
+            ? entries.filter((entry) => entry.parentThreadId === ROOT)
+            : entries,
+          coverage,
+        )
+      : [];
   return {
     roots,
-    summary: summarizeSubagents(roots, total),
-    total,
+    summary: summarizeSubagents(roots, coverage),
     freshness,
     listState,
     now: NOW,
-    getExecution: (entry) => EXECUTION[entry.id] ?? { state: "not-recorded" },
+    useExecution: (entry) => EXECUTION[entry.id] ?? { state: "not-recorded" },
     defaultExpandedIds: EXPANDED,
   };
 }
@@ -156,7 +160,7 @@ const EXPANDED: ReadonlySet<string> = new Set(["thr_c2", "thr_g1"]);
 
 const PAUSED = scenario({ freshness: { state: "paused", since: NOW - 2 * MIN } });
 
-function Timeline({ children }: { children?: ReactNode }) {
+function Timeline() {
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-hidden px-4 py-4 text-sm text-muted-foreground">
       <div className="ml-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-foreground">
@@ -164,7 +168,6 @@ function Timeline({ children }: { children?: ReactNode }) {
       </div>
       <p className="text-foreground">Spawned three Haiku investigators and one Sol reviewer…</p>
       <p>Ran room-cli thread spawn ×4</p>
-      {children}
     </div>
   );
 }
@@ -177,160 +180,107 @@ function Composer() {
   );
 }
 
-function ThreadFrame({
-  width,
-  height,
-  header,
-  aboveComposer,
-  side,
-  className = "m-4",
-}: {
-  width: number;
-  height: number;
-  header?: ReactNode;
-  aboveComposer?: ReactNode;
-  side?: ReactNode;
-  className?: string;
-}) {
+function InfoTab({ props }: { props: SubagentViewProps }) {
+  return (
+    <div className="grid gap-1.5 px-4 py-3 text-xs">
+      <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3">
+        <span className="text-muted-foreground">Parent</span>
+        <span className="text-foreground">CloudRoom root</span>
+      </div>
+      <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3">
+        <span className="text-muted-foreground">Environment</span>
+        <span className="text-foreground">Cloud sandbox</span>
+      </div>
+      <div className="mb-1 mt-3 border-t border-border" aria-hidden />
+      <SubagentPanelSection {...props} />
+    </div>
+  );
+}
+
+function Frame({ width, height, mobile }: { width: number; height: number; mobile?: boolean }) {
+  const [open, setOpen] = useState(true);
+  const props = scenario();
+  const header = (
+    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
+      <span className="min-w-0 truncate text-xs text-foreground/70">
+        Improve CloudRoom subagent visibility
+      </span>
+      <span className="rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted-foreground">
+        child
+      </span>
+      <SubagentHeaderChip
+        summary={props.summary}
+        listState={props.listState}
+        freshness={props.freshness}
+        isOpen={open}
+        onToggle={() => setOpen(!open)}
+      />
+    </div>
+  );
   return (
     <div
-      className={`${className} flex overflow-hidden rounded-lg border border-border bg-background`}
+      className="relative m-4 flex overflow-hidden rounded-lg border border-border bg-background"
       style={{ width, height }}
     >
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-sm text-foreground">
-          <span className="min-w-0 flex-1 truncate">Improve CloudRoom subagent visibility</span>
-          {header}
-        </div>
+        {header}
         <Timeline />
-        <div className="grid gap-2 px-3 pb-3">
-          {aboveComposer}
+        <div className="px-3 pb-3">
           <Composer />
         </div>
       </div>
-      {side}
-    </div>
-  );
-}
-
-export function A_ComposerCard_Desktop() {
-  return (
-    <ThreadFrame
-      width={820}
-      height={760}
-      aboveComposer={<SubagentComposerCard {...scenario()} defaultExpanded />}
-    />
-  );
-}
-
-export function A_ComposerCard_Mobile() {
-  return (
-    <ThreadFrame
-      width={390}
-      height={800}
-      aboveComposer={<SubagentComposerCard {...scenario()} defaultExpanded />}
-    />
-  );
-}
-
-export function A_ComposerCard_Collapsed() {
-  return (
-    <div className="grid gap-4">
-      <ThreadFrame width={820} height={300} aboveComposer={<SubagentComposerCard {...scenario()} />} />
-      <ThreadFrame width={390} height={300} aboveComposer={<SubagentComposerCard {...PAUSED} />} />
-    </div>
-  );
-}
-
-function BFrame({ width, height, mobile }: { width: number; height: number; mobile?: boolean }) {
-  const [open, setOpen] = useState(true);
-  const props = scenario();
-  const chip = (
-    <SubagentHeaderChip
-      summary={props.summary}
-      listState={props.listState}
-      freshness={props.freshness}
-      isOpen={open}
-      onToggle={() => setOpen(!open)}
-    />
-  );
-  if (mobile) {
-    return (
-      <div className="relative m-4 overflow-hidden rounded-lg border border-border bg-background" style={{ width, height }}>
-        <ThreadFrame width={width} height={height} header={chip} className="border-0" />
-        {open ? (
-          <div className="absolute inset-x-0 bottom-0 top-11 overflow-y-auto border-t border-border bg-sidebar">
-            <SubagentPanelSection {...props} />
+      {open ? (
+        <aside
+          className={
+            mobile
+              ? "absolute inset-x-0 bottom-0 top-11 overflow-y-auto border-t border-border bg-sidebar"
+              : "w-[360px] shrink-0 overflow-y-auto border-l border-border bg-sidebar"
+          }
+        >
+          <div className="flex h-9 items-center border-b border-border px-4 text-xs text-foreground">
+            Info
           </div>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <ThreadFrame
-      width={width}
-      height={height}
-      header={chip}
-      side={
-        open ? (
-          <aside className="w-[340px] shrink-0 overflow-y-auto border-l border-border bg-sidebar">
-            <SubagentPanelSection {...props} />
-          </aside>
-        ) : null
-      }
-    />
+          <InfoTab props={props} />
+        </aside>
+      ) : null}
+    </div>
   );
 }
 
-export function B_HeaderChipPanel_Desktop() {
-  return <BFrame width={1100} height={760} />;
+export function Desktop() {
+  return <Frame width={1100} height={780} />;
 }
 
-export function B_HeaderChipPanel_Mobile() {
-  return <BFrame width={390} height={800} mobile />;
+export function Mobile() {
+  return <Frame width={390} height={820} mobile />;
 }
 
-function StateGrid({ render }: { render: (props: SubagentViewProps) => ReactNode }) {
+export function States() {
   const states: [string, SubagentViewProps][] = [
-    ["Partial: 2 archived/hidden + updates paused", PAUSED],
-    ["Child list failed to load", scenario({ listState: "error", total: { state: "unavailable" } })],
-    ["Loading", scenario({ listState: "loading", total: { state: "loading" } })],
-    ["None open, 2 archived/hidden", scenario({ entries: [], total: { state: "known", directChildCount: 2 } })],
-    ["Total unavailable", scenario({ total: { state: "unavailable" } })],
+    ["Updates paused (last known)", PAUSED],
+    ["Only direct children loaded", scenario({ coverage: "direct-only" })],
+    ["Child list failed to load", scenario({ listState: "error" })],
+    ["Loading", scenario({ listState: "loading" })],
   ];
   return (
     <div className="grid max-w-[860px] gap-6 p-4">
       {states.map(([label, props]) => (
         <div key={label} className="grid gap-1.5">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-          {render(props)}
+          <div className="flex items-start gap-4">
+            <SubagentHeaderChip
+              summary={props.summary}
+              listState={props.listState}
+              freshness={props.freshness}
+              isOpen
+              onToggle={() => undefined}
+            />
+            <div className="w-[360px] rounded-md border border-border bg-sidebar">
+              <InfoTab props={props} />
+            </div>
+          </div>
         </div>
       ))}
     </div>
-  );
-}
-
-export function A_States() {
-  return <StateGrid render={(props) => <SubagentComposerCard {...props} defaultExpanded />} />;
-}
-
-export function B_States() {
-  return (
-    <StateGrid
-      render={(props) => (
-        <div className="flex items-start gap-4">
-          <SubagentHeaderChip
-            summary={props.summary}
-            listState={props.listState}
-            freshness={props.freshness}
-            isOpen
-            onToggle={() => undefined}
-          />
-          <div className="w-[340px] rounded-md border border-border bg-sidebar">
-            <SubagentPanelSection {...props} />
-          </div>
-        </div>
-      )}
-    />
   );
 }

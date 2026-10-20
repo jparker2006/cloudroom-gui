@@ -51,29 +51,23 @@ describe("buildSubagentTree", () => {
 });
 
 describe("summarizeSubagents", () => {
-  const tree = buildSubagentTree("root", [
+  const entries = [
     entry("a", "root", display("active")),
     entry("b", "root", { ...display("idle"), hasPendingInteraction: true }),
     entry("b1", "b", display("error")),
-  ]);
+  ];
 
-  it("separates direct and nested counts and buckets every listed thread", () => {
-    const summary = summarizeSubagents(tree, { state: "known", directChildCount: 2 });
+  it("separates direct and nested counts and buckets direct children only", () => {
+    const summary = summarizeSubagents(buildSubagentTree("root", entries));
     expect(summary.directCount).toBe(2);
     expect(summary.nestedCount).toBe(1);
-    expect(summary.buckets).toMatchObject({ working: 1, "needs-input": 1, failed: 1, idle: 0 });
-    expect(summary.unlistedDirect).toBe(0);
+    expect(summary.buckets).toMatchObject({ working: 1, "needs-input": 1, failed: 0, idle: 0 });
   });
 
-  it("reports unlisted direct children from the server total instead of hiding them", () => {
-    expect(
-      summarizeSubagents(tree, { state: "known", directChildCount: 5 }).unlistedDirect,
-    ).toBe(3);
-  });
-
-  it("leaves the unlisted count unknown when the total is unavailable", () => {
-    expect(summarizeSubagents(tree, { state: "unavailable" }).unlistedDirect).toBeNull();
-    expect(summarizeSubagents(tree, { state: "loading" }).unlistedDirect).toBeNull();
+  it("leaves nested counts unknown when only direct children were loaded", () => {
+    const roots = buildSubagentTree("root", entries.slice(0, 2), "direct-only");
+    expect(summarizeSubagents(roots, "direct-only").nestedCount).toBeNull();
+    expect(roots[0]?.descendantCount).toBeNull();
   });
 });
 
@@ -98,7 +92,7 @@ describe("status truth", () => {
   it("puts pending input ahead of runtime state without hiding the runtime label", () => {
     const thread = entry("a", "root", { ...display("active"), hasPendingInteraction: true });
     expect(getSubagentBucket(thread)).toBe("needs-input");
-    expect(getSubagentStatus(thread).label).toBe("Working");
+    expect(getSubagentStatus(thread).label).toBe("Active");
   });
 
   it("flags background work on an idle thread without calling it working", () => {

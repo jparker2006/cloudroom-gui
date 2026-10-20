@@ -1,6 +1,12 @@
-# In-thread subagent visibility: two directions (read-only V1)
+# In-thread subagent visibility (read-only V1, Direction B)
 
-Status: design candidates. Not wired into `ThreadDetailView` yet. Awaiting Jake's choice.
+Status: Direction B selected by Jake. Wired into the real thread view. Needs independent review on the exact head, signed-in check, and iOS Safari drawer check before rollout.
+
+## Where it lives
+
+- **Header chip**: next to the existing `child`/`side chat` pill in `ThreadDetailHeader`. Shows direct count, `+N` nested, active and attention counts (direct only). Opens the Info tab.
+- **Info tab**: a Subagents section in `ThreadMetadataContent`, beside Parent, Forks, Environment and Git status. Same secondary panel (drawer on mobile). No new panel kind.
+- The thread's own run status only shows transiently in the timeline tail ("Working…", host notices) inside the scroller, so the chip is not placed there.
 
 ## Run the previews
 
@@ -8,31 +14,21 @@ Status: design candidates. Not wired into `ThreadDetailView` yet. Awaiting Jake'
 cd gui/apps/app && pnpm storybook   # Ladle
 ```
 
-Open `thread / subagents / Directions`. Stories: `A Composer Card Desktop|Mobile|Collapsed`, `A States`, `B Header Chip Panel Desktop|Mobile`, `B States`.
+Open `thread / subagents / Info panel`: `Desktop`, `Mobile`, `States`.
 
-## Code
-
-- `apps/app/src/components/thread/subagents/subagent-model.ts`: pure tree, status words, scoped counts. Shared by both directions.
-- `SubagentCards.tsx`: task card (recursive), count line, scope note, empty/error.
-- `SubagentDirections.tsx`: A = `SubagentComposerCard`; B = `SubagentHeaderChip` + `SubagentPanelSection`.
-
-## Directions
-
-- **A: Composer stack card.** One-line summary in the prompt stack (same slot and chrome as `ThreadWorkflowCard`, outside the timeline scroller). Expands to a capped, self-scrolling list of task cards. Each card expands to show facts, the thread link, and its own descendants.
-- **B: Header chip + side panel.** Compact count chip in the thread header. Opens a Subagents section in the secondary panel (full-height drawer on mobile). Denser rows; same expansion.
-
-## Sources of truth (planned wiring)
+## Sources of truth
 
 | Fact | Source | Notes |
 | --- | --- | --- |
-| Hierarchy | `parentThreadId` from the sidebar navigation list (`useChildThreads` / `useSidebarNavigationThreadSelection`) | Open, non-archived, visible threads only. No `includeHidden`. Provider `childRef` is never treated as a thread ID. |
-| Status | `runtime.displayStatus`, `hasPendingInteraction`, `activity`, `queuedWork` | `idle` is never "done". Host states stay separate. Background tasks are a flag, not "working". |
-| Direct total | `GET /threads/:id/child-summary` `nonDeletedChildCount` (one call for the open thread) | Includes archived and hidden; shown only as "N more archived or hidden, not shown". Unavailable stays "unknown". |
-| Model and effort | Cloud: cloud thread status (`cloudroom_threads.model`), fetched only when a card expands. Local: no recorded read path today, so "Not recorded" | Never from `defaultExecutionOptions`. |
-| Freshness | `useServerConnectionState()` | When not `connected`, shows "Updates paused · last known". |
+| Hierarchy | `parentThreadId` from the sidebar navigation cache | Visible, open, non-archived threads. Hidden threads and their subtrees never appear. No `includeHidden`, no new polling. |
+| Fallback | `useChildThreads` list query | Direct children only; UI says "nested not loaded", never 0. |
+| Status | `runtime.displayStatus`, `hasPendingInteraction`, `activity`, `queuedWork` | Labels are the recorded state (Active, Pending, Error, Idle). Details are hedged. Idle is never "done". |
+| Counts | Direct children for status buckets; nested counted separately | No server total, so hidden children cannot leak through arithmetic. |
+| Model and effort | Cloud: `GET /cloudroom/threads/:id` (`cloudroom_threads.model`; reasoning = current setting), lazy on card expand, 30s stale, no polling. Local or unknown target: "Not recorded" | Never from `default-execution-options`, titles or provider names. |
+| Freshness | `useServerConnectionState()` | When not connected: "Updates paused · showing last known". |
 
 ## Known limits
 
-- Archived descendants under a child are not counted; the UI says so.
-- Cloud `idle` folds completed, interrupted and unknown together on the server; the UI says "outcome not recorded here".
-- A on phones: the collapsed count line wraps to four lines when every bucket is non-zero.
+- Archived descendants are not counted; the UI says so.
+- Cloud `idle` folds completed, interrupted and unknown; the UI says "outcome not recorded here".
+- Effort for cloud threads is the current setting, which may differ from the last run.

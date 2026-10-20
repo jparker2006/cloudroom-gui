@@ -165,6 +165,7 @@ import {
   createThreadInfoFixedTabDestination,
   THREAD_INFO_FIXED_TAB_REFERENCE,
 } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
+import { ThreadSubagentChip } from "@/components/thread/subagents/ThreadSubagents";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
   ThreadDetailPromptArea,
@@ -2574,6 +2575,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     ...responsiveWorkspaceActions,
     ...responsiveGitActions,
   ];
+  const isSubagentInfoOpen =
+    isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "thread-info";
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={
@@ -2589,6 +2592,17 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
       onToggleSecondaryPanel={toggleSecondaryPanel}
+      subagentChip={
+        <ThreadSubagentChip
+          threadId={thread.id}
+          isOpen={isSubagentInfoOpen}
+          onToggle={() =>
+            isSubagentInfoOpen
+              ? closeSecondaryPanel()
+              : handleSecondaryPanelChange("thread-info")
+          }
+        />
+      }
       pluginActions={
         <PluginThreadHeaderActions
           threadId={thread.id}
