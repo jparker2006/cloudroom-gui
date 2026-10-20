@@ -20,7 +20,6 @@ import {
 } from "@/components/promptbox/NewThreadComposer";
 import {
   getCrossProjectPromptAttachmentCopies,
-  getProjectOwnedPromptAttachmentPaths,
   getProjectStoredPromptAttachmentPaths,
   parsePromptDraftStorage,
   promptDraftToInput,
@@ -679,44 +678,67 @@ describe("getCrossProjectPromptAttachmentCopies", () => {
     ...(projectId === undefined ? {} : { projectId }),
   });
 
-  it("copies attachments uploaded in another project into the target", () => {
+  const uploaded = (path: string, projectId: string) => ({
+    ...image(path, projectId),
+    copyToken: `token-${path}`,
+  });
+
+  it("copies attachments owned by another project only by their upload tokens", () => {
     expect(
       getCrossProjectPromptAttachmentCopies(
         [
-          image("a-1.png", "proj_a"),
-          image("b-1.png", "proj_b"),
-          image("a-2.png", "proj_a"),
+          uploaded("a-1.png", "proj_a"),
+          uploaded("b-1.png", "proj_b"),
+          uploaded("c-1.png", "proj_c"),
           image("legacy.png"),
-          image("/tmp/absolute.png", "proj_a"),
+          uploaded("/tmp/absolute.png", "proj_a"),
         ],
         "proj_b",
       ),
-    ).toEqual([{ sourceProjectId: "proj_a", paths: ["a-1.png", "a-2.png"] }]);
+    ).toEqual({ tokens: ["token-a-1.png", "token-c-1.png"], untokened: [] });
   });
 
-  it("lets the project picker move only what the current project owns", () => {
+  it("names foreign attachments that have no upload token instead of copying them by path", () => {
     expect(
-      getProjectOwnedPromptAttachmentPaths(
-        [image("a-1.png", "proj_a"), image("b-1.png", "proj_b"), image("legacy.png")],
+      getCrossProjectPromptAttachmentCopies(
+        [uploaded("a-1.png", "proj_a"), image("a-2.png", "proj_a")],
         "proj_b",
       ),
-    ).toEqual(["b-1.png", "legacy.png"]);
+    ).toEqual({ tokens: ["token-a-1.png"], untokened: ["screen shot.png"] });
+  });
+
+  it("lets the project picker move everything the next project does not own", () => {
+    expect(
+      getCrossProjectPromptAttachmentCopies(
+        [
+          uploaded("a-1.png", "proj_a"),
+          uploaded("b-1.png", "proj_b"),
+          uploaded("c-1.png", "proj_c"),
+          image("legacy.png"),
+        ],
+        "proj_c",
+        "proj_b",
+      ),
+    ).toEqual({
+      tokens: ["token-a-1.png", "token-b-1.png"],
+      untokened: ["screen shot.png"],
+    });
   });
 
   it("copies nothing for same-project or legacy untagged attachments", () => {
     expect(
       getCrossProjectPromptAttachmentCopies(
-        [image("b-1.png", "proj_b"), image("legacy.png")],
+        [uploaded("b-1.png", "proj_b"), image("legacy.png")],
         "proj_b",
       ),
-    ).toEqual([]);
+    ).toEqual({ tokens: [], untokened: [] });
   });
 
   it("keeps the owning project across a reload without sending it", () => {
     const draft = {
       text: "look",
       mentions: [],
-      attachments: [image("a-1.png", "proj_a")],
+      attachments: [uploaded("a-1.png", "proj_a")],
     };
     const reloaded = parsePromptDraftStorage(
       serializePromptDraftStorage(draft),

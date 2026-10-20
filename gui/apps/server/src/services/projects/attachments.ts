@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 // oxlint-disable-next-line no-restricted-imports
 import type { Stats } from "node:fs";
 // oxlint-disable-next-line no-restricted-imports
@@ -226,7 +227,7 @@ export async function storeAttachment(
   dataDir: string,
   projectId: string,
   file: File,
-): Promise<UploadedPromptAttachment> {
+): Promise<UploadedPromptAttachment & { copyToken: string }> {
   if (isHeifImageUpload(file)) {
     throw new ApiError(
       400,
@@ -258,7 +259,60 @@ export async function storeAttachment(
     name: file.name,
     mimeType: file.type || undefined,
     sizeBytes: file.size,
+    copyToken: await issueCopyToken(dataDir, {
+      projectId,
+      path: storedName,
+      sha256: sha256(bytes),
+    }),
   };
+}
+
+interface CopyTokenRecord {
+  projectId: string;
+  path: string;
+  sha256: string;
+}
+
+function sha256(bytes: Buffer | string): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function copyTokenRecordPath(dataDir: string, token: string): string {
+  return join(dataDir, "attachment-copy-tokens", `${sha256(token)}.json`);
+}
+
+async function issueCopyToken(
+  dataDir: string,
+  record: CopyTokenRecord,
+): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  const recordPath = copyTokenRecordPath(dataDir, token);
+  await mkdir(join(dataDir, "attachment-copy-tokens"), { recursive: true });
+  await writeFile(recordPath, JSON.stringify(record), { flag: "wx" });
+  return token;
+}
+
+async function readCopyToken(
+  dataDir: string,
+  token: string,
+): Promise<CopyTokenRecord> {
+  const record = /^[A-Za-z0-9_-]{43}$/u.test(token)
+    ? await readFile(copyTokenRecordPath(dataDir, token), "utf8")
+        .then((text) => JSON.parse(text) as Partial<CopyTokenRecord>)
+        .catch(() => null)
+    : null;
+  if (
+    typeof record?.projectId !== "string" ||
+    typeof record.path !== "string" ||
+    typeof record.sha256 !== "string"
+  ) {
+    throw new ApiError(
+      403,
+      "invalid_request",
+      "Attachments can only be copied with the token issued when they were uploaded",
+    );
+  }
+  return record as CopyTokenRecord;
 }
 
 interface StoredAttachmentContent {
@@ -293,19 +347,40 @@ function attachmentCopyConflict(attachmentPath: string): ApiError {
   );
 }
 
-export async function copyProjectAttachments(
+export async function copyAttachmentsWithTokens(
   dataDir: string,
-  sourceProjectId: string,
   targetProjectId: string,
-  attachmentPaths: readonly string[],
+  tokens: readonly string[],
+  authorizeSource: (projectId: string) => void,
 ): Promise<void> {
-  if (sourceProjectId === targetProjectId || attachmentPaths.length === 0) {
-    return;
-  }
+  const records = await Promise.all(
+    [...new Set(tokens)].map((token) => readCopyToken(dataDir, token)),
+  );
+  for (const projectId of new Set(records.map((record) => record.projectId)))
+    authorizeSource(projectId);
+  const sources = await Promise.all(
+    records
+      .filter((record) => record.projectId !== targetProjectId)
+      .map(async (record) => {
+        const { content } = await readAttachment(
+          dataDir,
+          record.projectId,
+          record.path,
+        );
+        if (sha256(content) !== record.sha256) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            `Attachment ${record.path} changed after it was uploaded`,
+          );
+        }
+        return { attachmentPath: record.path, content };
+      }),
+  );
+  if (sources.length === 0) return;
 
-  const uniquePaths = [...new Set(attachmentPaths)];
   const targetDir = projectAttachmentDir(dataDir, targetProjectId);
-  for (const attachmentPath of uniquePaths) {
+  for (const { attachmentPath } of sources) {
     resolveAttachmentPath(targetDir, attachmentPath);
     if (sanitizeFilename(attachmentPath) !== attachmentPath) {
       throw new ApiError(
@@ -315,13 +390,6 @@ export async function copyProjectAttachments(
       );
     }
   }
-  const sources = await Promise.all(
-    uniquePaths.map(async (attachmentPath) => ({
-      attachmentPath,
-      content: (await readAttachment(dataDir, sourceProjectId, attachmentPath))
-        .content,
-    })),
-  );
   await mkdir(targetDir, { recursive: true });
   const realTargetDir = await canonicalProjectAttachmentDir(
     dataDir,

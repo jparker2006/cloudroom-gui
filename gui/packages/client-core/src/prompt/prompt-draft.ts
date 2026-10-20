@@ -482,33 +482,24 @@ export function promptInputToDraft(
   };
 }
 
-export function getProjectOwnedPromptAttachmentPaths(
-  attachments: readonly PromptDraftAttachment[],
-  projectId: string,
-): string[] {
-  return getProjectStoredPromptAttachmentPaths(
-    attachments.filter(
-      (attachment) => (attachment.projectId ?? projectId) === projectId,
-    ),
-  );
-}
-
 export function getCrossProjectPromptAttachmentCopies(
   attachments: readonly PromptDraftAttachment[],
-  projectId: string,
-): { sourceProjectId: string; paths: string[] }[] {
-  const bySource = new Map<string, PromptDraftAttachment[]>();
-  for (const attachment of attachments) {
-    if (!attachment.projectId || attachment.projectId === projectId) continue;
-    bySource.set(attachment.projectId, [
-      ...(bySource.get(attachment.projectId) ?? []),
-      attachment,
-    ]);
-  }
-  return [...bySource].flatMap(([sourceProjectId, items]) => {
-    const paths = getProjectStoredPromptAttachmentPaths(items);
-    return paths.length > 0 ? [{ sourceProjectId, paths }] : [];
-  });
+  targetProjectId: string,
+  untaggedOwnerProjectId = targetProjectId,
+): { tokens: string[]; untokened: string[] } {
+  const moving = attachments.filter(
+    (attachment) =>
+      (attachment.projectId ?? untaggedOwnerProjectId) !== targetProjectId &&
+      getProjectStoredPromptAttachmentPaths([attachment]).length > 0,
+  );
+  return {
+    tokens: [
+      ...new Set(moving.flatMap((attachment) => attachment.copyToken ?? [])),
+    ],
+    untokened: moving.flatMap((attachment) =>
+      attachment.copyToken ? [] : [attachment.name],
+    ),
+  };
 }
 
 export function getProjectStoredPromptAttachmentPaths(

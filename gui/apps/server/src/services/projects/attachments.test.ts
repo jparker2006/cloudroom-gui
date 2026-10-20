@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { ApiError } from "../../errors.js";
 import {
-  copyProjectAttachments,
+  copyAttachmentsWithTokens,
   readAttachment,
   resolveProjectAttachmentFile,
+  storeAttachment,
   validatePromptAttachmentReferences,
   withoutUnverifiedAttachments,
 } from "./attachments.js";
@@ -16,6 +19,26 @@ async function makeTempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "bb-attachments-"));
   tempDirs.push(dir);
   return dir;
+}
+
+const allowAll = (): void => {};
+
+async function upload(
+  dataDir: string,
+  projectId: string,
+  name: string,
+  bytes: string | Buffer<ArrayBuffer>,
+) {
+  const type = name.endsWith(".png") ? "image/png" : "text/plain";
+  const uploaded = await storeAttachment(
+    dataDir,
+    projectId,
+    new File([bytes], name, { type }),
+  );
+  return {
+    ...uploaded,
+    file: join(dataDir, "attachments", projectId, uploaded.path),
+  };
 }
 
 afterEach(async () => {
@@ -39,72 +62,126 @@ describe("project attachments", () => {
     expect(result.mimeType).toBe("text/plain");
   });
 
-  it("copies project-scoped attachments without changing their draft paths", async () => {
+  it("issues a copy token per upload and copies exactly those bytes, again without error", async () => {
     const dataDir = await makeTempDir();
-    const sourceDir = join(dataDir, "attachments", "proj_source");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "image-uploaded.png"), "image bytes");
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x0d, 0x0a]);
+    const shot = await upload(dataDir, "proj_source", "shot.png", png);
+    expect(shot.copyToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
 
-    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
-      "image-uploaded.png",
-    ]);
+    await copyAttachmentsWithTokens(dataDir, "proj_target", [shot.copyToken], allowAll);
+    await copyAttachmentsWithTokens(dataDir, "proj_target", [shot.copyToken], allowAll);
 
-    const copied = await readAttachment(
-      dataDir,
-      "proj_target",
-      "image-uploaded.png",
-    );
-    expect(copied.content.toString("utf8")).toBe("image bytes");
+    expect(
+      (await readAttachment(dataDir, "proj_target", shot.path)).content,
+    ).toEqual(png);
+    expect(await readFile(shot.file)).toEqual(png);
   });
 
-  it("copies image bytes exactly, again without error, and never overwrites a different target file", async () => {
+  it("never overwrites a different file already in the target project", async () => {
     const dataDir = await makeTempDir();
-    const sourceDir = join(dataDir, "attachments", "proj_source");
+    const shot = await upload(dataDir, "proj_source", "shot.png", "shot");
     const targetDir = join(dataDir, "attachments", "proj_target");
-    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x0d, 0x0a]);
-    await mkdir(sourceDir, { recursive: true });
     await mkdir(targetDir, { recursive: true });
-    await writeFile(join(sourceDir, "shot.png"), png);
-    await writeFile(join(sourceDir, "taken.png"), png);
-    await writeFile(join(targetDir, "taken.png"), "other image");
-
-    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
-      "shot.png",
-    ]);
-    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
-      "shot.png",
-    ]);
-    expect(
-      (await readAttachment(dataDir, "proj_target", "shot.png")).content,
-    ).toEqual(png);
+    await writeFile(join(targetDir, shot.path), "other image");
 
     await expect(
-      copyProjectAttachments(dataDir, "proj_source", "proj_target", [
-        "taken.png",
-      ]),
+      copyAttachmentsWithTokens(dataDir, "proj_target", [shot.copyToken], allowAll),
     ).rejects.toMatchObject({ status: 409 });
-    expect(await readFile(join(targetDir, "taken.png"), "utf8")).toBe(
-      "other image",
-    );
-    expect(await readFile(join(sourceDir, "taken.png"))).toEqual(png);
-    expect(await readFile(join(sourceDir, "shot.png"))).toEqual(png);
+    expect(await readFile(join(targetDir, shot.path), "utf8")).toBe("other image");
+    expect(await readFile(shot.file, "utf8")).toBe("shot");
   });
 
-  it("rejects copy paths that leave either project's attachment directory", async () => {
+  it("copies only server-issued tokens, never arbitrary paths", async () => {
     const dataDir = await makeTempDir();
-    await mkdir(join(dataDir, "attachments", "proj_other"), {
-      recursive: true,
-    });
-    await writeFile(
-      join(dataDir, "attachments", "proj_other", "secret.png"),
-      "secret",
-    );
+    const shot = await upload(dataDir, "proj_source", "shot.png", "shot");
+    await mkdir(join(dataDir, "attachments", "proj_other"), { recursive: true });
+    await writeFile(join(dataDir, "attachments", "proj_other", "secret.png"), "secret");
 
-    for (const path of ["../proj_other/secret.png", "/etc/passwd", "."]) {
+    for (const token of [
+      shot.path,
+      "../proj_other/secret.png",
+      "/etc/passwd",
+      "",
+      "A".repeat(43),
+    ]) {
       await expect(
-        copyProjectAttachments(dataDir, "proj_source", "proj_target", [path]),
-      ).rejects.toMatchObject({ status: 400 });
+        copyAttachmentsWithTokens(dataDir, "proj_target", [token], allowAll),
+      ).rejects.toMatchObject({ status: 403 });
     }
+    const corrupt = "B".repeat(43);
+    await writeFile(
+      join(
+        dataDir,
+        "attachment-copy-tokens",
+        `${createHash("sha256").update(corrupt).digest("hex")}.json`,
+      ),
+      "{}",
+    );
+    await expect(
+      copyAttachmentsWithTokens(dataDir, "proj_target", [corrupt], allowAll),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      readdir(join(dataDir, "attachments", "proj_target")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("authorizes the token's source project before reading it", async () => {
+    const dataDir = await makeTempDir();
+    const shot = await upload(dataDir, "proj_source", "shot.png", "shot");
+    const checked: string[] = [];
+
+    await expect(
+      copyAttachmentsWithTokens(dataDir, "proj_target", [shot.copyToken], (projectId) => {
+        checked.push(projectId);
+        throw new ApiError(404, "invalid_request", "Project not found");
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(checked).toEqual(["proj_source"]);
+    await expect(
+      readAttachment(dataDir, "proj_target", shot.path),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("refuses a token whose upload was replaced, swapped for a symlink or removed, copying nothing", async () => {
+    const dataDir = await makeTempDir();
+    await writeFile(join(dataDir, "outside.png"), "secret");
+    const kept = await upload(dataDir, "proj_source", "kept.png", "kept");
+    const replaced = await upload(dataDir, "proj_source", "replaced.png", "original");
+    const linked = await upload(dataDir, "proj_source", "linked.png", "linked");
+    const removed = await upload(dataDir, "proj_source", "removed.png", "removed");
+    await writeFile(replaced.file, "swapped");
+    await rm(linked.file);
+    await symlink(join(dataDir, "outside.png"), linked.file);
+    await rm(removed.file);
+
+    await expect(
+      copyAttachmentsWithTokens(dataDir, "proj_target", [kept.copyToken, replaced.copyToken], allowAll),
+    ).rejects.toMatchObject({ status: 409 });
+    for (const token of [linked.copyToken, removed.copyToken]) {
+      await expect(
+        copyAttachmentsWithTokens(dataDir, "proj_target", [kept.copyToken, token], allowAll),
+      ).rejects.toMatchObject({ status: 404 });
+    }
+    await expect(
+      readAttachment(dataDir, "proj_target", kept.path),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("copies only to plain files inside the real target uploads folder", async () => {
+    const dataDir = await realpath(await makeTempDir());
+    const outside = join(dataDir, "outside");
+    await mkdir(outside, { recursive: true });
+    const shot = await upload(dataDir, "proj_source", "shot.png", "shot");
+    await mkdir(join(dataDir, "attachments", "proj_linkfile"), { recursive: true });
+    await symlink(join(outside, "planted.png"), join(dataDir, "attachments", "proj_linkfile", shot.path));
+    await symlink(outside, join(dataDir, "attachments", "proj_linkdir"));
+
+    for (const target of ["proj_linkfile", "proj_linkdir"]) {
+      await expect(
+        copyAttachmentsWithTokens(dataDir, target, [shot.copyToken], allowAll),
+      ).rejects.toMatchObject({ status: 409 });
+    }
+    expect(await readdir(outside)).toEqual([]);
   });
 
   it("follows symlinks only when they stay inside the project's uploads", async () => {
@@ -129,9 +206,6 @@ describe("project attachments", () => {
         input: [{ type: "localImage", path: "escape.png" }],
       }),
     ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      copyProjectAttachments(dataDir, "proj_test", "proj_other", ["escape.png"]),
-    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("keeps only verified uploads when Cloud queued messages become Local", async () => {
@@ -188,48 +262,6 @@ describe("project attachments", () => {
     expect(
       await resolveProjectAttachmentFile(dataDir, "proj_a", "a.png"),
     ).toBe(join(uploadsA, "a.png"));
-  });
-
-  it("copies only to plain files inside the real target uploads folder", async () => {
-    const dataDir = await realpath(await makeTempDir());
-    const source = join(dataDir, "attachments", "proj_source");
-    const outside = join(dataDir, "outside");
-    await mkdir(join(source, "nested"), { recursive: true });
-    await mkdir(outside, { recursive: true });
-    await writeFile(join(source, "shot.png"), "shot");
-    await writeFile(join(source, "nested", "new.png"), "nested");
-    await mkdir(join(dataDir, "attachments", "proj_linkfile"), { recursive: true });
-    await symlink(join(outside, "planted.png"), join(dataDir, "attachments", "proj_linkfile", "shot.png"));
-    await symlink(outside, join(dataDir, "attachments", "proj_linkdir"));
-
-    await expect(
-      copyProjectAttachments(dataDir, "proj_source", "proj_target", ["nested/new.png"]),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      copyProjectAttachments(dataDir, "proj_source", "proj_linkfile", ["shot.png"]),
-    ).rejects.toMatchObject({ status: 409 });
-    await expect(
-      copyProjectAttachments(dataDir, "proj_source", "proj_linkdir", ["shot.png"]),
-    ).rejects.toMatchObject({ status: 409 });
-    expect(await readdir(outside)).toEqual([]);
-  });
-
-  it("does not partially copy when one source attachment is missing", async () => {
-    const dataDir = await makeTempDir();
-    const sourceDir = join(dataDir, "attachments", "proj_source");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "present.txt"), "present");
-
-    await expect(
-      copyProjectAttachments(dataDir, "proj_source", "proj_target", [
-        "present.txt",
-        "missing.txt",
-      ]),
-    ).rejects.toMatchObject({ status: 404 });
-
-    await expect(
-      readAttachment(dataDir, "proj_target", "present.txt"),
-    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("accepts prompt attachment references to uploaded project files", async () => {

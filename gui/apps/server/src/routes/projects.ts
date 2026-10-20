@@ -35,7 +35,7 @@ import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
-  copyProjectAttachments,
+  copyAttachmentsWithTokens,
   readAttachment,
   storeAttachment,
 } from "../services/projects/attachments.js";
@@ -850,12 +850,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   post(routes.copyAttachments, async (context, payload) => {
     const targetProjectId = context.req.param("id");
     requirePublicProject(deps.db, targetProjectId);
-    requirePublicProject(deps.db, payload.sourceProjectId);
-    await copyProjectAttachments(
+    await copyAttachmentsWithTokens(
       deps.config.dataDir,
-      payload.sourceProjectId,
       targetProjectId,
-      payload.paths,
+      payload.tokens,
+      (sourceProjectId) => requirePublicProject(deps.db, sourceProjectId),
     );
     return context.json({ ok: true as const });
   });

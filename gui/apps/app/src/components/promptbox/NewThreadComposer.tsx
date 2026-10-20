@@ -105,7 +105,6 @@ import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import {
   arePromptDraftStatesEqual,
   getCrossProjectPromptAttachmentCopies,
-  getProjectOwnedPromptAttachmentPaths,
   isPromptDraftEmpty,
   promptDraftToInput,
   type PromptDraftAttachment,
@@ -406,6 +405,10 @@ function useDraftPreservingOptionChange<T>(
     },
     [current, setValue, snapshot],
   );
+}
+
+function untokenedAttachmentsMessage(names: readonly string[]): string {
+  return `${names.join(", ")} can't be moved to another project. Remove ${names.length === 1 ? "it" : "them"} and attach again.`;
 }
 
 function resolvePanelThreadId(
@@ -1324,20 +1327,24 @@ export function NewThreadComposer({
       ) {
         return;
       }
-      const attachmentPaths = getProjectOwnedPromptAttachmentPaths(
+      const { tokens, untokened } = getCrossProjectPromptAttachmentCopies(
         promptDraft.getCurrent().attachments,
+        nextValue,
         projectId,
       );
+      if (untokened.length > 0) {
+        setComposerError(untokenedAttachmentsMessage(untokened));
+        return;
+      }
       isCopyingAttachmentsRef.current = true;
       setIsCopyingAttachments(true);
       try {
-        if (attachmentPaths.length > 0) {
+        if (tokens.length > 0) {
           setComposerError(null);
           try {
             await sdk.projects.attachments.copy({
               projectId: nextValue,
-              sourceProjectId: projectId,
-              paths: attachmentPaths,
+              tokens,
             });
           } catch (error) {
             setComposerError(
@@ -1627,12 +1634,14 @@ export function NewThreadComposer({
       setIsSubmitting(true);
       setComposerError(null);
       try {
-        for (const copy of getCrossProjectPromptAttachmentCopies(
+        const { tokens, untokened } = getCrossProjectPromptAttachmentCopies(
           submittedDraft.attachments,
           projectId,
-        )) {
-          await sdk.projects.attachments.copy({ projectId, ...copy });
-        }
+        );
+        if (untokened.length > 0)
+          throw new Error(untokenedAttachmentsMessage(untokened));
+        if (tokens.length > 0)
+          await sdk.projects.attachments.copy({ projectId, tokens });
         await onSubmit(request);
         promptDraft.clearIfCurrentMatches(submittedDraft);
         if (executionTarget === "cloud")

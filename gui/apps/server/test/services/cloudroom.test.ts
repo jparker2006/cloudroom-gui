@@ -1195,12 +1195,12 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     form.set("file", new File([png], "screen shot.png", { type: "image/png" }));
     const response = await harness.app.request(`/api/v1/projects/${projectId}/attachments`, { method: "POST", body: form });
     expect(response.status).toBe(201);
-    return (await response.json()) as { path: string };
+    return (await response.json()) as { path: string; copyToken: string };
   };
   const createIn = (projectId: string, requestId: string, path: string) => request("/threads", { executionTarget: "cloud", requestId, projectId, providerId: "codex", origin: "app", model: "test-model", reasoningLevel: "medium", environment: { type: "project-default" }, input: [{ type: "text", text: requestId, mentions: [] }, { type: "localImage", path }] });
   try {
     await service.configure({ url: `http://127.0.0.1:${address.port}`, token: "x".repeat(40) });
-    const { path } = await upload(projectA.id);
+    const { path, copyToken } = await upload(projectA.id);
     const fileInA = join(harness.config.dataDir, "attachments", projectA.id, path);
 
     const rejected = await createIn(projectB.id, "cross-project", path);
@@ -1208,7 +1208,11 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     expect(await rejected.text()).toContain("was not uploaded for this project");
     expect(harness.db.select().from(cloudroomCommands).all()).toHaveLength(0);
 
-    expect((await request(`/projects/${projectB.id}/attachments/copy`, { sourceProjectId: projectA.id, paths: [path] })).status).toBe(200);
+    const copy = (body: unknown) => request(`/projects/${projectB.id}/attachments/copy`, body);
+    expect((await copy({ sourceProjectId: projectA.id, paths: [path] })).status).toBe(400);
+    expect((await copy({ tokens: [path] })).status).toBe(403);
+    expect((await createIn(projectB.id, "path-copy-refused", path)).status).toBe(400);
+    expect((await copy({ tokens: [copyToken] })).status).toBe(200);
     const created = await createIn(projectB.id, "after-copy", path);
     expect(created.status, await created.clone().text()).toBe(201);
     const thread = await created.json();

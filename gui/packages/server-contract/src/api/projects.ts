@@ -461,6 +461,7 @@ export const uploadedPromptAttachmentSchema = z.object({
   name: z.string(),
   mimeType: z.string().optional(),
   sizeBytes: z.number(),
+  copyToken: z.string().optional(),
 });
 export type UploadedPromptAttachment = z.infer<
   typeof uploadedPromptAttachmentSchema
@@ -468,8 +469,7 @@ export type UploadedPromptAttachment = z.infer<
 
 export const copyProjectAttachmentsRequestSchema = z
   .object({
-    sourceProjectId: z.string().min(1),
-    paths: z.array(z.string().min(1)).min(1).max(100),
+    tokens: z.array(z.string().min(1).max(200)).min(1).max(100),
   })
   .strict();
 export type CopyProjectAttachmentsRequest = z.infer<
