@@ -4,6 +4,8 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import type { ThreadTimelineSurfaceProps } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
+import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 
 interface ThreadTimelinePaneProps extends ThreadTimelineSurfaceProps {
   canSpawnChild: boolean;
@@ -38,7 +40,20 @@ export function ThreadTimelinePane({
           onNavigateToRow={setTimelineNavigationTargetRowId}
         />
       }
-      surface={{ ...surface, timelineNavigationTargetRowId }}
+      surface={{
+        ...surface,
+        timelineNavigationTargetRowId,
+        emptyContent: (
+          <EmptyStateScene
+            scene="threads"
+            logoSrc={roomLogoUrl}
+            size="hero"
+            title="No messages yet"
+            description="Send a message below to start this thread."
+            className="my-auto"
+          />
+        ),
+      }}
     />
   );
 }
