@@ -118,9 +118,11 @@ Rules:
   6. Rewrite the record with only what stayed behind (missing, unknown, or
      absolute-path attachments). Remove the key only when nothing is left.
   Steps 4–6 run synchronously inside the lock, so a second tab's move re-reads
-  the record after the first one finishes and finds it gone. Text is never
-  duplicated. If a browser lacks Web Locks, the move still runs without the lock
-  (Chromium/Electron and Safari 15.4+ have it).
+  the record after the first one finishes and finds it gone, so text is not
+  duplicated. Exception: in a browser without Web Locks (older than
+  Chromium/Electron with locks or Safari 15.4), the move runs unlocked, and two
+  tabs pressing Move in the same instant could put the text in both targets.
+  Nothing is lost.
 - **Discard** is two-step and inline (no modal). It removes that key only.
   Attachment files on the server are never deleted.
 - **Not now** hides that banner for this window only and writes nothing.
