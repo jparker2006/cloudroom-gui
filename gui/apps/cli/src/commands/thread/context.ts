@@ -59,7 +59,7 @@ export function registerContextCommand(
             return;
           }
           console.log(
-            `Recorded compactions (whole thread): ${compactions.completedCount}${compactions.coverage === "partial" ? ` (partial history: ${compactions.gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
+            `Recorded compactions${compactions.coverage === "complete" ? " (whole thread)" : ""}: ${compactions.completedCount}${compactions.coverage === "partial" ? ` (partial history: ${compactions.gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
           );
           for (const entry of compactions.entries) {
             if (entry.kind === "clear") {

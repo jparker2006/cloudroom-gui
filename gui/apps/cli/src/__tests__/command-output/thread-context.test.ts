@@ -96,7 +96,7 @@ describe("room-cli thread context", () => {
     await runCommand(["thread", "context", "thread-1"], register);
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Context usage was not reported by the agent.",
-      "Recorded compactions (whole thread): 1 (partial history: Part of this thread ran on another machine.)",
+      "Recorded compactions: 1 (partial history: Part of this thread ran on another machine.)",
       "  2026-10-20T12:00:00.000Z context cleared (not a compaction)",
       "  time unknown not confirmed (not counted)",
       "  2026-10-20T11:00:00.000Z compacted - Summary not provided.",

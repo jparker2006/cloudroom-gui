@@ -266,7 +266,7 @@ describe("recorded compactions", () => {
     ]);
   });
 
-  it("shows server and provider clears as dividers in order and never counts them", () => {
+  it("shows clears as dividers, collapses one clear reported by both sources, and never counts them", () => {
     sequenceByThread = new Map();
     const { db, thread } = setup();
     compactionItem(db, thread, "item/started", "t1", "c1");
@@ -282,6 +282,12 @@ describe("recorded compactions", () => {
     expect(list.entries.map((entry) => entry.kind)).toEqual([
       "compaction",
       "clear",
+      "compaction",
+    ]);
+    append(db, thread, "thread/context/cleared", "t4");
+    expect(build(db, thread).entries.map((entry) => entry.kind)).toEqual([
+      "clear",
+      "compaction",
       "clear",
       "compaction",
     ]);

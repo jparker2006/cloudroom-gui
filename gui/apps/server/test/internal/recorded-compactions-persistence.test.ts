@@ -1,6 +1,7 @@
 import {
   deleteThreadEventSuffixInTransaction,
   getLatestThreadSequence,
+  insertEvents,
   listEvents,
 } from "@cloudroom/db";
 import { turnScope } from "@cloudroom/domain";
@@ -170,7 +171,7 @@ describe("recorded compactions through persistence", () => {
     });
   });
 
-  it("drops cached history when events are rewritten and picks up appended events", async () => {
+  it("drops cached history when events are rewritten and picks up appended and out-of-order events", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedFixture(harness);
       await postEvents(
@@ -219,6 +220,37 @@ describe("recorded compactions through persistence", () => {
         completedCount: 2,
         entries: [{ id: "cmp-c" }, { id: "cmp-a" }],
       });
+
+      const latest = getLatestThreadSequence(harness.db, {
+        threadId: thread.id,
+      });
+      expect(build().completedCount).toBe(2);
+      insertEvents(harness.db, harness.hub, [
+        {
+          threadId: thread.id,
+          sequence: latest + 2,
+          type: "thread/compacted",
+          scope: turnScope("turn-4"),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: "provider-session" }),
+        },
+      ]);
+      expect(build().completedCount).toBe(3);
+      insertEvents(harness.db, harness.hub, [
+        {
+          threadId: thread.id,
+          sequence: latest + 1,
+          type: "thread/compacted",
+          scope: turnScope("turn-5"),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: "provider-session" }),
+        },
+      ]);
+      expect(build().completedCount).toBe(4);
     });
   });
 });

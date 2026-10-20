@@ -59,7 +59,7 @@ export const RECORDED_COMPACTION_GAP_TEXT: Record<
   "ambiguous-legacy": "Some older records couldn't be told apart.",
   "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
   forked: "Records copied from the source thread may be incomplete.",
-  "imported-history": "Imported history has no compaction records.",
+  "imported-history": "Imported history may be missing compaction records.",
   "provider-unverified":
     "This agent doesn't declare compaction support, so some may be missing.",
   rewound: "Edited or rewound messages may have removed some history.",

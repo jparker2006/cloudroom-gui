@@ -117,12 +117,9 @@ function useCompletionAnnouncement(
   useEffect(() => {
     const before = previous.current;
     previous.current = summary;
-    if (
-      before !== null &&
-      summary !== null &&
-      before.inProgress &&
-      !summary.inProgress
-    ) {
+    if (summary?.inProgress) {
+      setAnnouncement("");
+    } else if (before !== null && summary !== null && before.inProgress) {
       setAnnouncement(
         summary.completedCount > before.completedCount
           ? "Compaction recorded."
@@ -236,12 +233,16 @@ export function RecordedCompactionsSection({
               Retry
             </button>
           </p>
-        ) : list.isPending || stale ? (
-          <p className="text-xs text-muted-foreground max-md:text-sm">
-            {stale ? "Updating compactions…" : "Loading compactions…"}
-          </p>
         ) : null}
       </div>
+      {summary !== null &&
+      listEnabled &&
+      !list.isError &&
+      (list.isPending || stale) ? (
+        <p className="text-xs text-muted-foreground max-md:text-sm">
+          {stale ? "Updating compactions…" : "Loading compactions…"}
+        </p>
+      ) : null}
       {summary === null ||
       !listEnabled ||
       list.isError ||
@@ -263,7 +264,8 @@ export function RecordedCompactionsSection({
           </ol>
           {listData.truncated ? (
             <p className="text-xs text-muted-foreground max-md:text-sm">
-              Showing the newest 50 entries. The count covers the whole thread.
+              Showing the newest 50 entries. The count includes older recorded
+              compactions.
             </p>
           ) : null}
         </>

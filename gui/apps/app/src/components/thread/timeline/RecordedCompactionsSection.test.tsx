@@ -199,7 +199,7 @@ it("announces an in-progress compaction without counting it and shows loading an
   });
   expect(
     await screen.findByText(
-      "Showing the newest 50 entries. The count covers the whole thread.",
+      "Showing the newest 50 entries. The count includes older recorded compactions.",
     ),
   ).toBeTruthy();
   expect(screen.getAllByRole("listitem")).toHaveLength(4);

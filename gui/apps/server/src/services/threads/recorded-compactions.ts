@@ -139,6 +139,19 @@ export function buildRecordedCompactions(
   const compactions: CompactionState[] = [];
   const byItemId = new Map<string, CompactionState>();
   const clears: Array<{ id: string; at: number; sequence: number }> = [];
+  let lastClearSource: "operation" | "provider" | null = null;
+  const pushClear = (row: StoredEventRow, source: "operation" | "provider") => {
+    if (lastClearSource !== null && lastClearSource !== source) {
+      lastClearSource = null;
+      return;
+    }
+    lastClearSource = source;
+    clears.push({
+      id: `clear:${row.sequence}`,
+      at: row.createdAt,
+      sequence: row.sequence,
+    });
+  };
 
   const compactionForItem = (row: StoredEventRow, itemId: string) => {
     const existing = byItemId.get(itemId);
@@ -159,15 +172,18 @@ export function buildRecordedCompactions(
   for (const row of rows) {
     const data = parseData(row);
     if (row.type === "item/started" && row.itemId) {
+      lastClearSource = null;
       const compaction = compactionForItem(row, row.itemId);
       compaction.startedAt ??= row.createdAt;
       continue;
     }
     if (row.type === "item/completed" && row.itemId) {
+      lastClearSource = null;
       compactionForItem(row, row.itemId);
       continue;
     }
     if (row.type === "thread/compacted") {
+      lastClearSource = null;
       const itemId = typeof data.itemId === "string" ? data.itemId : null;
       let target: CompactionState | undefined;
       if (itemId !== null) {
@@ -204,11 +220,7 @@ export function buildRecordedCompactions(
       continue;
     }
     if (row.type === "thread/context/cleared") {
-      clears.push({
-        id: `clear:${row.sequence}`,
-        at: row.createdAt,
-        sequence: row.sequence,
-      });
+      pushClear(row, "provider");
       continue;
     }
     if (row.type === "provider/unhandled") {
@@ -217,11 +229,7 @@ export function buildRecordedCompactions(
     }
     if (row.type === "system/operation" && data.status === "completed") {
       if (data.operation === THREAD_CONTEXT_CLEAR_OPERATION) {
-        clears.push({
-          id: `clear:${row.sequence}`,
-          at: row.createdAt,
-          sequence: row.sequence,
-        });
+        pushClear(row, "operation");
       } else if (data.operation === "edit_message") {
         gaps.add("rewound");
       } else if (data.operation === THREAD_IMPORT_OPERATION) {

@@ -338,6 +338,7 @@ export function ThreadContextWindowIndicator({
           }}
           className="-m-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={ariaLabel}
+          aria-keyshortcuts="Enter ArrowDown"
         >
           <svg
             viewBox="0 0 16 16"

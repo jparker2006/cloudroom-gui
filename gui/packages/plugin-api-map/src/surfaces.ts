@@ -1005,7 +1005,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads, send messages to them, and manage projects",
           "List machines and suspend, resume, or remove provider-managed machines",
-          "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, its token fields are null when the agent did not report them, its snapshot is present only when the latest measurement includes a breakdown, and compactions lists the thread's recorded compactions with coverage",
+          "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, usage is null with usageState "unknown" when the agent did not report it, its snapshot is present only when the latest measurement includes a breakdown, and compactions lists the thread's recorded compactions with coverage",
           "Reach the same operations the [Cloudroom CLI](cli) and the Cloudroom UI use",
           "Use the same client from plugin UI with useSdk(), bound to the plugin",
           "Have the threads it creates attributed back to the plugin",

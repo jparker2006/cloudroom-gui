@@ -108,11 +108,11 @@ export function extractThreadContextWindowUsage(
 export function getThreadContextWindowUsageState(
   events: readonly ThreadEventWithMeta[],
 ): "reported" | "unknown" | null {
-  const orderedEvents = getOrderedContextWindowEvents(events);
-  for (let index = orderedEvents.length - 1; index >= 0; index -= 1) {
-    const signal = decodeContextWindowSignal(orderedEvents[index]);
-    if (!signal) continue;
-    return signal.usedTokens === null ? "unknown" : "reported";
-  }
-  return null;
+  const hasSignal = events.some(
+    (event) => decodeContextWindowSignal(event) !== null,
+  );
+  if (!hasSignal) return null;
+  return extractThreadContextWindowUsage(events) === null
+    ? "unknown"
+    : "reported";
 }
