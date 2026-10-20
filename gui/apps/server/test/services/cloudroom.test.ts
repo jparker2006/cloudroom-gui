@@ -1311,11 +1311,22 @@ it("teleports only attachments that resolve inside the thread project's uploads"
 });
 
 it("refuses a Teleport capture whose attachments were not verified, such as a stale host cache", () => {
-  const files = [{ kind: "context", path: "gui-history.json" }, { kind: "attachment", path: "0-shot.png", origin: "/data/attachments/proj_b/shot.png" }];
-  expect(() => requireCapturedAttachmentsVerified(files, ["/data/attachments/proj_b/shot.png"])).not.toThrow();
-  expect(() => requireCapturedAttachmentsVerified(files, [])).toThrow("not a verified upload of this thread's project");
-  expect(() => requireCapturedAttachmentsVerified([...files, { kind: "attachment", path: "1-outside-marker.txt", origin: "/outside-marker.txt" }], ["/data/attachments/proj_b/shot.png"])).toThrow("Cancel it and Teleport again");
-  expect(() => requireCapturedAttachmentsVerified([{ kind: "attachment", path: "2-x.png" }], ["/data/attachments/proj_b/shot.png"])).toThrow();
+  const allowed = { uploads: ["/data/attachments/proj_b/shot.png"], transferId: "tp_1", threadId: "thr_main", sessionThreadIds: ["thr_main", "thr_child"] };
+  const root = "/storage/thr_main/teleport/tp_1";
+  const upload = { kind: "attachment", path: "0-shot.png", origin: "/data/attachments/proj_b/shot.png" };
+  const images = [{ kind: "attachment", path: "thr_main-image-0.png", origin: `${root}/thr_main-image-0.png` }, { kind: "attachment", path: "thr_child-image-3.jpg", origin: `${root}/thr_child-image-3.jpg` }];
+  expect(() => requireCapturedAttachmentsVerified([{ kind: "context", path: "gui-history.json" }, upload, ...images], allowed)).not.toThrow();
+  for (const stale of [
+    { kind: "attachment", path: "1-outside-marker.txt", origin: "/outside-marker.txt" },
+    { kind: "attachment", path: "2-x.png" },
+    { ...upload, origin: "/data/attachments/proj_a/shot.png" },
+    { kind: "attachment", path: "thr_other-image-0.png", origin: "/storage/thr_main/teleport/tp_1/thr_other-image-0.png" },
+    { kind: "attachment", path: "thr_main-image-0.png", origin: "/storage/thr_main/teleport/tp_old/thr_main-image-0.png" },
+    { kind: "attachment", path: "thr_main-image-0.png", origin: "/Users/me/thr_main-image-0.png" },
+    { kind: "attachment", path: "3-thr_main-image-0.png", origin: `${root}/thr_main-image-0.png` },
+  ])
+    expect(() => requireCapturedAttachmentsVerified([...images, stale], allowed), JSON.stringify(stale)).toThrow("Cancel it and Teleport again");
+  expect(() => requireCapturedAttachmentsVerified([upload], { ...allowed, uploads: [] })).toThrow();
 });
 
 it("drops attachments from Teleports saved before verification, and refuses ones that already captured them", () => {

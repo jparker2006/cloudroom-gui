@@ -123,13 +123,31 @@ export function withoutUnverifiedTeleportAttachments<
 
 export function requireCapturedAttachmentsVerified(
   files: readonly { kind: string; path?: string; origin?: string | undefined }[],
-  verified: readonly string[],
+  allowed: {
+    uploads: readonly string[];
+    transferId: string;
+    threadId: string;
+    sessionThreadIds: readonly string[];
+  },
 ): void {
+  const conversationImage = (file: { path?: string; origin?: string }) => {
+    const match = /^(.+)-image-\d+\.(?:jpg|png|webp|gif|bin)$/u.exec(
+      file.path ?? "",
+    );
+    return (
+      match !== null &&
+      allowed.sessionThreadIds.includes(match[1]!) &&
+      (file.origin ?? "").replaceAll("\\", "/").endsWith(
+        `/${allowed.threadId}/teleport/${allowed.transferId}/${file.path}`,
+      )
+    );
+  };
   if (
     files.some(
       (file) =>
         file.kind === "attachment" &&
-        (!file.origin || !verified.includes(file.origin)),
+        !(file.origin && allowed.uploads.includes(file.origin)) &&
+        !conversationImage(file),
     )
   )
     throw new ApiError(
@@ -975,7 +993,15 @@ class Teleport {
         throw new Error(
           "Local capture returned no complete conversation. Update the local host before retrying.",
         );
-      requireCapturedAttachmentsVerified(capture.files, state.attachments);
+      requireCapturedAttachmentsVerified(capture.files, {
+        uploads: state.attachments,
+        transferId: id,
+        threadId: state.threadId,
+        sessionThreadIds: [
+          ...state.sessions.map((source) => source.threadId),
+          ...nativeChildren.keys(),
+        ],
+      });
       if (
         capability.teleport_lineage !== true &&
         capture.files.some((file) => file.kind === "lineage")
