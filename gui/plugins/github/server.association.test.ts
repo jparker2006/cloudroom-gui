@@ -295,6 +295,23 @@ describe("pullForThread association", () => {
     });
   });
 
+  it("reports a failed thread lookup as a server lookup failure, not a workspace or gh one", async () => {
+    const world = newWorld();
+    world.environments.thr_a = "env-a";
+    world.workspace["env-a"] = workspacePull(42);
+    const host = await loadPlugin(world);
+    host.harness.sdk.stub("threads.get", () => {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:4100");
+    });
+
+    await expect(
+      host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
+    ).resolves.toMatchObject({
+      failures: [{ source: "workspace", runsOn: "server", reason: "lookup" }],
+      resolution: { kind: "failed", reason: "lookup" },
+    });
+  });
+
   it("offers partial candidates after a failure without auto-showing them", async () => {
     const world = newWorld();
     world.environments.thr_a = "env-a";

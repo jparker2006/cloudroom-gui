@@ -1470,6 +1470,15 @@ export default async function plugin(bb: BbPluginApi) {
     try {
       const thread = await bb.sdk.threads.get({ threadId });
       environmentId = thread?.environmentId ?? null;
+    } catch (error) {
+      failures.push({
+        source: "workspace",
+        runsOn: "server",
+        reason: "lookup",
+        message: `Couldn’t read this thread: ${errorMessage(error)}`,
+      });
+    }
+    try {
       if (environmentId !== null) {
         const result = await bb.sdk.environments.pullRequest({ environmentId });
         if (result.outcome === "available") {
