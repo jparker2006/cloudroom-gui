@@ -45,6 +45,7 @@ export const APP_COMMAND_IDS = [
   "thread.previous",
   "thread.next",
   "thread.oldestInProject",
+  "sidebar.collapseAllSubthreads",
   ...THREAD_JUMP_APP_COMMAND_IDS,
   "pane.focus.previous",
   "pane.focus.next",
