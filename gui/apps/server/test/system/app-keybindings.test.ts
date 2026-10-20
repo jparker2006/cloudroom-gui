@@ -464,6 +464,7 @@ describe("app keybindings", () => {
             shift: binding.shortcut.shift,
           })),
       ).toEqual([
+        { command: "sidebar.collapseAllSubthreads", shift: false },
         { command: "modelPicker.cycleModel", shift: false },
         { command: "modelPicker.cycleModelBackward", shift: true },
         { command: "modelPicker.cycleProvider", shift: false },
@@ -557,6 +558,7 @@ describe("app keybindings", () => {
         "history.forward",
         "thread.previous",
         "thread.next",
+        "sidebar.collapseAllSubthreads",
         ...THREAD_JUMP_APP_COMMAND_IDS,
         ...PANE_FOCUS_APP_COMMAND_IDS,
         "panel.reopenClosedTab",

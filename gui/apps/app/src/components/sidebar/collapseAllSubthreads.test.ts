@@ -58,7 +58,7 @@ describe("collapseAllSubthreadIds", () => {
 
   it("collapses a selected parent's own children since the parent stays visible", () => {
     expect(collapseAllSubthreadIds([], THREADS, "a1").sort()).toEqual([
-      "a",
+      "a1",
       "a1x",
       "b",
     ]);

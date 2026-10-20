@@ -54,7 +54,9 @@ describe("PALETTE_COMMAND_IDS", () => {
 describe("Collapse all subthreads", () => {
   it("is a palette command that the shortcut settings list under Threads", () => {
     expect(PALETTE_COMMAND_IDS).toContain("sidebar.collapseAllSubthreads");
-    const threads = APP_COMMAND_GROUPS.find((group) => group.label === "Threads");
+    const threads = APP_COMMAND_GROUPS.find(
+      (group) => group.label === "Threads",
+    );
     expect(
       threads?.commands.find(
         (metadata) => metadata.command === "sidebar.collapseAllSubthreads",
