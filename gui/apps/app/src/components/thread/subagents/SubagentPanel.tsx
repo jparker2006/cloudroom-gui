@@ -76,7 +76,7 @@ export function SubagentHeaderChip({
         {ready ? summary.directCount : listState === "loading" ? "…" : "?"}
       </span>
       {ready && summary.nestedCount ? (
-        <span className="tabular-nums text-muted-foreground/80">+{summary.nestedCount}</span>
+        <span className="tabular-nums text-muted-foreground">+{summary.nestedCount}</span>
       ) : null}
       {working ? (
         <span className="inline-flex items-center gap-0.5">

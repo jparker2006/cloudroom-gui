@@ -37,7 +37,7 @@ function useSubagentExecution(entry: SubagentEntry): SubagentExecution {
   if (!isCloud) return { state: "not-recorded" };
   if (query.isError) return { state: "unavailable", reason: "couldn’t load" };
   if (query.data === undefined) return { state: "loading" };
-  if (query.data === null) return { state: "not-recorded" };
+  if (query.data === null || !query.data.model.trim()) return { state: "not-recorded" };
   return { state: "recorded", model: query.data.model, effort: query.data.reasoning };
 }
 
@@ -57,12 +57,13 @@ function useThreadSubagents(threadId: string): Omit<SubagentViewProps, "onCardEx
     listState:
       entries !== undefined ? "ready" : direct.isError ? "error" : "loading",
     freshness:
-      connection !== "connected"
-        ? { state: "paused", since: null }
-        : entries !== undefined &&
-            (coverage === "direct-only" ? direct.isError : sidebar.isError)
-          ? { state: "paused", since: null, reason: "refresh-failed" }
-          : { state: "live" },
+      entries === undefined
+        ? { state: "live" }
+        : connection !== "connected"
+          ? { state: "paused", since: null }
+          : (coverage === "direct-only" ? direct.isError : sidebar.isError)
+            ? { state: "paused", since: null, reason: "refresh-failed" }
+            : { state: "live" },
     now: Date.now(),
     useExecution: useSubagentExecution,
   };

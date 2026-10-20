@@ -2576,7 +2576,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     ...responsiveGitActions,
   ];
   const isSubagentInfoOpen =
-    isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "thread-info";
+    isWorkspacePanelOpen &&
+    pluginDetails.activePluginId === null &&
+    activeFixedSecondaryTab?.kind === "thread-info";
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={

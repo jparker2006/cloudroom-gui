@@ -323,7 +323,7 @@ export function SubagentTaskCard({
       <button
         type="button"
         aria-expanded={expanded}
-        aria-controls={bodyId}
+        aria-controls={expanded ? bodyId : undefined}
         onClick={toggle}
         className={cn(
           "group/card flex w-full min-w-0 items-start gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",

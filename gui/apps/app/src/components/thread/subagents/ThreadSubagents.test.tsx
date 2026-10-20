@@ -306,6 +306,54 @@ describe("review round 3 (6ae30cf): primary sidebar source freshness", () => {
   });
 });
 
+describe("verification round (075d686)", () => {
+  it("does not claim last-known data when nothing ever loaded", async () => {
+    connection.state = "disconnected";
+    vi.mocked(sdk.threads.list).mockRejectedValue(new Error("offline"));
+    renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      null,
+    );
+    await waitFor(() => expect(screen.getByText(/not the same as having none/)).toBeTruthy());
+    const name = screen.getByRole("button", { name: /Subagents:/ }).getAttribute("aria-label");
+    expect(name).toMatch(/counts unknown/);
+    expect(name).not.toMatch(/last known/);
+    expect(document.body.textContent).not.toMatch(/last known/);
+  });
+
+  it("keeps the nested count at full muted contrast", () => {
+    renderWith(<ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />, FAMILY);
+    const nested = screen.getByText("+1");
+    expect(nested.className.split(/\s+/)).not.toContain("text-muted-foreground/80");
+  });
+
+  it("treats an empty recorded cloud model as not recorded", async () => {
+    vi.mocked(fetchWithAppSurface).mockResolvedValue(
+      new Response(
+        JSON.stringify({ sessionId: "s", paused: false, model: "", reasoning: "high", error: null, pendingDelivery: 0 }),
+      ),
+    );
+    renderWith(<ThreadSubagentsRow threadId={ROOT} />, FAMILY);
+    fireEvent.click(screen.getByRole("button", { name: /Reviewer/ }));
+    await waitFor(() => expect(fetchWithAppSurface).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByText("Model").parentElement?.textContent).toBe("ModelNot recorded"),
+    );
+  });
+
+  it("only points a card's aria-controls at an element that exists", () => {
+    renderWith(<ThreadSubagentsRow threadId={ROOT} />, FAMILY);
+    const card = screen.getByRole("button", { name: /Reviewer/ });
+    expect(card.hasAttribute("aria-controls")).toBe(false);
+    fireEvent.click(card);
+    const controls = card.getAttribute("aria-controls");
+    expect(controls && document.getElementById(controls)).toBeTruthy();
+  });
+});
+
 describe("ThreadSubagentChip in the header", () => {
   it("shows the direct count, opens the Info tab, and points at the Subagents section", () => {
     const onToggle = vi.fn();
