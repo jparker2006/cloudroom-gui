@@ -21,6 +21,7 @@ import {
   buildRecordedCompactions,
   RECORDED_COMPACTIONS_LIST_LIMIT,
 } from "../../../src/services/threads/recorded-compactions.js";
+import { RECORDED_COMPACTION_GAP_TEXT } from "@cloudroom/server-contract";
 import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
 
 type ThreadOverrides = Partial<
@@ -531,5 +532,26 @@ describe("recorded compactions", () => {
       "clear",
       "clear",
     ]);
+  });
+
+  it("keeps a clear followed by a reply in the provider clear's own turn as two dividers", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    operation(db, thread, THREAD_CONTEXT_CLEAR_OPERATION);
+    append(db, thread, "turn/started", "t1");
+    append(db, thread, "item/completed", "t1", {
+      item: { type: "agentMessage", id: "m1" },
+    });
+    append(db, thread, "thread/context/cleared", "t1");
+    expect(build(db, thread).entries.map((entry) => entry.kind)).toEqual([
+      "clear",
+      "clear",
+    ]);
+  });
+
+  it("does not tie a notice after an unrelated turn error to that error", () => {
+    expect(RECORDED_COMPACTION_GAP_TEXT["conflicting-notices"]).toBe(
+      "A compaction notice arrived after an error in the same turn, so it isn't counted.",
+    );
   });
 });

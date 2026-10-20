@@ -157,7 +157,7 @@ export function buildRecordedCompactions(
         threadId: thread.id,
         afterSequence: lastClear.row.sequence,
         beforeSequence: row.sequence,
-        exceptTurnId: (source === "provider" ? row : lastClear.row).turnId,
+        turnLifecycleOf: (source === "provider" ? row : lastClear.row).turnId,
       })
     ) {
       lastClear = null;

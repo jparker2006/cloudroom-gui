@@ -115,16 +115,21 @@ function EntryRow({ entry }: { entry: RecordedCompactionEntry }) {
 
 function useCompletionAnnouncement(
   summary: RecordedCompactionsSummary | null,
+  threadId: string | undefined,
 ): string {
-  const [previous, setPrevious] = useState(summary);
+  const [previous, setPrevious] = useState({ summary, threadId });
   const [announcement, setAnnouncement] = useState("");
-  if (previous !== summary) {
-    setPrevious(summary);
+  if (previous.threadId !== threadId) {
+    setPrevious({ summary, threadId });
+    setAnnouncement("");
+  } else if (previous.summary !== summary) {
+    const prior = previous.summary;
+    setPrevious({ summary, threadId });
     if (summary?.inProgress) {
       setAnnouncement("");
-    } else if (previous !== null && summary !== null && previous.inProgress) {
+    } else if (prior !== null && summary !== null && prior.inProgress) {
       setAnnouncement(
-        summary.completedCount > previous.completedCount
+        summary.completedCount > prior.completedCount
           ? "Compaction recorded."
           : "Compaction ended without a recorded result.",
       );
@@ -144,7 +149,7 @@ export function RecordedCompactionsSection({
 }) {
   const titleId = useId();
   const countId = useId();
-  const announcement = useCompletionAnnouncement(summary);
+  const announcement = useCompletionAnnouncement(summary, threadId);
   const listEnabled = open && threadId !== undefined;
   const list = useThreadRecordedCompactions(
     threadId ?? "",

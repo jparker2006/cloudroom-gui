@@ -3281,7 +3281,7 @@ export function hasThreadEventsBetween(
     threadId: string;
     afterSequence: number;
     beforeSequence: number;
-    exceptTurnId: string | null;
+    turnLifecycleOf: string | null;
   },
 ): boolean {
   const row = db
@@ -3292,11 +3292,12 @@ export function hasThreadEventsBetween(
         eq(events.threadId, args.threadId),
         gt(events.sequence, args.afterSequence),
         lt(events.sequence, args.beforeSequence),
-        args.exceptTurnId === null
+        args.turnLifecycleOf === null
           ? undefined
           : or(
               isNull(events.turnId),
-              sql`${events.turnId} != ${args.exceptTurnId}`,
+              sql`${events.turnId} != ${args.turnLifecycleOf}`,
+              notInArray(events.type, ["turn/started", "turn/completed"]),
             ),
       ),
     )

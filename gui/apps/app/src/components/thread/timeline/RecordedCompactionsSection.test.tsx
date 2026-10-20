@@ -366,6 +366,28 @@ it("announces when an in-progress compaction is recorded", () => {
   );
 });
 
+it("does not announce a completion when switching from a compacting thread to another thread", () => {
+  const view = mount(
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={{ ...summary, inProgress: true }}
+      threadId="thread-a"
+      open={false}
+    />,
+  );
+  view.rerender(
+    <QueryClientProvider client={clients[0]!}>
+      <ThreadContextWindowCard
+        usage={usage}
+        compactions={{ ...summary, completedCount: 5, revision: "b5" }}
+        threadId="thread-b"
+        open={false}
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByRole("status").textContent).not.toContain("Compaction");
+});
+
 it("refetches instead of reusing a mismatched list when the popover reopens on the original revision", async () => {
   context
     .mockResolvedValueOnce({
