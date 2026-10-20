@@ -443,6 +443,80 @@ describe("session PR panel freshness and truth", () => {
     slot.lifecycle.unmount();
   });
 
+  it("does not announce a match refresh clicked while a save is pending", async () => {
+    let reads = 0;
+    let resolveSave: (value: unknown) => void = () => {};
+    let rejectRead: (error: Error) => void = () => {};
+    const slot = render({
+      pullForThread: () => {
+        reads += 1;
+        if (reads === 1) return association("thr-1", { kind: "none" });
+        return new Promise((_, reject) => {
+          rejectRead = reject;
+        });
+      },
+      getPull: (input: never) => {
+        const { number } = input as { number: number };
+        return { pull: pull(number), fetchedAt: new Date().toISOString() };
+      },
+      listItems: () => ({
+        items: [
+          {
+            repo: "acme/widgets",
+            number: 43,
+            kind: "pr",
+            title: "Pull 43",
+            state: "OPEN",
+            author: "octocat",
+            labels: [],
+            assignees: [],
+            url: "https://github.com/acme/widgets/pull/43",
+            body: "",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      setPullForThread: () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Choose a PR…" }).click(),
+    );
+    await settle();
+    await act(async () => slot.getByText("acme/widgets#43").click());
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+    resolveSave(
+      association(
+        "thr-1",
+        { kind: "selected", repo: "acme/widgets", number: 43 },
+        {
+          selection: {
+            repo: "acme/widgets",
+            number: 43,
+            id: "PR_43",
+            selectedAt: "2026-10-01T00:00:00.000Z",
+          },
+        },
+      ),
+    );
+    await settle();
+    rejectRead(new Error("HTTP 502 Bad Gateway"));
+    await settle();
+
+    expect(slot.container.textContent).toContain("Pull 43");
+    expect(slot.getByRole("status").textContent).toBe(
+      "Saved acme/widgets#43 for this session.",
+    );
+    slot.lifecycle.unmount();
+  });
+
   it("does not claim earlier data when a refresh fails with none", async () => {
     const slot = render({
       pullForThread: () => candidate(42, ["workspace"]),

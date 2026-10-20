@@ -2552,11 +2552,11 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
     }
     wasLoading.current = session.loading;
   }, [session.loading, session.error, association]);
-  const { reload } = session;
+  const { reload, saving } = session;
   const reloadFromHeading = useCallback(() => {
-    userReload.current = true;
+    userReload.current = !saving;
     reload();
-  }, [reload]);
+  }, [reload, saving]);
 
   const closeChooser = useCallback(() => {
     setChoosing(false);
