@@ -39,6 +39,7 @@ function timeline(rows: TimelineRow[], maxSeq: number): ThreadTimelineResponse {
 let queryClient: QueryClient;
 let serverRows: TimelineRow[];
 let serverQueue: ThreadQueuedMessage[];
+let queueReadFails = false;
 const clearDraftIfMatches = vi.fn();
 
 function record(overrides: Partial<Omit<DeliveryAttempt, "key">> = {}) {
@@ -77,7 +78,10 @@ beforeEach(() => {
   serverQueue = [];
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryDefaults(threadTimelineQueryKey("thr_1"), { queryFn: () => timeline(serverRows, 20) });
-  queryClient.setQueryDefaults(threadQueuedMessagesQueryKey("thr_1"), { queryFn: () => serverQueue });
+  queueReadFails = false;
+  queryClient.setQueryDefaults(threadQueuedMessagesQueryKey("thr_1"), {
+    queryFn: () => (queueReadFails ? Promise.reject(new TypeError("Failed to fetch")) : serverQueue),
+  });
   queryClient.setQueryData(threadTimelineQueryKey("thr_1"), timeline(serverRows, 10));
   queryClient.setQueryData(threadQueuedMessagesQueryKey("thr_1"), []);
   clearDraftIfMatches.mockReset();
@@ -139,16 +143,38 @@ describe("DeliveryUnconfirmedCard", () => {
       await reconcileAndExpectUnresolved();
     });
 
-    it("confirms delivery only from the exact queued request id and clears only the matching draft", async () => {
+    it("confirms only from the exact queued request id and clears only the matching draft", async () => {
       serverQueue = [makeThreadQueuedMessage({ id: "req_1", content: [{ type: "text", text: "edited later", mentions: [] }] })];
       const resend = vi.fn();
       record({ requestId: "req_1", dedupes: true, resend });
       connection.state = "connected";
       renderCard();
-      await waitFor(() => expect(screen.getByText("Delivered")).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/In Cloudroom's queue/)).toBeTruthy());
       expect(clearDraftIfMatches).toHaveBeenCalledWith(DRAFT);
       expect(resend).not.toHaveBeenCalled();
     });
+  });
+
+  it("F4: describes an exact queue match as being in Cloudroom's queue, not as delivered or in the conversation", async () => {
+    serverQueue = [makeThreadQueuedMessage({ id: "req_1", content: [{ type: "text", text: TEXT, mentions: [] }] })];
+    record({ requestId: "req_1", dedupes: true });
+    connection.state = "connected";
+    renderCard();
+    await waitFor(() => expect(screen.getByText(/In Cloudroom's queue/)).toBeTruthy());
+    expect(screen.queryByText(/Delivered|found in the conversation/i)).toBeNull();
+  });
+
+  it("F11: after a check that could not read the server, does not keep saying it is checking", async () => {
+    queueReadFails = true;
+    connection.state = "connected";
+    record();
+    renderCard();
+    await waitFor(() => expect(queryClient.getQueryState(threadQueuedMessagesQueryKey("thr_1"))?.status).toBe("error"));
+    await act(async () => {});
+    expect(screen.queryByText(/Checking the conversation now/)).toBeNull();
+    expect(screen.getByText(/Couldn't check the conversation/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check conversation" })).toBeTruthy();
+    expect(screen.queryByText(/Delivered|In Cloudroom's queue/)).toBeNull();
   });
 
   it("offers a manual decision when the message is not found, without resending by itself", async () => {

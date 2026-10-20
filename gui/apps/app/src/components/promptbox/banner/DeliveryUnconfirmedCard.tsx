@@ -48,6 +48,13 @@ export function DeliveryUnconfirmedCard({
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const [checking, setChecking] = useState(false);
+  const checkFailed = useSyncExternalStore(
+    (onChange) => queryClient.getQueryCache().subscribe(onChange),
+    () =>
+      [threadTimelineQueryKey(threadId), threadQueuedMessagesQueryKey(threadId)].some(
+        (queryKey) => queryClient.getQueryState(queryKey)?.status === "error",
+      ),
+  );
 
   const delivered =
     attempt !== null &&
@@ -97,10 +104,10 @@ export function DeliveryUnconfirmedCard({
 
   if (attempt.phase === "delivered") {
     return (
-      <PromptStackCard ariaLabel="Delivery confirmed" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground">
+      <PromptStackCard ariaLabel="In Cloudroom's queue" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground">
         <Icon name="CircleCheck" className="size-3.5 shrink-0 text-success" aria-hidden="true" />
         <span role="status" className="min-w-0 flex-1 truncate">
-          <span className="text-foreground">Delivered</span> · found in the conversation
+          <span className="text-foreground">In Cloudroom's queue</span> · the server has this exact message
         </span>
         <Action onClick={dismiss}>OK</Action>
       </PromptStackCard>
@@ -115,7 +122,11 @@ export function DeliveryUnconfirmedCard({
           attempt.dedupes ? "Sending again is safe: Cloudroom ignores it if the first one arrived." : "Sending again could post it twice."
         }`
       : `Cloudroom hasn't confirmed this message. It may or may not have arrived. ${
-          socket === "connected" ? "Checking the conversation now." : "We'll check the conversation when the connection is back."
+          socket !== "connected"
+            ? "We'll check the conversation when the connection is back."
+            : checkFailed && !checking
+              ? "Couldn't check the conversation just now."
+              : "Checking the conversation now."
         } ${whereIsDraft}`;
   return (
     <PromptStackCard ariaLabel="Delivery unconfirmed" className="space-y-2 p-3 text-xs">

@@ -1173,6 +1173,27 @@ describe("ThreadDetailPromptArea", () => {
       expect(mocks.toastError).not.toHaveBeenCalled();
     });
 
+    it("tracks an unanswered programmatic (plugin) submission and still rejects to the caller", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      mocks.promptDraft.clearIfCurrentMatches.mockReturnValue(true);
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      renderPromptArea();
+      fireEvent.click(screen.getByRole("button", { name: "Capture plugin host" }));
+
+      let rejection: unknown = null;
+      await act(async () => {
+        await mocks.pluginComposerHost?.submit?.({ experimental_data: null }, undefined).catch((error: unknown) => {
+          rejection = error;
+        });
+      });
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect(mocks.promptDraft.restoreIfEmpty).toHaveBeenCalledWith(expect.objectContaining({ text: TEXT }));
+      expect(screen.getByRole("alert").textContent).toBe("Delivery unconfirmed");
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps structured server rejections on the existing toast", async () => {
       mocks.defaultExecutionOptions = localOptions;
       mocks.promptDraft.text = TEXT;

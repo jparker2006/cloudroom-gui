@@ -163,8 +163,13 @@ class CloudServer {
     }
     if (thread && thread[2] === "/send") {
       const body = object(await request.json().catch(() => null));
-      const text = (Array.isArray(body.input) ? body.input : [])
-        .map(object)
+      const parts = (Array.isArray(body.input) ? body.input : []).map(object);
+      if (parts.some((part) => part.type !== "text"))
+        return json(
+          { message: "Only text messages work while your Mac is off." },
+          400,
+        );
+      const text = parts
         .filter((part) => part.type === "text" && typeof part.text === "string")
         .map((part) => part.text as string)
         .join("\n")

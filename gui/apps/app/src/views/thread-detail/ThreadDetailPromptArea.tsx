@@ -1167,17 +1167,31 @@ export function ThreadDetailPromptArea({
       const clearedSubmittedDraft =
         promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
+      const submittedRequest = {
+        ...request,
+        ...(submitOptions.sendAt === undefined
+          ? {}
+          : { sendAt: submitOptions.sendAt }),
+        ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
+      };
+      const send = () => sendMessage.mutateAsync(submittedRequest);
       try {
-        await sendMessage.mutateAsync({
-          ...request,
-          ...(submitOptions.sendAt === undefined
-            ? {}
-            : { sendAt: submitOptions.sendAt }),
-          ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
-        });
+        await send();
       } catch (scheduleError) {
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
+        }
+        if (classifySendFailure(scheduleError) === "unconfirmed") {
+          recordDeliveryAttempt({
+            threadId: thread.id,
+            phase: "checking",
+            draft: submittedDraft,
+            text: promptInputText(request.input),
+            attachmentCount: submittedDraft.attachments.length,
+            requestId: null,
+            dedupes: false,
+            resend: send,
+          });
         }
         throw new Error(
           getMutationErrorMessage({

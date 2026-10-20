@@ -8,7 +8,7 @@ import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 const live = vi.hoisted(() => ({ state: "reconnecting" as "connected" | "reconnecting", disconnectedAt: 0 as number | null }));
 vi.mock("@/hooks/useServerConnectionState", () => ({ useServerConnectionState: () => live.state }));
 vi.mock("@/hooks/queries/connection-aware-query-state", () => ({ useServerConnectionGracePeriodElapsed: () => live.state !== "connected" }));
-vi.mock("@/lib/ws", () => ({ wsManager: { getDisconnectedAt: () => live.disconnectedAt, reconnectNow: vi.fn() } }));
+vi.mock("@/lib/ws", () => ({ wsManager: { getDisconnectedAt: () => live.disconnectedAt, getConnectionState: () => live.state, reconnectNow: vi.fn() } }));
 
 const { StaleConversationMarker: Marker, useStaleConversationLabel } = await import("./ThreadConnectionStatus");
 

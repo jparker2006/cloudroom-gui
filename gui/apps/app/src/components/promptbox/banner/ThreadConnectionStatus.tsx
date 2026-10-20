@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
@@ -72,31 +72,97 @@ export function useRecoveredFlash(problemShown: boolean): boolean {
   return recovered && !problemShown;
 }
 
-const heldStaleLabels = new Map<string, string>();
+interface HeldStaleCopy {
+  label: string;
+  queryClient: QueryClient;
+  freshReadStarted: boolean;
+  unsubscribe: () => void;
+}
+
+const heldStaleCopies = new Map<string, HeldStaleCopy>();
+const heldStaleListeners = new Set<() => void>();
+
+function emitHeldStaleCopies(): void {
+  for (const listener of heldStaleListeners) listener();
+}
+
+function subscribeHeldStaleCopies(listener: () => void): () => void {
+  heldStaleListeners.add(listener);
+  return () => heldStaleListeners.delete(listener);
+}
+
+function requestFreshTimelineRead(queryClient: QueryClient, threadId: string): void {
+  void queryClient.invalidateQueries({ queryKey: threadTimelineQueryKey(threadId), exact: true }, { cancelRefetch: false });
+}
+
+function releaseStaleCopy(threadId: string): void {
+  const held = heldStaleCopies.get(threadId);
+  if (!held) return;
+  held.unsubscribe();
+  heldStaleCopies.delete(threadId);
+  emitHeldStaleCopies();
+}
+
+function holdStaleCopy(queryClient: QueryClient, threadId: string, label: string): void {
+  const current = heldStaleCopies.get(threadId);
+  if (current?.queryClient === queryClient) {
+    current.freshReadStarted = false;
+    if (current.label !== label) {
+      current.label = label;
+      emitHeldStaleCopies();
+    }
+    return;
+  }
+  current?.unsubscribe();
+  const queryHash = JSON.stringify(threadTimelineQueryKey(threadId));
+  const held: HeldStaleCopy = { label, queryClient, freshReadStarted: false, unsubscribe: () => {} };
+  held.unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== "updated" || JSON.stringify(event.query.queryKey) !== queryHash) return;
+    const connected = wsManager.getConnectionState() === "connected";
+    if (event.action.type === "fetch") {
+      held.freshReadStarted = connected;
+      return;
+    }
+    if (event.action.type === "error") {
+      held.freshReadStarted = false;
+      return;
+    }
+    if (event.action.type !== "success" || event.action.manual) return;
+    if (held.freshReadStarted && connected) {
+      releaseStaleCopy(threadId);
+      return;
+    }
+    held.freshReadStarted = false;
+    if (connected) requestFreshTimelineRead(queryClient, threadId);
+  });
+  heldStaleCopies.set(threadId, held);
+  emitHeldStaleCopies();
+}
 
 export function useStaleConversationLabel(threadId: string, hasRows: boolean): string | null {
   const queryClient = useQueryClient();
+  const socket = useServerConnectionState();
   const liveLabel = getStaleConversationLabel({
-    socket: useServerConnectionState(),
+    socket,
     graceElapsed: useServerConnectionGracePeriodElapsed(),
     disconnectedAt: wsManager.getDisconnectedAt(),
     hasRows,
   });
-  const [heldLabel, setHeldLabel] = useState(() => heldStaleLabels.get(threadId) ?? null);
+  const heldLabel = useSyncExternalStore(
+    subscribeHeldStaleCopies,
+    () => heldStaleCopies.get(threadId)?.label ?? null,
+    () => null,
+  );
   useEffect(() => {
-    if (liveLabel) heldStaleLabels.set(threadId, liveLabel);
-  }, [liveLabel, threadId]);
-  useEffect(() => {
-    if (liveLabel) return;
-    const queryHash = JSON.stringify(threadTimelineQueryKey(threadId));
-    return queryClient.getQueryCache().subscribe((event) => {
-      if (event.type !== "updated" || event.action.type !== "success" || event.action.manual) return;
-      if (JSON.stringify(event.query.queryKey) !== queryHash) return;
-      heldStaleLabels.delete(threadId);
-      setHeldLabel(null);
-    });
+    if (liveLabel) holdStaleCopy(queryClient, threadId, liveLabel);
   }, [liveLabel, queryClient, threadId]);
-  if (liveLabel && heldLabel !== liveLabel) setHeldLabel(liveLabel);
+  useEffect(() => {
+    if (liveLabel || socket !== "connected") return;
+    const held = heldStaleCopies.get(threadId);
+    if (!held || held.freshReadStarted) return;
+    if (queryClient.getQueryState(threadTimelineQueryKey(threadId))?.fetchStatus === "fetching") return;
+    requestFreshTimelineRead(queryClient, threadId);
+  }, [liveLabel, queryClient, socket, threadId]);
   return liveLabel ?? heldLabel;
 }
 
