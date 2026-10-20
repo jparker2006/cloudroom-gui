@@ -434,3 +434,75 @@ describe("buildFleetModel sources", () => {
     expect(model.pendingFields.size).toBe(0);
   });
 });
+
+describe("buildFleetModel runtime buckets", () => {
+  const busy = {
+    displayStatus: "active" as const,
+    hostReconnectGraceExpiresAt: null,
+  };
+  const idleActivity = {
+    activeWorkflowCount: 0,
+    activeBackgroundAgentCount: 0,
+    activeBackgroundCommandCount: 0,
+    activePlanModeCount: 0,
+    activeGoalCount: 0,
+  };
+
+  it("treats pending as not running and background activity as working, like the sidebar", () => {
+    const model = build([
+      thread("pending", {
+        status: "pending",
+        runtime: {
+          displayStatus: "pending",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+      thread("bgcmd", {
+        activity: { ...idleActivity, activeBackgroundCommandCount: 1 },
+      }),
+      thread("workflow", {
+        activity: { ...idleActivity, activeWorkflowCount: 1 },
+      }),
+    ]);
+    expect(model.byId.get("pending")?.runtime).toBe("idle");
+    expect(model.byId.get("bgcmd")?.runtime).toBe("working");
+    expect(model.byId.get("workflow")?.runtime).toBe("working");
+  });
+
+  it("does not double-count a failed queue on a busy thread, and buckets partition the open total", () => {
+    const model = build([
+      thread("busyFailedQueue", {
+        status: "active",
+        runtime: busy,
+        queuedWork: "failed",
+      }),
+      thread("idleFailedQueue", { queuedWork: "failed" }),
+      thread("waiting", { hasPendingInteraction: true }),
+      thread("error", { status: "error" }),
+      thread("starting", {
+        status: "starting",
+        runtime: {
+          displayStatus: "starting",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+      thread("quiet"),
+    ]);
+    expect(model.byId.get("busyFailedQueue")?.attention).toBeNull();
+    expect(model.byId.get("busyFailedQueue")?.runtime).toBe("working");
+    expect(model.byId.get("idleFailedQueue")?.attention).toBe("failed");
+    const { attention, working, connecting, idle } = model.counts;
+    expect(attention + working + connecting + idle).toBe(model.total);
+  });
+
+  it("says Archived for an archived thread even if it errored", () => {
+    const model = build(
+      [],
+      {
+        archivedThreads: [thread("old", { archivedAt: NOW, status: "error" })],
+      },
+      { ...EMPTY_FLEET_FILTERS, state: "archived" },
+    );
+    expect(stateWord(model.byId.get("old")!).word).toBe("Archived");
+  });
+});

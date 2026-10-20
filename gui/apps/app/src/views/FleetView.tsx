@@ -349,6 +349,10 @@ export function FleetView() {
       ? new Set(["loading"])
       : (model.pendingFields as ReadonlySet<string>);
   const hostList = hosts.data ?? [];
+  const archivedLabel =
+    model.source === "server" || model.source === "fixture"
+      ? String(model.counts.archived)
+      : "—";
   const inspector = selected && inspectorOpen ? selected : null;
   const supplementAge = supplement.dataUpdatedAt
     ? formatAge(now - supplement.dataUpdatedAt)
@@ -422,8 +426,8 @@ export function FleetView() {
               Fleet
               <span className="text-sm font-normal text-muted-foreground">
                 {compact
-                  ? `${model.shown} of ${model.total} ${filters.state === "archived" ? "archived" : "open"} · ${model.counts.attention} need attention`
-                  : `Showing ${model.shown} of ${model.total} ${filters.state === "archived" ? "archived" : "open"} threads on these sources · ${model.counts.attention} need attention`}
+                  ? `${model.shown} of ${model.total} ${filters.state === "archived" ? "archived" : "open"} · ${model.attention.length} need attention`
+                  : `Showing ${model.shown} of ${model.total} ${filters.state === "archived" ? "archived" : "open"} threads on these sources · ${model.attention.length} need attention${model.attention.length !== model.counts.attention ? ` (of ${model.counts.attention})` : ""}`}
               </span>
             </h1>
           </div>
@@ -555,8 +559,8 @@ export function FleetView() {
                 (thread) => thread.kind === "workflow" && !thread.archived,
               ).length
             }{" "}
-            workflow workers. Archived ({model.counts.archived}): State filter.
-            Not available here:{" "}
+            workflow workers. Archived ({archivedLabel}): State filter. Not
+            available here:{" "}
             {hideTitles
               ? "some sources (names hidden)"
               : model.unavailableSources.join("; ")}
@@ -590,8 +594,7 @@ export function FleetView() {
               ["working", "◐ WORKING", model.counts.working],
               ["connecting", "↻ CONNECTING", model.counts.connecting],
               ["idle", "○ IDLE", model.counts.idle],
-              ["not-awake", "☾ NOT AWAKE", model.counts.notAwake],
-              ["archived", "ARCHIVED", model.counts.archived],
+              ["archived", "ARCHIVED", archivedLabel],
             ] as const
           ).map(([state, label, count]) => (
             <button
@@ -621,18 +624,42 @@ export function FleetView() {
                 ([harness, n], i) =>
                   `${i ? " · " : ""}${harnessName(harness)} ${n}`,
               )}
-              ) · not awake{" "}
-              <b className="text-foreground">{model.counts.notAwake}</b> ·
-              unknown{" "}
+              ) ·{" "}
+              <button
+                type="button"
+                aria-pressed={filters.state === "not-awake"}
+                onClick={() => setState("not-awake")}
+                className={cn(
+                  "min-h-8 rounded px-1.5 hover:bg-state-hover focus-visible:outline-2 focus-visible:outline-foreground",
+                  filters.state === "not-awake" &&
+                    "bg-surface-selected text-foreground shadow-[inset_0_-2px_0_var(--color-foreground)]",
+                )}
+              >
+                ☾ not awake{" "}
+                <b className="text-foreground">{model.counts.notAwake}</b>
+              </button>{" "}
+              · unknown{" "}
               <b className="text-foreground">{model.counts.sandboxUnknown}</b>
             </span>
           </span>
         </div>
 
         {compact ? (
-          <p className="px-3 md:px-5 pt-1 font-mono text-xs text-muted-foreground">
-            SANDBOX awake {model.counts.awake} · not awake{" "}
-            {model.counts.notAwake} · unknown {model.counts.sandboxUnknown}
+          <p className="flex flex-wrap items-center gap-x-2 px-3 pt-1 font-mono text-xs text-muted-foreground md:px-5">
+            SANDBOX awake {model.counts.awake} ·
+            <button
+              type="button"
+              aria-pressed={filters.state === "not-awake"}
+              onClick={() => setState("not-awake")}
+              className={cn(
+                "min-h-11 rounded border border-border px-2",
+                filters.state === "not-awake" &&
+                  "bg-surface-selected text-foreground",
+              )}
+            >
+              ☾ not awake {model.counts.notAwake}
+            </button>
+            · unknown {model.counts.sandboxUnknown}
           </p>
         ) : null}
         <CompactDisclosure

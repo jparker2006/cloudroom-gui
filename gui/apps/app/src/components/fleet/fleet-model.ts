@@ -1,5 +1,6 @@
 import {
   getThreadListIndicatorLabel,
+  hasThreadListWorkingActivity,
   isUnreadDoneThread,
   resolveThreadListIndicator,
   threadListIndicatorStateForThread,
@@ -175,13 +176,13 @@ function runtimeOf(entry: ThreadListEntry): FleetRuntime {
   const display = entry.runtime.displayStatus;
   if (display === "waiting-for-host") return "offline";
   if (display === "host-reconnecting") return "reconnecting";
-  if (
-    display === "provisioning" ||
-    entry.status === "starting" ||
-    entry.status === "pending"
-  )
+  if (display === "provisioning" || entry.status === "starting")
     return "starting";
-  if (entry.status === "active" || entry.status === "stopping")
+  if (
+    hasThreadListWorkingActivity(
+      threadListIndicatorStateForThread(entry, false),
+    )
+  )
     return "working";
   return "idle";
 }
@@ -197,7 +198,8 @@ function attentionOf(
 ): FleetAttention | null {
   if (entry.archivedAt !== null) return null;
   if (runtime === "input") return "waiting";
-  if (runtime === "error" || entry.queuedWork === "failed") return "failed";
+  if (runtime === "error") return "failed";
+  if (entry.queuedWork === "failed" && runtime === "idle") return "failed";
   if (runtime === "offline") return "host-offline";
   if (unread && runtime === "idle") return "new-reply";
   return null;
@@ -528,6 +530,7 @@ export interface FleetStateWord {
 }
 
 export function stateWord(thread: FleetThread): FleetStateWord {
+  if (thread.archived) return { glyph: "▪", word: "Archived", tone: "idle" };
   switch (thread.runtime) {
     case "input":
       return {
