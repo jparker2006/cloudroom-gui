@@ -4,7 +4,10 @@ import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@cloudroom/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@cloudroom/shared-ui/skeleton";
-import { EmptyStatePanel } from "@cloudroom/shared-ui/empty-state";
+import {
+  EmptyStatePanel,
+  EmptyStateScene,
+} from "@cloudroom/shared-ui/empty-state";
 import {
   useEnvironmentDiffFiles,
   useEnvironment,
@@ -270,16 +273,25 @@ export function GitDiffTabContent({
     );
   }
 
-  if (
-    diffFilesResponse.files.length === 0 ||
-    !environmentId ||
-    target === undefined
-  ) {
+  if (!environmentId || target === undefined) {
     return (
       <GitDiffMessageSlot>
         <EmptyStatePanel className="rounded-lg">
           No diff to display.
         </EmptyStatePanel>
+      </GitDiffMessageSlot>
+    );
+  }
+
+  if (diffFilesResponse.files.length === 0) {
+    return (
+      <GitDiffMessageSlot>
+        <EmptyStateScene
+          scene="panel"
+          role="status"
+          title="No changes"
+          description="Nothing differs in this comparison."
+        />
       </GitDiffMessageSlot>
     );
   }

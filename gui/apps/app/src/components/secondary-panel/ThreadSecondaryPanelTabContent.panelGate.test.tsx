@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { WorkspaceDiffTarget } from "@cloudroom/domain";
 import type {
   EnvironmentDiffFileResponse,
@@ -189,5 +189,49 @@ describe("HostScopedFilePreviewTabContent panel gating", () => {
     await waitFor(() => {
       expect(sdk.files.read).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe("GitDiffTabContent empty states", () => {
+  const presentation = {
+    view: "unified",
+    overflow: "scroll",
+    showLineNumbers: true,
+  } as const;
+
+  it("shows the illustrated empty state only for a loaded diff with no files", async () => {
+    vi.mocked(sdk.environments.diffFiles).mockResolvedValue(emptyDiff);
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <GitDiffTabContent
+          environmentId={ENVIRONMENT_ID}
+          target={TARGET}
+          isPanelOpen
+          gitDiffPresentation={presentation}
+        />
+      </Wrapper>,
+    );
+    expect(await screen.findByText("No changes")).not.toBeNull();
+    expect(
+      document.querySelector('[data-empty-state-scene="panel"]'),
+    ).not.toBeNull();
+  });
+
+  it("keeps plain copy when there is no comparison target", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <GitDiffTabContent
+          environmentId={ENVIRONMENT_ID}
+          target={undefined}
+          isPanelOpen
+          gitDiffPresentation={presentation}
+        />
+      </Wrapper>,
+    );
+    expect(screen.getByText("No diff to display.")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+    expect(sdk.environments.diffFiles).not.toHaveBeenCalled();
   });
 });

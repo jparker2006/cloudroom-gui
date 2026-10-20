@@ -14,6 +14,7 @@ import {
   threadListIndicatorStateForThread,
 } from "@cloudroom/client-core";
 import { CHROME_SECTION_LABEL_CLASS } from "@cloudroom/shared-ui/chrome-style-tokens";
+import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
 import { Icon, type IconName } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import {
@@ -306,9 +307,12 @@ export function ThreadPaletteResults({
         <ThreadSearchMessage iconName="AlertCircle" text="Search failed." />
       ) : null}
       {showNoSearchResults ? (
-        <ThreadSearchMessage
-          iconName="MessageQuestion"
-          text="No matching results"
+        <EmptyStateScene
+          scene="search"
+          role="status"
+          title="No matching results"
+          description={`Nothing matches “${trimmedQuery}”. Try fewer or different words.`}
+          className="py-4"
         />
       ) : null}
       {showTypeToSearch ? (

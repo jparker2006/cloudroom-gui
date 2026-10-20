@@ -4,6 +4,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { Host } from "@cloudroom/domain";
 import type { ProjectWithThreadsResponse } from "@cloudroom/server-contract";
 import { Button } from "@cloudroom/shared-ui/button";
+import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
 import "@cloudroom/shared-ui/icon-extended";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
@@ -338,10 +339,12 @@ export function ProjectsSettingsSection() {
         ) : projects === undefined ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 ? (
-          <p className="text-sm text-subtle-foreground">
-            No projects yet. Add a project to start running threads in a
-            repository.
-          </p>
+          <EmptyStateScene
+            scene="projects"
+            size="hero"
+            title="No projects yet"
+            description="Add a project to start running threads in a repository."
+          />
         ) : (
           <SortableSettingsRowList
             ids={projectIds}

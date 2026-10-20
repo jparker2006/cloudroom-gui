@@ -1,10 +1,20 @@
-import type { HTMLAttributes } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import {
+  CloudIllustration,
+  CloudIllustrationVariantContext,
+  type CloudIllustrationVariant,
+  type CloudScene,
+} from "./cloud-illustration";
 import { Icon, type IconName } from "./icon";
+
+export { CloudIllustrationVariantContext };
+export type { CloudIllustrationVariant, CloudScene };
 
 export interface EmptyStateProps {
   message: string;
   icon?: IconName;
+  cloud?: CloudIllustrationVariant;
   className?: string;
   iconClassName?: string;
   messageClassName?: string;
@@ -13,13 +23,21 @@ export interface EmptyStateProps {
 export function EmptyState({
   message,
   icon,
+  cloud,
   className,
   iconClassName,
   messageClassName,
 }: EmptyStateProps) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      {icon ? (
+      {cloud ? (
+        <CloudIllustration
+          scene="panel"
+          size="inline"
+          variant={cloud}
+          className={iconClassName}
+        />
+      ) : icon ? (
         <Icon
           name={icon}
           aria-hidden="true"
@@ -57,6 +75,66 @@ export function EmptyStatePanel({
       {...props}
     >
       {children}
+    </div>
+  );
+}
+
+export interface EmptyStateSceneProps {
+  scene: CloudScene;
+  title: string;
+  description?: ReactNode;
+  action?: ReactNode;
+  size?: "hero" | "panel";
+  variant?: CloudIllustrationVariant;
+  role?: "status";
+  className?: string;
+}
+
+export function EmptyStateScene({
+  scene,
+  title,
+  description,
+  action,
+  size = "panel",
+  variant,
+  role,
+  className,
+}: EmptyStateSceneProps) {
+  const hero = size === "hero";
+  return (
+    <div
+      role={role}
+      data-empty-state-scene={scene}
+      className={cn(
+        "flex min-w-0 animate-cloud-reveal flex-col items-center text-center",
+        hero ? "gap-4 px-6 py-10" : "gap-3 px-4 py-6",
+        className,
+      )}
+    >
+      <CloudIllustration scene={scene} size={size} variant={variant} />
+      <div className="flex min-w-0 max-w-[36ch] flex-col gap-1">
+        <p
+          className={cn(
+            "font-medium text-foreground [overflow-wrap:anywhere]",
+            hero ? "text-base" : "text-sm",
+          )}
+        >
+          {title}
+        </p>
+        {description ? (
+          <p
+            className={cn(
+              "text-muted-foreground [overflow-wrap:anywhere]",
+              hero ? "text-sm" : "text-xs leading-5",
+            )}
+          >
+            {description}
+          </p>
+        ) : null}
+      </div>
+      {action ? (
+        <div className="flex flex-wrap justify-center gap-2">{action}</div>
+      ) : null}
     </div>
   );
 }

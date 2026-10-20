@@ -1094,3 +1094,77 @@ body.sidebar-resizing [data-sidebar="panel"] {
   flex-shrink: 0;
   overflow-anchor: auto;
 }
+
+/*
+ * Empty-state cloud illustrations (cloud-illustration.tsx). Decorative only:
+ * motion is a few pixels over many seconds, and the rest pose is the polished
+ * static frame used when the user prefers reduced motion.
+ */
+@theme {
+  --animate-cloud-reveal: cloud-reveal 200ms ease-out 150ms both;
+  --animate-cloud-enter: cloud-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-cloud-drift: cloud-drift 11s ease-in-out infinite alternate;
+  --animate-cloud-bob: cloud-bob 7s ease-in-out infinite alternate;
+  --animate-cloud-sway: cloud-sway 6s ease-in-out infinite alternate;
+  --animate-cloud-wind: cloud-wind 4.5s linear infinite;
+
+  @keyframes cloud-reveal {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes cloud-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  @keyframes cloud-drift {
+    to {
+      transform: translateX(-6px);
+    }
+  }
+  @keyframes cloud-bob {
+    to {
+      transform: translateY(-2px);
+    }
+  }
+  @keyframes cloud-sway {
+    from {
+      transform: rotate(-4deg);
+    }
+    to {
+      transform: rotate(4deg);
+    }
+  }
+  @keyframes cloud-wind {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: -24;
+    }
+  }
+}
+
+:root {
+  --cloud-front: oklch(0.995 0 0);
+  --cloud-back: color-mix(in oklch, var(--ink) 9%, var(--canvas));
+  --cloud-shade: color-mix(in oklab, var(--timeline-accent) 22%, var(--canvas));
+  --cloud-edge: color-mix(in oklch, var(--ink) 16%, var(--canvas));
+  --cloud-line: color-mix(in oklch, var(--ink) 38%, var(--canvas));
+  --cloud-ink: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --cloud-lens: var(--canvas);
+  --cloud-sun: var(--primary);
+  --cloud-sun-edge: color-mix(in oklab, var(--ink) 45%, var(--primary));
+}
+
+.dark {
+  --cloud-front: color-mix(in oklch, var(--ink) 44%, var(--canvas));
+  --cloud-back: color-mix(in oklch, var(--ink) 17%, var(--canvas));
+  --cloud-shade: color-mix(in oklab, var(--timeline-accent) 34%, var(--canvas));
+  --cloud-edge: color-mix(in oklch, var(--ink) 50%, var(--canvas));
+  --cloud-line: color-mix(in oklch, var(--ink) 48%, var(--canvas));
+  --cloud-ink: color-mix(in oklch, var(--ink) 80%, var(--canvas));
+  --cloud-sun-edge: color-mix(in oklab, var(--canvas) 35%, var(--primary));
+}
