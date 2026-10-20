@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
+import { resolveContainedPath } from "@cloudroom/process-utils";
 import { and, asc, desc, eq, inArray, isNull, like } from "drizzle-orm";
 import {
   cloudroomThreads,
@@ -91,6 +92,20 @@ const openCloudChild = (child: { id: string; title: string | null }) =>
 // Session text: the cloud agent starts only after these files arrive.
 const TEXT = ["native", "lineage", "context"];
 const services = new WeakMap<AppDeps["db"], Teleport>();
+
+export function teleportAttachmentPath(
+  dataDir: string,
+  projectId: string,
+  path: string,
+): string | null {
+  if (isAbsolute(path)) return path;
+  const root = join(dataDir, "attachments", projectId);
+  return resolveContainedPath({
+    rootPath: root,
+    candidatePath: join(root, path.replaceAll("\\", "/")),
+  });
+}
+
 export function teleports(deps: AppDeps): Teleport {
   let service = services.get(deps.db);
   if (!service) {
@@ -443,21 +458,18 @@ class Teleport {
           .map((row) => JSON.parse(row.content)),
       ]) {
         if (!Array.isArray(input)) continue;
-        for (const part of input)
-          if (
+        for (const part of input) {
+          const path =
             ["localImage", "localFile"].includes(part.type) &&
             typeof part.path === "string"
-          )
-            attachments.add(
-              isAbsolute(part.path)
-                ? part.path
-                : join(
-                    this.deps.config.dataDir,
-                    "attachments",
-                    source.projectId,
-                    part.path,
-                  ),
-            );
+              ? teleportAttachmentPath(
+                  this.deps.config.dataDir,
+                  source.projectId,
+                  part.path,
+                )
+              : null;
+          if (path) attachments.add(path);
+        }
       }
     }
     const state: State = {

@@ -7,7 +7,7 @@ import * as sync from "../../src/services/cloudroom/sync.js";
 import { listQueuedCommands } from "../helpers/commands.js";
 import { cloudroom } from "../../src/services/cloudroom/commands.js";
 import { command, saveTeleportProgress } from "../../src/services/cloudroom/store.js";
-import { teleports } from "../../src/services/cloudroom/teleport.js";
+import { teleportAttachmentPath, teleports } from "../../src/services/cloudroom/teleport.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import { seedEnvironment, seedHostSession, seedPrimaryHost, seedProjectWithSource, seedThread, seedThreadRuntimeState } from "../helpers/seed.js";
 import { createThread, getThread, setProjectGitRemoteUrlIfMissing, events, cloudroomThreads, cloudroomCommands } from "@cloudroom/db";
@@ -1259,5 +1259,15 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     expect((await readFile(fileInA)).equals(png)).toBe(true);
   } finally {
     service.stop(); core.closeAllConnections(); await new Promise<void>((resolve) => core.close(() => resolve())); await harness.cleanup();
+  }
+});
+
+it("teleports only attachment paths contained in the thread's project", () => {
+  const dataDir = "/data";
+  const root = join(dataDir, "attachments", "proj_b");
+  expect(teleportAttachmentPath(dataDir, "proj_b", "shot.png")).toBe(join(root, "shot.png"));
+  expect(teleportAttachmentPath(dataDir, "proj_b", "/Users/me/Desktop/shot.png")).toBe("/Users/me/Desktop/shot.png");
+  for (const escaping of ["../proj_a/shot.png", "../../../outside-marker.txt", "..\\proj_a\\shot.png", "."]) {
+    expect(teleportAttachmentPath(dataDir, "proj_b", escaping)).toBeNull();
   }
 });
