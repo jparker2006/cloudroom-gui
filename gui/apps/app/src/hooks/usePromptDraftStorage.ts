@@ -377,8 +377,12 @@ function reconcileWithStoredNewThreadDraft(
   return true;
 }
 
-function writeTerminalRecord(storageKey: string, value: string): boolean {
-  const replacedRev = readStoredRev(readStoredPromptDraftValue(storageKey));
+function writeTerminalRecord(
+  storageKey: string,
+  value: string,
+  checkedRev: string | undefined,
+): boolean {
+  const replacedRev = checkedRev;
   try {
     window.localStorage.setItem(storageKey, value);
   } catch (error) {
@@ -392,9 +396,9 @@ function writeTerminalRecord(storageKey: string, value: string): boolean {
   return true;
 }
 
-function writeNewThreadSentMarker(storageKey: string): boolean {
+function writeNewThreadSentMarker(storageKey: string, checkedRev: string | undefined): boolean {
   const marker = JSON.stringify({ rev: createDraftRev(), sent: true });
-  if (!writeTerminalRecord(storageKey, marker)) return false;
+  if (!writeTerminalRecord(storageKey, marker, checkedRev)) return false;
   newThreadDraftRevs.set(storageKey, String(readStoredRev(marker)));
   promptDraftCache.set(storageKey, { rawValue: marker, draft: EMPTY_PROMPT_DRAFT });
   unsavedPromptDraftKeys.delete(storageKey);
@@ -737,7 +741,7 @@ function moveNewThreadDraftNow(
     leftovers.length > 0
       ? JSON.stringify({ text: "", attachments: leftovers, rev })
       : JSON.stringify({ rev, moved: true });
-  if (!writeTerminalRecord(sourceKey, sourceValue)) {
+  if (!writeTerminalRecord(sourceKey, sourceValue, source.rev)) {
     emitPromptDraftChange(targetKey);
     return { status: "source-not-updated" };
   }
@@ -820,7 +824,7 @@ function discardNewThreadDraftNow(
     return "failed";
   }
   const tombstone = JSON.stringify({ rev: createDraftRev(), discarded: true });
-  if (!writeTerminalRecord(storageKey, tombstone)) {
+  if (!writeTerminalRecord(storageKey, tombstone, "rev" in record ? record.rev : undefined)) {
     return "failed";
   }
   const heldEntry = promptDraftCache.get(storageKey);
@@ -885,7 +889,18 @@ export function listNewThreadDraftsNotShown(
 ): NewThreadDraftNotShown[] {
   if (typeof window === "undefined") return [];
   const rows: NewThreadDraftNotShown[] = [];
-  const known = new Set([...knownProjectIds, "proj_personal"]);
+  try {
+    collectNewThreadDraftsNotShown(rows, new Set([...knownProjectIds, "proj_personal"]));
+  } catch (error) {
+    console.warn("[prompt-draft] could not read saved drafts", error);
+  }
+  return rows;
+}
+
+function collectNewThreadDraftsNotShown(
+  rows: NewThreadDraftNotShown[],
+  known: ReadonlySet<string>,
+): void {
   const legacy = readNewThreadRecord(readStoredPromptDraftValue(LEGACY_NEW_THREAD_DRAFT_KEY));
   if (legacy.kind === "unreadable") {
     rows.push({ kind: "unreadable", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null });
@@ -941,10 +956,11 @@ export function listNewThreadDraftsNotShown(
     const draft = promptDraftCache.get(storageKey)?.draft;
     if (!isNewThreadProjectDraftKey(storageKey) || !draft || isPromptDraftEmpty(draft)) continue;
     const projectId = decodeURIComponent(newThreadProjectSegment(storageKey));
-    if (known.has(projectId) || rows.some((row) => row.key === storageKey)) continue;
-    rows.push({ kind: "unlisted-project", key: storageKey, projectId, draft });
+    if (known.has(projectId)) continue;
+    const storedRow = rows.find((row) => row.key === storageKey);
+    if (storedRow) storedRow.draft = draft;
+    else rows.push({ kind: "unlisted-project", key: storageKey, projectId, draft });
   }
-  return rows;
 }
 
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
@@ -1089,7 +1105,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         }
         clearPromptDraftPersistTimer(storageKey);
         pendingPromptDraftStorageKeys.delete(storageKey);
-        return writeNewThreadSentMarker(storageKey);
+        return writeNewThreadSentMarker(storageKey, storedRev);
       }
       setDraftAndPersist(EMPTY_PROMPT_DRAFT);
       return true;

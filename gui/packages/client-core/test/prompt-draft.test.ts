@@ -473,3 +473,26 @@ describe("appendPromptDraft contexts", () => {
     expect(sent).toContain("source words");
   });
 });
+
+describe("appendPromptDraft duplicate source labels", () => {
+  it("keeps every message when the moved draft already repeats a label", () => {
+    const label = "[message #7 - 1 word]";
+    const line = `<context> ${label} </context>`;
+    const source = {
+      text: `${line}\n\n${line}`,
+      mentions: [],
+      attachments: [],
+      contexts: [
+        { label, text: "one" },
+        { label, text: "two" },
+      ],
+    };
+    const target = appendMessageContextToDraft(emptyPromptDraftState(), "target", 7);
+
+    const sent = JSON.stringify(promptDraftToInput(appendPromptDraft(target, source)));
+
+    expect(sent).toContain("one");
+    expect(sent).toContain("two");
+    expect(sent).toContain("target");
+  });
+});

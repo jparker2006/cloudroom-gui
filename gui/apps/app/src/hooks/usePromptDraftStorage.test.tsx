@@ -1689,3 +1689,79 @@ describe("Sol review fixes: send revision", () => {
     expect(cleared).toBe(true);
   });
 });
+
+describe("Luna re-review fixes", () => {
+  it("keeps another window's recovery copy when its write lands between the check and the sent marker", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+    const competitorRecovery = `bb.promptbox.recovery-new-thread-${alphaId()}-f6f6f6f6f6f6f6f6-3`;
+    const competitor = JSON.stringify({ text: "racing text", attachments: [], rev: "a7a7a7a7a7a7a7a7" });
+    const realGetItem = Storage.prototype.getItem;
+    const realSetItem = Storage.prototype.setItem;
+    let reads = 0;
+    let injected = false;
+    const injectCompetitor = () => {
+      if (injected) return;
+      injected = true;
+      realSetItem.call(window.localStorage, competitorRecovery, competitor);
+      realSetItem.call(window.localStorage, alphaKey(), competitor);
+    };
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(function (this: Storage, key: string) {
+        if (key === alphaKey()) {
+          reads += 1;
+          if (reads === 3) injectCompetitor();
+        }
+        return realGetItem.call(this, key);
+      });
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === alphaKey() && value.includes('"sent":true')) injectCompetitor();
+        realSetItem.call(this, key, value);
+      });
+    try {
+      act(() => {
+        result.current.clearIfCurrentMatches(sent);
+      });
+    } finally {
+      getItem.mockRestore();
+      setItem.mockRestore();
+    }
+
+    expect(listedNotShown([alphaId()]).map((row) => row.draft?.text)).toContain("racing text");
+  });
+
+  it("lists nothing rather than throwing when storage can't be read", () => {
+    const length = vi.spyOn(Storage.prototype, "key").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    window.localStorage.setItem("bb.promptbox.contents-new-thread-proj_any-3", storedDraft("x"));
+    try {
+      expect(() => listNewThreadDraftsNotShown([])).not.toThrow();
+    } finally {
+      length.mockRestore();
+    }
+  });
+
+  it("shows the newer unsaved text instead of the older saved draft for an unlisted project", () => {
+    const unlisted = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}x` });
+    unlisted.setDraft({ text: "older saved", mentions: [], attachments: [] });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      unlisted.setDraft({ text: "newer unsaved", mentions: [], attachments: [] });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(listedNotShown([alphaId()]).map((row) => row.draft?.text)).toEqual(["newer unsaved"]);
+  });
+});
