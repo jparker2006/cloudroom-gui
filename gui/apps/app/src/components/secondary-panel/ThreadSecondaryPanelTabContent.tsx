@@ -8,6 +8,7 @@ import {
   EmptyStatePanel,
   EmptyStateScene,
 } from "@cloudroom/shared-ui/empty-state";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 import {
   useEnvironmentDiffFiles,
   useEnvironment,
@@ -296,6 +297,7 @@ export function GitDiffTabContent({
       <GitDiffMessageSlot>
         <EmptyStateScene
           scene="panel"
+          logoSrc={roomLogoUrl}
           role="status"
           title="No changes"
           description="Nothing differs in this comparison."

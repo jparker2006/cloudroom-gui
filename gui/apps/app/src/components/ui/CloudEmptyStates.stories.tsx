@@ -2,35 +2,15 @@ import { useState, type ReactNode } from "react";
 import type { TimelineRow } from "@cloudroom/server-contract";
 import type { ThreadRuntimeDisplayStatus } from "@cloudroom/domain";
 import { Button } from "@cloudroom/shared-ui/button";
-import {
-  CloudIllustrationVariantContext,
-  EmptyStateScene,
-  type CloudIllustrationVariant,
-} from "@cloudroom/shared-ui/empty-state";
+import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { ThreadTimelineSurface } from "@/components/thread/timeline/ThreadTimelineSurface";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 
 export default {
   title: "design/Cloud empty states",
 };
-
-const DIRECTIONS: readonly {
-  id: CloudIllustrationVariant;
-  label: string;
-  note: string;
-}[] = [
-  {
-    id: "cumulus",
-    label: "A · Cumulus",
-    note: "Soft filled clouds, tonal depth, lime sun. Clouds bob and drift.",
-  },
-  {
-    id: "contour",
-    label: "B · Contour",
-    note: "Line-drawn clouds that match the icon set. Wind lines move.",
-  },
-];
 
 const now = 1_800_000_000_000;
 
@@ -78,6 +58,7 @@ const ROWS: TimelineRow[] = [
 const THREAD_EMPTY = (
   <EmptyStateScene
     scene="threads"
+    logoSrc={roomLogoUrl}
     size="hero"
     title="No messages yet"
     description="Send a message below to start this thread."
@@ -130,6 +111,7 @@ function ProjectsExample({ empty }: { empty: boolean }) {
       {empty ? (
         <EmptyStateScene
           scene="projects"
+          logoSrc={roomLogoUrl}
           size="hero"
           title="No projects yet"
           description="Add a project to start running threads in a repository."
@@ -208,6 +190,7 @@ function SearchExample({ empty }: { empty: boolean }) {
       {empty ? (
         <EmptyStateScene
           scene="search"
+          logoSrc={roomLogoUrl}
           role="status"
           title="No matching results"
           description={`Nothing matches “${query}”. Try fewer or different words.`}
@@ -240,6 +223,7 @@ function DiffPanelExample({ empty }: { empty: boolean }) {
         <div className="px-4 pt-2">
           <EmptyStateScene
             scene="panel"
+            logoSrc={roomLogoUrl}
             role="status"
             title="No changes"
             description="Nothing differs in this comparison."
@@ -292,28 +276,18 @@ function EmptyToggle({
   );
 }
 
-function DirectionColumn({
-  direction,
-  empty,
-}: {
-  direction: (typeof DIRECTIONS)[number];
-  empty: boolean;
-}) {
+function Examples({ empty }: { empty: boolean }) {
   return (
-    <CloudIllustrationVariantContext.Provider value={direction.id}>
+    <>
       <div className="flex min-w-0 flex-col gap-3">
-        <header>
-          <h2 className="text-sm font-semibold text-foreground">
-            {direction.label}
-          </h2>
-          <p className="text-xs text-muted-foreground">{direction.note}</p>
-        </header>
         <ProjectsExample empty={empty} />
-        <ThreadExample empty={empty} />
         <SearchExample empty={empty} />
+      </div>
+      <div className="flex min-w-0 flex-col gap-3">
+        <ThreadExample empty={empty} />
         <DiffPanelExample empty={empty} />
       </div>
-    </CloudIllustrationVariantContext.Provider>
+    </>
   );
 }
 
@@ -324,7 +298,7 @@ function useInitialEmpty(): boolean {
   );
 }
 
-export function Directions() {
+export function Desktop() {
   const [empty, setEmpty] = useState(useInitialEmpty);
   return (
     <main className="mx-auto w-full max-w-[64rem] space-y-4 px-4 py-5">
@@ -340,37 +314,22 @@ export function Directions() {
         <EmptyToggle empty={empty} onChange={setEmpty} />
       </header>
       <div className="grid gap-6 md:grid-cols-2">
-        {DIRECTIONS.map((direction) => (
-          <DirectionColumn
-            key={direction.id}
-            direction={direction}
-            empty={empty}
-          />
-        ))}
+        <Examples empty={empty} />
       </div>
     </main>
   );
 }
 
-function SingleDirection({ variant }: { variant: CloudIllustrationVariant }) {
+export function Mobile() {
   const [empty, setEmpty] = useState(useInitialEmpty);
-  const direction = DIRECTIONS.find((item) => item.id === variant)!;
   return (
-    <main className="mx-auto w-full max-w-[30rem] space-y-4 px-3 py-4">
+    <main className="mx-auto flex w-full max-w-[30rem] flex-col gap-3 px-3 py-4">
       <div className="flex items-center justify-end">
         <EmptyToggle empty={empty} onChange={setEmpty} />
       </div>
-      <DirectionColumn direction={direction} empty={empty} />
+      <Examples empty={empty} />
     </main>
   );
-}
-
-export function DirectionA() {
-  return <SingleDirection variant="cumulus" />;
-}
-
-export function DirectionB() {
-  return <SingleDirection variant="contour" />;
 }
 
 export function ThreadStateClassification() {

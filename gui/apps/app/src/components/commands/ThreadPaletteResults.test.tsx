@@ -28,6 +28,7 @@ import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
 } from "@/test/fixtures/projects";
+import roomLogoUrl from "../../../../../assets/room-logo.png";
 
 const navigation = vi.hoisted(() => ({
   data: undefined as SidebarBootstrapResponse | undefined,
@@ -142,8 +143,10 @@ describe("ThreadPaletteResults", () => {
 
     expect(screen.getByText("No matching results")).not.toBeNull();
     expect(
-      document.querySelector('[data-empty-state-scene="search"]'),
-    ).not.toBeNull();
+      document
+        .querySelector('[data-empty-state-scene="search"] image')
+        ?.getAttribute("href"),
+    ).toBe(roomLogoUrl);
   });
 
   it("keeps plain no-match copy while projects are unsettled", () => {

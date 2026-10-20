@@ -10,6 +10,7 @@ import {
 import type { Host } from "@cloudroom/domain";
 import { makeHost } from "@cloudroom/test-helpers/domain-fixtures";
 import { MemoryRouter } from "react-router-dom";
+import roomLogoUrl from "../../../../../assets/room-logo.png";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hiddenProjectsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
@@ -396,8 +397,10 @@ describe("ProjectsSettingsSection", () => {
 
     expect(await screen.findByText(/^No projects yet/u)).toBeDefined();
     expect(
-      document.querySelector('[data-empty-state-scene="projects"]'),
-    ).not.toBeNull();
+      document
+        .querySelector('[data-empty-state-scene="projects"] image')
+        ?.getAttribute("href"),
+    ).toBe(roomLogoUrl);
   });
 
   it("does not treat hidden projects as first use", async () => {

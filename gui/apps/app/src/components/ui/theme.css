@@ -1148,23 +1148,13 @@ body.sidebar-resizing [data-sidebar="panel"] {
 }
 
 :root {
-  --cloud-front: oklch(0.995 0 0);
-  --cloud-back: color-mix(in oklch, var(--ink) 9%, var(--canvas));
-  --cloud-shade: color-mix(in oklab, var(--timeline-accent) 22%, var(--canvas));
-  --cloud-edge: color-mix(in oklch, var(--ink) 16%, var(--canvas));
   --cloud-line: color-mix(in oklch, var(--ink) 38%, var(--canvas));
   --cloud-ink: color-mix(in oklch, var(--ink) 70%, var(--canvas));
   --cloud-lens: var(--canvas);
   --cloud-sun: var(--primary);
-  --cloud-sun-edge: color-mix(in oklab, var(--ink) 45%, var(--primary));
 }
 
 .dark {
-  --cloud-front: color-mix(in oklch, var(--ink) 44%, var(--canvas));
-  --cloud-back: color-mix(in oklch, var(--ink) 17%, var(--canvas));
-  --cloud-shade: color-mix(in oklab, var(--timeline-accent) 34%, var(--canvas));
-  --cloud-edge: color-mix(in oklch, var(--ink) 50%, var(--canvas));
   --cloud-line: color-mix(in oklch, var(--ink) 48%, var(--canvas));
   --cloud-ink: color-mix(in oklch, var(--ink) 80%, var(--canvas));
-  --cloud-sun-edge: color-mix(in oklab, var(--canvas) 35%, var(--primary));
 }

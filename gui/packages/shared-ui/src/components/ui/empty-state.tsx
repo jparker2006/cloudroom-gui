@@ -1,15 +1,9 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../lib/utils";
-import {
-  CloudIllustration,
-  CloudIllustrationVariantContext,
-  type CloudIllustrationVariant,
-  type CloudScene,
-} from "./cloud-illustration";
+import { CloudIllustration, type CloudScene } from "./cloud-illustration";
 import { Icon, type IconName } from "./icon";
 
-export { CloudIllustrationVariantContext };
-export type { CloudIllustrationVariant, CloudScene };
+export type { CloudScene };
 
 export interface EmptyStateProps {
   message: string;
@@ -72,22 +66,22 @@ export function EmptyStatePanel({
 
 export interface EmptyStateSceneProps {
   scene: CloudScene;
+  logoSrc: string;
   title: string;
   description?: ReactNode;
   action?: ReactNode;
   size?: "hero" | "panel";
-  variant?: CloudIllustrationVariant;
   role?: "status";
   className?: string;
 }
 
 export function EmptyStateScene({
   scene,
+  logoSrc,
   title,
   description,
   action,
   size = "panel",
-  variant,
   role,
   className,
 }: EmptyStateSceneProps) {
@@ -102,7 +96,7 @@ export function EmptyStateScene({
         className,
       )}
     >
-      <CloudIllustration scene={scene} size={size} variant={variant} />
+      <CloudIllustration scene={scene} logoSrc={logoSrc} size={size} />
       <div className="flex min-w-0 max-w-[36ch] flex-col gap-1">
         <p
           className={cn(

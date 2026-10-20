@@ -5,6 +5,7 @@ import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import type { ThreadTimelineSurfaceProps } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
 import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 
 interface ThreadTimelinePaneProps extends ThreadTimelineSurfaceProps {
   canSpawnChild: boolean;
@@ -45,6 +46,7 @@ export function ThreadTimelinePane({
         emptyContent: (
           <EmptyStateScene
             scene="threads"
+            logoSrc={roomLogoUrl}
             size="hero"
             title="No messages yet"
             description="Send a message below to start this thread."
