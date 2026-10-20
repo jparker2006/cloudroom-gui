@@ -137,8 +137,12 @@ Rules:
 
 ## Integration with the attachment fix
 
-The attachment fix (owner: `fix cross-project image replay`, head `55e43796`)
-owns server attachment authorization, copy, replay, and containment. Neither
+The attachment fix (owner: `fix cross-project image replay`, branch
+`room/fix-cross-project-image-replay-yuuh`) owns attachment path authorization,
+ownership, copy, replay, and containment, on the server and in Cloud commands.
+Its strict file-scope candidate is still in progress, so no head is an
+integration baseline yet. This table reflects its client changes as observed,
+and is rechecked against its final reviewed head before integration. Neither
 ticket removes the other's reviewed changes.
 
 | Shared file | Attachment fix owns | This ticket owns |
@@ -148,7 +152,14 @@ ticket removes the other's reviewed changes.
 | `NewThreadComposer.tsx` | submit-time cross-project copy; owner tag on uploads | draft scope, snapshot key, per-key uploads, switch note, banners, `handleProjectChange` |
 | `RootComposeView.test.ts` | its new tests | removing the `isCopyingAttachments` field |
 
-- Order: the attachment fix lands first. This ticket rebases on it.
+- Order: the attachment fix lands first. This ticket rebases onto its final
+  reviewed head, then reruns affected checks. Until then, draft storage and
+  migration stay isolated in `usePromptDraftStorage.ts`, the banner component,
+  and `appendPromptDraft`.
+- The recent-project picker (`room/project-picker-recents`) stays separate. This
+  ticket does not touch picker files. Its only shared file is
+  `project-queries.ts`, where it adds an `enabled` option to
+  `useHiddenProjects`.
 - Uploads: this ticket binds uploads to their draft and keeps the fix's owner tag
   (`{ ...uploaded, projectId: ownerProjectId }`).
 - Project switch: the fix narrows the switch copy to owned paths. This ticket
