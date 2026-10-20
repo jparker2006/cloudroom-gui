@@ -40,8 +40,89 @@ export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema
 >;
 
+export const recordedCompactionGapSchema = z.enum([
+  "ambiguous-legacy",
+  "cloud-auto-not-reported",
+  "conflicting-notices",
+  "forked",
+  "imported-history",
+  "provider-unverified",
+  "repeated-notices",
+  "rewound",
+  "teleported",
+  "unhandled-compaction-event",
+]);
+export type RecordedCompactionGap = z.infer<typeof recordedCompactionGapSchema>;
+
+export const RECORDED_COMPACTION_GAP_TEXT: Record<
+  RecordedCompactionGap,
+  string
+> = {
+  "ambiguous-legacy":
+    "Some compactions were matched to their notices by turn, not by ID, so they may be off.",
+  "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
+  "conflicting-notices":
+    "A compaction notice arrived after an error or interruption in the same turn, so it isn't counted.",
+  forked: "Records copied from the source thread may be incomplete.",
+  "imported-history": "Imported history may be missing compaction records.",
+  "provider-unverified":
+    "Covers this whole thread. Only compactions the agent reported to Cloudroom are counted.",
+  "repeated-notices":
+    "A turn had more than one compaction notice. They can't be reliably told apart, so only the first is counted.",
+  rewound: "Edited or rewound messages may have removed some history.",
+  teleported: "Part of this thread ran on another machine.",
+  "unhandled-compaction-event": "Some compaction events couldn't be placed.",
+};
+
+export const recordedCompactionsSummarySchema = z.object({
+  revision: z.string(),
+  coverage: z.enum(["complete", "partial"]),
+  gaps: z.array(recordedCompactionGapSchema),
+  completedCount: z.number().int().nonnegative(),
+  inProgress: z.boolean(),
+});
+export type RecordedCompactionsSummary = z.infer<
+  typeof recordedCompactionsSummarySchema
+>;
+
+export const recordedCompactionEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("compaction"),
+    id: z.string(),
+    status: z.enum(["completed", "in_progress", "unconfirmed"]),
+    startedAt: z.number().nullable(),
+    completedAt: z.number().nullable(),
+    turnId: z.string().nullable(),
+    summary: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("clear"),
+    id: z.string(),
+    at: z.number(),
+  }),
+]);
+export type RecordedCompactionEntry = z.infer<
+  typeof recordedCompactionEntrySchema
+>;
+
+export const recordedCompactionsListSchema =
+  recordedCompactionsSummarySchema.extend({
+    entries: z.array(recordedCompactionEntrySchema),
+    truncated: z.boolean(),
+  });
+export type RecordedCompactionsList = z.infer<
+  typeof recordedCompactionsListSchema
+>;
+
+export const threadContextUsageStateSchema = z.enum(["reported", "unknown"]);
+export type ThreadContextUsageState = z.infer<
+  typeof threadContextUsageStateSchema
+>;
+
 export const threadContextResponseSchema = z.object({
   usage: threadContextWindowUsageSchema.nullable(),
+  usageState: threadContextUsageStateSchema.optional(),
+  compactions: recordedCompactionsListSchema.optional(),
 });
 export type ThreadContextResponse = z.infer<typeof threadContextResponseSchema>;
 

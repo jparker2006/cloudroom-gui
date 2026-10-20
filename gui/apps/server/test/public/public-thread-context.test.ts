@@ -28,10 +28,13 @@ describe("recorded thread context API", () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);
       const endpoint = `/api/v1/threads/${thread.id}/context`;
+      let compactions: unknown;
       const read = async () => {
         const response = await harness.app.request(endpoint);
         expect(response.status, await response.clone().text()).toBe(200);
-        return response.json();
+        const body = (await response.json()) as Record<string, unknown>;
+        compactions = body.compactions;
+        return { usage: body.usage };
       };
       const base = {
         threadId: thread.id,
@@ -123,6 +126,30 @@ describe("recorded thread context API", () => {
         },
       ]);
       expect(await read()).toEqual({ usage: null });
+      expect(compactions).toMatchObject({
+        completedCount: 0,
+        entries: [{ kind: "clear", id: "clear:5" }],
+      });
+      insertEvents(harness.db, harness.hub, [
+        {
+          ...base,
+          sequence: 6,
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            threadId: thread.id,
+            providerThreadId: "claude-session",
+            contextWindowUsage: {
+              usedTokens: null,
+              modelContextWindow: null,
+              estimated: true,
+            },
+          }),
+        },
+      ]);
+      const unknown = (await (
+        await harness.app.request(endpoint)
+      ).json()) as Record<string, unknown>;
+      expect(unknown).toMatchObject({ usage: null, usageState: "unknown" });
     });
   });
 

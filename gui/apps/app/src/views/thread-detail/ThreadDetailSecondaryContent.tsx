@@ -15,6 +15,7 @@ import {
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useThreads } from "@/hooks/queries/thread-queries";
+import { useHasThreadSubagents } from "@/components/thread/subagents/ThreadSubagents";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { getCompactPanelPresentation } from "@/components/secondary-panel/panelToggleControlState";
 
@@ -91,9 +92,10 @@ function ThreadDetailSecondaryContentBody({
     { enabled: isSecondaryPanelOpen },
   );
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
+  const hasSubagents = useHasThreadSubagents(metadata.thread.id);
   const metadataContent = useMemo(
     () =>
-      hasAnyThreadMetadata(metadata, hasForks) ? (
+      hasAnyThreadMetadata(metadata, hasForks, hasSubagents) ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ThreadMetadataContent {...metadata} />
         </div>
@@ -104,7 +106,7 @@ function ThreadDetailSecondaryContentBody({
           No thread details available.
         </div>
       ),
-    [hasForks, isMetadataLoading, metadata],
+    [hasForks, hasSubagents, isMetadataLoading, metadata],
   );
 
   return (

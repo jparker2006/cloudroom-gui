@@ -285,6 +285,8 @@ export {
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
+  listRecordedCompactionEventRows,
+  hasThreadEventsBetween,
   listContextWindowUsageHistory,
   listEvents,
   listStoredConversationOutlineEventRows,
