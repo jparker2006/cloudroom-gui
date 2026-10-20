@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
@@ -6,6 +6,7 @@ import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { useServerConnectionGracePeriodElapsed } from "@/hooks/queries/connection-aware-query-state";
 import { wsManager } from "@/lib/ws";
+import { checkMacAgain, isMacUnreachableThroughRelay } from "@/cloud/cloud-server";
 import {
   getStaleConversationLabel,
   getThreadConnectionStatus,
@@ -27,13 +28,27 @@ const REFRESH_COOLDOWN_MS = 3000;
 const TONE_ICON_CLASS: Record<ThreadConnectionStatusView["tone"], string> = {
   neutral: "text-muted-foreground",
   attention: "text-warning",
+  problem: "text-destructive",
   ok: "text-success",
 };
 
 const ACTION_LABEL: Record<ThreadConnectionAction, string> = {
   "refresh-connection": "Refresh connection",
   "refresh-status": "Refresh status",
+  "retry-start": "Retry start",
+  connect: "Connect",
+  "check-mac": "Check again",
 };
+
+const CONNECTION_KINDS: ReadonlySet<ThreadConnectionStatusView["kind"]> = new Set([
+  "reconnecting",
+  "not-connected",
+  "browser-offline",
+  "status-unreadable",
+  "cloud-reconnecting",
+  "relay-unreachable",
+  "recovered",
+]);
 
 export const PROMPT_BANNER_TOUCH_TARGET_CLASS =
   "relative after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] sm:after:-inset-y-1";
@@ -116,7 +131,10 @@ function holdStaleCopy(queryClient: QueryClient, threadId: string, label: string
   current?.unsubscribe();
   const queryHash = JSON.stringify(threadTimelineQueryKey(threadId));
   const held: HeldStaleCopy = { label, queryClient, freshReadStarted: false, unsubscribe: () => {} };
-  held.unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+  const stopWatchingConnection = wsManager.onConnectionStateChange(() => {
+    if (wsManager.getConnectionState() !== "connected") held.freshReadStarted = false;
+  });
+  const stopWatchingCache = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== "updated" || JSON.stringify(event.query.queryKey) !== queryHash) return;
     const connected = wsManager.getConnectionState() === "connected";
     if (event.action.type === "fetch") {
@@ -135,6 +153,10 @@ function holdStaleCopy(queryClient: QueryClient, threadId: string, label: string
     held.freshReadStarted = false;
     if (connected) requestFreshTimelineRead(queryClient, threadId);
   });
+  held.unsubscribe = () => {
+    stopWatchingConnection();
+    stopWatchingCache();
+  };
   heldStaleCopies.set(threadId, held);
   emitHeldStaleCopies();
 }
@@ -181,9 +203,23 @@ export interface ThreadCloudStatusEvidence {
   reconnecting: boolean;
   isFetching: boolean;
   refetch: () => void;
+  failedStart: boolean;
+  startError: string | null;
+  providerAuth: string | null;
+  retryStartPending: boolean;
+  onRetryStart: () => Promise<unknown>;
+  onConnect: () => void;
 }
 
-export function ThreadConnectionStatus({ cloud }: { cloud: ThreadCloudStatusEvidence | null }) {
+export function ThreadConnectionStatus({
+  cloud,
+  onlyThreadStates = false,
+  detailsExtra,
+}: {
+  cloud: ThreadCloudStatusEvidence | null;
+  onlyThreadStates?: boolean;
+  detailsExtra?: ReactNode;
+}) {
   const socket = useServerConnectionState();
   const graceElapsed = useServerConnectionGracePeriodElapsed();
   const browserOffline = useBrowserOffline();
@@ -192,12 +228,21 @@ export function ThreadConnectionStatus({ cloud }: { cloud: ThreadCloudStatusEvid
     graceElapsed,
     browserOffline,
     disconnectedAt: wsManager.getDisconnectedAt(),
-    cloud: cloud && { statusReadError: cloud.statusReadError, reconnecting: cloud.reconnecting },
+    relayMacUnreachable: isMacUnreachableThroughRelay(),
+    cloud: cloud && {
+      statusReadError: cloud.statusReadError,
+      reconnecting: cloud.reconnecting,
+      failedStart: cloud.failedStart,
+      startError: cloud.startError,
+      providerAuth: cloud.providerAuth,
+    },
   };
   const outage = getThreadConnectionStatus({ ...evidence, recovered: false });
   const recovered = useRecoveredFlash(outage?.kind === "not-connected" || outage?.kind === "browser-offline");
-  const view = outage ?? getThreadConnectionStatus({ ...evidence, recovered });
+  const current = outage ?? getThreadConnectionStatus({ ...evidence, recovered });
+  const view = current && onlyThreadStates && CONNECTION_KINDS.has(current.kind) ? null : current;
   const [coolingDown, setCoolingDown] = useState(false);
+  const retryingStart = useRef(false);
   useEffect(() => {
     if (!coolingDown) return;
     const timer = setTimeout(() => setCoolingDown(false), REFRESH_COOLDOWN_MS);
@@ -206,10 +251,31 @@ export function ThreadConnectionStatus({ cloud }: { cloud: ThreadCloudStatusEvid
   return (
     <ThreadConnectionStatusBanner
       view={view}
-      actionDisabled={coolingDown || Boolean(cloud?.isFetching && view?.actions.includes("refresh-status"))}
+      detailsExtra={view?.kind === "failed-start" ? detailsExtra : undefined}
+      isActionDisabled={(action) =>
+        action === "retry-start"
+          ? Boolean(cloud?.retryStartPending)
+          : coolingDown || (action === "refresh-status" && Boolean(cloud?.isFetching))
+      }
       onAction={(action) => {
+        if (action === "retry-start") {
+          if (!cloud || retryingStart.current) return;
+          retryingStart.current = true;
+          void cloud
+            .onRetryStart()
+            .catch(() => undefined)
+            .finally(() => {
+              retryingStart.current = false;
+            });
+          return;
+        }
+        if (action === "connect") {
+          cloud?.onConnect();
+          return;
+        }
         setCoolingDown(true);
         if (action === "refresh-connection") wsManager.reconnectNow();
+        else if (action === "check-mac") checkMacAgain();
         else cloud?.refetch();
       }}
     />
@@ -219,28 +285,34 @@ export function ThreadConnectionStatus({ cloud }: { cloud: ThreadCloudStatusEvid
 export function ThreadConnectionStatusBanner({
   view,
   onAction,
-  actionDisabled,
+  isActionDisabled,
+  detailsExtra,
 }: {
   view: ThreadConnectionStatusView | null;
   onAction: (action: ThreadConnectionAction) => void;
-  actionDisabled: boolean;
+  isActionDisabled: (action: ThreadConnectionAction) => boolean;
+  detailsExtra?: ReactNode;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const toggleId = useId();
   const bodyId = useId();
-  const announcement = view?.announce === "polite" ? view.status : "";
-  const liveRegion = (
-    <span role="status" aria-live="polite" className="sr-only">
-      {announcement}
-    </span>
-  );
+  const liveRegion =
+    view?.announce === "alert" ? (
+      <span role="alert" className="sr-only">
+        {view.status}
+      </span>
+    ) : (
+      <span role="status" aria-live="polite" className="sr-only">
+        {view?.announce === "polite" ? view.status : ""}
+      </span>
+    );
   if (!view) return null;
   const hasDetails = view.details.length > 0;
   const label = (
     <>
       <Icon
         name={view.icon}
-        className={cn("size-3.5 shrink-0", TONE_ICON_CLASS[view.tone], view.spin && "animate-spin")}
+        className={cn("size-3.5 shrink-0", TONE_ICON_CLASS[view.tone], view.spin && "animate-spin motion-reduce:animate-none")}
         aria-hidden="true"
       />
       <span className="min-w-0 truncate text-foreground">{view.status}</span>
@@ -275,7 +347,7 @@ export function ThreadConnectionStatusBanner({
               {view.actions.map((action) => (
                 <PromptBannerActionButton
                   key={action}
-                  disabled={actionDisabled}
+                  disabled={isActionDisabled(action)}
                   onClick={() => onAction(action)}
                   className={cn(PROMPT_BANNER_TOUCH_TARGET_CLASS, "text-foreground")}
                 >
@@ -289,10 +361,11 @@ export function ThreadConnectionStatusBanner({
           <AnimatedBody collapsedBorder="reserve" id={bodyId} labelledBy={toggleId} isExpanded={isExpanded}>
             <div className="space-y-1.5 px-3 pb-2.5 pt-2 text-xs leading-relaxed text-muted-foreground">
               {view.details.map((detail) => (
-                <p key={detail.label}>
+                <p key={detail.label} className="whitespace-pre-wrap break-words">
                   <span className="text-foreground">{detail.label}:</span> {detail.text}
                 </p>
               ))}
+              {detailsExtra}
             </div>
           </AnimatedBody>
         ) : null}

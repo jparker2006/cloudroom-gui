@@ -51,9 +51,10 @@ export function DeliveryUnconfirmedCard({
   const checkFailed = useSyncExternalStore(
     (onChange) => queryClient.getQueryCache().subscribe(onChange),
     () =>
-      [threadTimelineQueryKey(threadId), threadQueuedMessagesQueryKey(threadId)].some(
-        (queryKey) => queryClient.getQueryState(queryKey)?.status === "error",
-      ),
+      [threadTimelineQueryKey(threadId), threadQueuedMessagesQueryKey(threadId)].some((queryKey) => {
+        const state = queryClient.getQueryState(queryKey);
+        return state?.status === "error" && state.fetchStatus !== "fetching";
+      }),
   );
 
   const delivered =
@@ -116,11 +117,14 @@ export function DeliveryUnconfirmedCard({
 
   const attachments = attempt.attachmentCount === 0 ? "" : ` + ${attempt.attachmentCount} attachment${attempt.attachmentCount === 1 ? "" : "s"}`;
   const whereIsDraft = draftInBox ? "It's back in the box below." : "Its text is shown above.";
-  const body =
-    attempt.phase === "not-found"
+  const notSent = attempt.phase === "not-sent";
+  const title = notSent ? "Not sent" : "Delivery unconfirmed";
+  const body = notSent
+    ? `Cloudroom didn't send it: only text messages work while your Mac is off. ${whereIsDraft} Remove the attachments to send the text now, or send it when your Mac is back.`
+    : attempt.phase === "not-found"
       ? `Reconnected, but Cloudroom couldn't confirm this exact message arrived. Check the conversation above; not seeing it there doesn't prove it wasn't received. ${
           attempt.dedupes ? "Sending again is safe: Cloudroom ignores it if the first one arrived." : "Sending again could post it twice."
-        }`
+        }${checkFailed && !checking ? " Couldn't check the conversation just now." : ""}`
       : `Cloudroom hasn't confirmed this message. It may or may not have arrived. ${
           socket !== "connected"
             ? "We'll check the conversation when the connection is back."
@@ -129,12 +133,12 @@ export function DeliveryUnconfirmedCard({
               : "Checking the conversation now."
         } ${whereIsDraft}`;
   return (
-    <PromptStackCard ariaLabel="Delivery unconfirmed" className="space-y-2 p-3 text-xs">
+    <PromptStackCard ariaLabel={title} className="space-y-2 p-3 text-xs">
       <div className="flex items-start gap-2">
-        <Icon name="CircleQuestion" className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
+        <Icon name={notSent ? "CloudOff" : "CircleQuestion"} className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
         <div className="min-w-0 space-y-1">
           <p role="alert" className="text-sm font-medium text-foreground">
-            Delivery unconfirmed
+            {title}
           </p>
           <p className="truncate rounded border border-border bg-background px-2 py-1 text-foreground">
             “{attempt.text}”<span className="text-muted-foreground">{attachments}</span>

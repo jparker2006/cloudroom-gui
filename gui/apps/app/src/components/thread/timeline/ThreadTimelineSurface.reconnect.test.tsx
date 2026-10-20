@@ -11,7 +11,7 @@ const live = vi.hoisted(() => ({ state: "connected" as "connected" | "reconnecti
 vi.mock("@/hooks/queries/system-queries", () => ({ useSystemConfig: () => ({ data: undefined }) }));
 vi.mock("@/hooks/useServerConnectionState", () => ({ useServerConnectionState: () => live.state }));
 vi.mock("@/hooks/queries/connection-aware-query-state", () => ({ useServerConnectionGracePeriodElapsed: () => live.grace }));
-vi.mock("@/lib/ws", () => ({ wsManager: { getDisconnectedAt: () => live.disconnectedAt, getConnectionState: () => live.state, reconnectNow: vi.fn() } }));
+vi.mock("@/lib/ws", () => ({ wsManager: { getDisconnectedAt: () => live.disconnectedAt, getConnectionState: () => live.state, onConnectionStateChange: () => () => {}, reconnectNow: vi.fn() } }));
 
 const { ThreadTimelineSurface } = await import("./ThreadTimelineSurface");
 

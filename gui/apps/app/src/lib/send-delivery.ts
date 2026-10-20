@@ -5,11 +5,14 @@ import type { PromptInput, ThreadQueuedMessage } from "@cloudroom/domain";
 import { HttpError } from "./api";
 import { isAbortLikeError } from "./mutation-errors";
 
-export type SendFailureKind = "unconfirmed" | "rejected" | "cancelled";
+export type SendFailureKind = "unconfirmed" | "not-sent" | "rejected" | "cancelled";
+
+export const PRE_TRANSPORT_REFUSAL_CODE = "mac_off_text_only";
 
 export function classifySendFailure(error: unknown): SendFailureKind {
   if (isAbortLikeError(error)) return "cancelled";
   if (error instanceof HttpError || error instanceof BbHttpError) {
+    if (error.code === PRE_TRANSPORT_REFUSAL_CODE) return "not-sent";
     if (error.status === 408) return "unconfirmed";
     return error.status >= 500 && !error.code ? "unconfirmed" : "rejected";
   }
@@ -36,7 +39,7 @@ export interface DeliveryAttempt {
   threadId: string;
   text: string;
   requestId: string | null;
-  phase: "checking" | "not-found" | "delivered";
+  phase: "checking" | "not-found" | "delivered" | "not-sent";
   draft: PromptDraftState;
   attachmentCount: number;
   dedupes: boolean;

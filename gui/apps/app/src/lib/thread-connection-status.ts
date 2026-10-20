@@ -1,7 +1,12 @@
 import type { IconName } from "@cloudroom/shared-ui/icon";
 import type { WebSocketConnectionState } from "./ws";
 
-export type ThreadConnectionAction = "refresh-connection" | "refresh-status";
+export type ThreadConnectionAction =
+  | "refresh-connection"
+  | "refresh-status"
+  | "retry-start"
+  | "connect"
+  | "check-mac";
 
 export interface ThreadConnectionEvidence {
   socket: WebSocketConnectionState;
@@ -9,9 +14,13 @@ export interface ThreadConnectionEvidence {
   browserOffline: boolean;
   disconnectedAt: number | null;
   recovered: boolean;
+  relayMacUnreachable?: boolean;
   cloud: {
     statusReadError: Error | null;
     reconnecting: boolean;
+    failedStart?: boolean;
+    startError?: string | null;
+    providerAuth?: string | null;
   } | null;
 }
 
@@ -22,14 +31,17 @@ export interface ThreadConnectionStatusView {
     | "browser-offline"
     | "status-unreadable"
     | "cloud-reconnecting"
+    | "failed-start"
+    | "provider-auth"
+    | "relay-unreachable"
     | "recovered";
   icon: IconName;
   spin: boolean;
-  tone: "neutral" | "attention" | "ok";
+  tone: "neutral" | "attention" | "problem" | "ok";
   status: string;
   details: { label: string; text: string }[];
   actions: ThreadConnectionAction[];
-  announce: "none" | "polite";
+  announce: "none" | "polite" | "alert";
 }
 
 export function formatClockTime(at: number): string {
@@ -120,6 +132,38 @@ export function getThreadConnectionStatus(
       announce: "polite",
     };
   }
+  const cloud = evidence.cloud;
+  const startError = cloud?.startError ? [{ label: "Error", text: cloud.startError }] : [];
+  if (cloud?.providerAuth) {
+    return {
+      kind: "provider-auth",
+      icon: "UserRound",
+      spin: false,
+      tone: "attention",
+      status: `${cloud.providerAuth} needs authorization`,
+      details: [{ label: "Your message", text: "Saved." }, ...startError],
+      actions: ["connect"],
+      announce: "polite",
+    };
+  }
+  if (cloud?.failedStart) {
+    return {
+      kind: "failed-start",
+      icon: "AlertTriangle",
+      spin: false,
+      tone: "problem",
+      status: "Cloud session didn't start",
+      details: [
+        startError[0] ?? { label: "Error", text: "No error message was saved." },
+        {
+          label: "Retry start",
+          text: "Starts the session again with your first message. Anything in the box below stays on this device.",
+        },
+      ],
+      actions: ["refresh-status", "retry-start"],
+      announce: "alert",
+    };
+  }
   if (evidence.cloud?.reconnecting) {
     return {
       kind: "cloud-reconnecting",
@@ -129,6 +173,23 @@ export function getThreadConnectionStatus(
       status: "Cloud session reconnecting…",
       details: [],
       actions: ["refresh-status"],
+      announce: "polite",
+    };
+  }
+  if (evidence.relayMacUnreachable) {
+    return {
+      kind: "relay-unreachable",
+      icon: "Laptop",
+      spin: false,
+      tone: "attention",
+      status: "Can't reach your Mac",
+      details: [
+        {
+          label: "Cause",
+          text: "The phone relay has no connection to your Mac right now. Cloud threads still work here.",
+        },
+      ],
+      actions: ["check-mac"],
       announce: "polite",
     };
   }

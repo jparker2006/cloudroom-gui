@@ -35,7 +35,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@cloudroom/client-core";
-import { BbHttpError } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -1194,6 +1194,24 @@ describe("ThreadDetailPromptArea", () => {
       expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(1);
     });
 
+    it("shows the relay's own pre-transport refusal as Not sent and keeps the full draft", async () => {
+      mocks.defaultExecutionOptions = localOptions;
+      mocks.promptDraft.text = TEXT;
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(
+        new BbHttpError({ status: 400, message: "Only text messages work while your Mac is off.", body: { code: "mac_off_text_only" }, code: "mac_off_text_only" }),
+      );
+      renderPromptArea();
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Not sent"));
+      expect(screen.getByText(/only text messages work while your Mac is off/i)).toBeTruthy();
+      expect(mocks.promptDraft.restoreIfEmpty).toHaveBeenCalledWith(expect.objectContaining({ text: TEXT }));
+      expect(mocks.toastError).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps structured server rejections on the existing toast", async () => {
       mocks.defaultExecutionOptions = localOptions;
       mocks.promptDraft.text = TEXT;
@@ -1204,6 +1222,47 @@ describe("ThreadDetailPromptArea", () => {
 
       await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Failed to send message", { description: "Thread busy" }));
       expect(screen.queryByText("Delivery unconfirmed")).toBeNull();
+    });
+  });
+
+  describe("selected direction-1 status states", () => {
+    const cloudKey = ["cloudroom-thread", "thr_1"];
+    const baseStatus = { sessionId: null, paused: false, model: "gpt-6-astra", reasoning: "medium", error: null, pendingDelivery: 0 };
+
+    it("shows a confirmed failed start in the status row with separate Refresh status and a single-flight Retry start", async () => {
+      const retry = createDeferredPromise<undefined>();
+      const retryStart = vi.spyOn(sdk.cloudroom, "retryStart").mockReturnValue(retry.promise as never);
+      testQueryClient.setQueryDefaults(cloudKey, { staleTime: Infinity });
+      testQueryClient.setQueryData(cloudKey, { ...baseStatus, failedStart: true, error: "Sandbox setup failed: npm install exited with code 1." });
+      renderPromptArea({ thread: makeThread({ executionTarget: "cloud", status: "error" }) });
+
+      const row = screen.getByRole("region", { name: "Connection status" });
+      expect(within(row).getByText("Cloud session didn't start")).toBeTruthy();
+      expect(within(row).getByRole("button", { name: "Refresh status" })).toBeTruthy();
+      expect(screen.queryByRole("region", { name: "Cloud thread status" })).toBeNull();
+      const retryButton = within(row).getByRole("button", { name: "Retry start" });
+      fireEvent.click(retryButton);
+      fireEvent.click(retryButton);
+      await waitFor(() => expect((within(row).getByRole("button", { name: "Retry start" }) as HTMLButtonElement).disabled).toBe(true));
+      expect(retryStart).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(row).getByRole("button", { name: /Cloud session didn't start/ }));
+      expect(row.textContent).toContain("Sandbox setup failed: npm install exited with code 1.");
+      expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+      await act(async () => {
+        retry.resolve(undefined);
+      });
+      retryStart.mockRestore();
+    });
+
+    it("shows Codex authorization in the status row with the existing Connect action, not a separate card", () => {
+      testQueryClient.setQueryDefaults(cloudKey, { staleTime: Infinity });
+      testQueryClient.setQueryData(cloudKey, { ...baseStatus, authRequired: true });
+      renderPromptArea({ thread: makeThread({ executionTarget: "cloud", providerId: "codex", status: "pending" }) });
+
+      const row = screen.getByRole("region", { name: "Connection status" });
+      expect(within(row).getByText("Codex needs authorization")).toBeTruthy();
+      expect(within(row).getByRole("button", { name: "Connect" })).toBeTruthy();
+      expect(screen.queryByRole("region", { name: "Connect your account" })).toBeNull();
     });
   });
 

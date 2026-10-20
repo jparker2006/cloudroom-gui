@@ -1,6 +1,7 @@
 import { appToast } from "@/components/ui/app-toast";
 import { wsManager } from "@/lib/ws";
 import { cloudApi, SignedOutError, type CloudThreadSummary } from "./cloud-api";
+import { PRE_TRANSPORT_REFUSAL_CODE } from "@/lib/send-delivery";
 import { macOffline } from "./cloud-mode";
 import {
   CloudThreadEvents,
@@ -110,6 +111,7 @@ class CloudServer {
   constructor(private readonly network: typeof fetch) {}
 
   install() {
+    macUnreachableThroughRelay = true;
     const network = this.network;
     window.fetch = (input, init) => {
       const request = new Request(input, init);
@@ -139,9 +141,7 @@ class CloudServer {
         for (const thread of this.threads.values()) thread.pause();
         return;
       }
-      void macOffline().then((offline) => {
-        if (!offline) window.location.reload();
-      });
+      checkMacAgain();
       this.list = null;
       for (const thread of this.threads.values())
         void thread.load().catch(() => undefined);
@@ -166,7 +166,7 @@ class CloudServer {
       const parts = (Array.isArray(body.input) ? body.input : []).map(object);
       if (parts.some((part) => part.type !== "text"))
         return json(
-          { message: "Only text messages work while your Mac is off." },
+          { code: PRE_TRANSPORT_REFUSAL_CODE, message: "Only text messages work while your Mac is off." },
           400,
         );
       const text = parts
@@ -176,7 +176,7 @@ class CloudServer {
         .trim();
       if (!text)
         return json(
-          { message: "Only text messages work while your Mac is off." },
+          { code: PRE_TRANSPORT_REFUSAL_CODE, message: "Only text messages work while your Mac is off." },
           400,
         );
       await cloudApi.send(thread[1], text);
@@ -490,6 +490,18 @@ class CloudServer {
       ? json(saved)
       : json({ message: "Not available while your Mac is off." }, 404);
   }
+}
+
+let macUnreachableThroughRelay = false;
+
+export function isMacUnreachableThroughRelay(): boolean {
+  return macUnreachableThroughRelay;
+}
+
+export function checkMacAgain(): void {
+  void macOffline().then((offline) => {
+    if (!offline) window.location.reload();
+  });
 }
 
 export function installCloudServer(): void {

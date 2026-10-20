@@ -36,7 +36,7 @@ function CodexSignIn({ onSignedIn, continuing }: { onSignedIn: () => void; conti
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium">Sign in to Codex to continue</p>
-          <p className="text-muted-foreground">{waiting ? "Finish signing in in your browser." : "Your login expired. Your message is saved."}</p>
+          <p className="text-muted-foreground">{waiting ? "Finish signing in in your browser." : "Codex needs authorization. Your message is saved."}</p>
         </div>
         <Button type="button" size="sm" className="h-7 shrink-0 text-xs" disabled={waiting || continuing} onClick={signIn}>
           {continuing ? "Starting…" : waiting ? "Waiting…" : "Sign in"}

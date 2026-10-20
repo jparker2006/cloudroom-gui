@@ -14,7 +14,7 @@ vi.mock("./cloud-mode", () => ({ macOffline: vi.fn(async () => true) }));
 vi.mock("@/components/ui/app-toast", () => ({ appToast: { message: vi.fn() } }));
 vi.mock("@/lib/ws", () => ({ wsManager: { runWithoutSocket: vi.fn(), handleIncomingMessage: vi.fn() } }));
 
-const { installCloudServer } = await import("./cloud-server");
+const { installCloudServer, isMacUnreachableThroughRelay } = await import("./cloud-server");
 
 const originalFetch = window.fetch;
 const network = vi.fn(async () => new Response("{}", { status: 200 }));
@@ -52,4 +52,15 @@ it("still forwards a text-only send while the Mac is off", async () => {
 
   expect(response.status).toBe(200);
   expect(mocks.send).toHaveBeenCalledWith("thr_abc", "Ship it");
+});
+
+it("records the relay's Mac-unreachable evidence when it takes over, and marks its text-only refusal as pre-transport", async () => {
+  expect(isMacUnreachableThroughRelay()).toBe(true);
+  const response = await sendThroughShim([
+    { type: "text", text: "with a file", mentions: [] },
+    { type: "localImage", path: "thread-storage/uploads/chart.png" },
+  ]);
+  expect(response.status).toBe(400);
+  expect((await response.json()) as unknown).toMatchObject({ code: "mac_off_text_only" });
+  expect(mocks.send).not.toHaveBeenCalled();
 });

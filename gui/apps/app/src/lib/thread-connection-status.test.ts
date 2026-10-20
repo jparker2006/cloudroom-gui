@@ -147,6 +147,54 @@ describe("getThreadConnectionStatus", () => {
   });
 });
 
+describe("getThreadConnectionStatus: selected direction-1 states", () => {
+  it("shows a confirmed failed start with a separate status refresh and an explicit retry start, announced once", () => {
+    const status = getThreadConnectionStatus({
+      ...connected,
+      cloud: { ...cloudOk, failedStart: true, startError: "Sandbox setup failed: npm install exited with code 1." },
+    });
+    expect(status).toMatchObject({
+      kind: "failed-start",
+      status: "Cloud session didn't start",
+      tone: "problem",
+      actions: ["refresh-status", "retry-start"],
+      announce: "alert",
+    });
+    expect(JSON.stringify(status?.details)).toContain("Sandbox setup failed: npm install exited with code 1.");
+  });
+
+  it("names the provider that needs authorization and offers only the existing connect action", () => {
+    const status = getThreadConnectionStatus({ ...connected, cloud: { ...cloudOk, providerAuth: "Cursor" } });
+    expect(status).toMatchObject({ kind: "provider-auth", status: "Cursor needs authorization", actions: ["connect"] });
+    expect(JSON.stringify(status)).not.toMatch(/expired|Cloudroom account|sign in to Cloudroom/i);
+  });
+
+  it("says it can't reach the Mac only from the relay's tunnel-offline evidence, without claiming it is off", () => {
+    const status = getThreadConnectionStatus({ ...connected, relayMacUnreachable: true });
+    expect(status).toMatchObject({ kind: "relay-unreachable", status: "Can't reach your Mac", actions: ["check-mac"] });
+    expect(JSON.stringify(status)).not.toMatch(/powered off|is off|asleep/i);
+    expect(getThreadConnectionStatus(connected)).toBeNull();
+  });
+
+  it("keeps connection trouble ahead of confirmed thread states, and a failed start ahead of cloud reconnecting", () => {
+    const failed = { ...cloudOk, failedStart: true, startError: "x", reconnecting: true };
+    expect(getThreadConnectionStatus({ ...connected, socket: "reconnecting", graceElapsed: true, cloud: failed })?.kind).toBe("not-connected");
+    expect(getThreadConnectionStatus({ ...connected, cloud: failed })?.kind).toBe("failed-start");
+  });
+
+  it("offers retry start only for a confirmed failed start", () => {
+    const states: ThreadConnectionEvidence[] = [
+      { ...connected, socket: "reconnecting", graceElapsed: true },
+      { ...connected, cloud: { ...cloudOk, reconnecting: true } },
+      { ...connected, cloud: { ...cloudOk, providerAuth: "Codex" } },
+      { ...connected, relayMacUnreachable: true },
+    ];
+    for (const evidence of states) {
+      expect(getThreadConnectionStatus(evidence)?.actions ?? []).not.toContain("retry-start");
+    }
+  });
+});
+
 describe("getStaleConversationLabel", () => {
   it("marks the cached conversation as a saved copy only after the grace period", () => {
     const base = { socket: "reconnecting" as const, graceElapsed: false, disconnectedAt: DISCONNECTED_AT, hasRows: true };

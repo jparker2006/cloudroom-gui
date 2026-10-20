@@ -17,7 +17,7 @@ vi.mock("@/hooks/queries/connection-aware-query-state", () => ({
 vi.mock("@/lib/ws", () => ({
   wsManager: {
     getDisconnectedAt: () => live.disconnectedAt,
-    getConnectionState: () => live.state,
+    getConnectionState: () => live.state, onConnectionStateChange: () => () => {},
     reconnectNow: vi.fn(),
   },
 }));

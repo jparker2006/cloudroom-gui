@@ -30,21 +30,21 @@ const reconnecting = getThreadConnectionStatus({
 describe("ThreadConnectionStatusBanner", () => {
   it("keeps one polite live region and stays silent during the grace period", () => {
     const { rerender } = render(
-      <ThreadConnectionStatusBanner view={reconnecting} onAction={vi.fn()} actionDisabled={false} />,
+      <ThreadConnectionStatusBanner view={reconnecting} onAction={vi.fn()} isActionDisabled={() => false} />,
     );
     const region = screen.getByRole("status");
     expect(region.getAttribute("aria-live")).toBe("polite");
     expect(region.textContent).toBe("");
     expect(screen.getByText("Reconnecting…")).toBeTruthy();
 
-    rerender(<ThreadConnectionStatusBanner view={notConnected} onAction={vi.fn()} actionDisabled={false} />);
+    rerender(<ThreadConnectionStatusBanner view={notConnected} onAction={vi.fn()} isActionDisabled={() => false} />);
     expect(screen.getByRole("status")).toBe(region);
     expect(region.textContent).toBe("Not connected");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("wires the details toggle to its region and reveals the unknown cause on demand", () => {
-    render(<ThreadConnectionStatusBanner view={notConnected} onAction={vi.fn()} actionDisabled={false} />);
+    render(<ThreadConnectionStatusBanner view={notConnected} onAction={vi.fn()} isActionDisabled={() => false} />);
     const toggle = screen.getByRole("button", { name: /Not connected/ });
     const regionId = toggle.getAttribute("aria-controls");
     expect(regionId).toBeTruthy();
@@ -59,20 +59,20 @@ describe("ThreadConnectionStatusBanner", () => {
   it("runs only the action for the diagnosed layer and respects disabled", () => {
     const onAction = vi.fn();
     const { rerender } = render(
-      <ThreadConnectionStatusBanner view={notConnected} onAction={onAction} actionDisabled={false} />,
+      <ThreadConnectionStatusBanner view={notConnected} onAction={onAction} isActionDisabled={() => false} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Refresh connection" }));
     expect(onAction).toHaveBeenCalledWith("refresh-connection");
     expect(screen.queryByRole("button", { name: /Retry start|Send/ })).toBeNull();
 
-    rerender(<ThreadConnectionStatusBanner view={notConnected} onAction={onAction} actionDisabled />);
+    rerender(<ThreadConnectionStatusBanner view={notConnected} onAction={onAction} isActionDisabled={() => true} />);
     fireEvent.click(screen.getByRole("button", { name: "Refresh connection" }));
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
   it("renders nothing when there is nothing to show", () => {
     const { container } = render(
-      <ThreadConnectionStatusBanner view={null} onAction={vi.fn()} actionDisabled={false} />,
+      <ThreadConnectionStatusBanner view={null} onAction={vi.fn()} isActionDisabled={() => false} />,
     );
     expect(container.innerHTML).toBe("");
   });

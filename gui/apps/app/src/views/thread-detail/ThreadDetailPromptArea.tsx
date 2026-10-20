@@ -25,7 +25,6 @@ import {
 import { createPortal } from "react-dom";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import type { IconName } from "@cloudroom/shared-ui/icon";
-import { Button } from "@cloudroom/shared-ui/button";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { CloudDiskFullNotice, CloudUsageLimitNotice } from "@/components/CloudUsageLimitNotice";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -1006,8 +1005,9 @@ export function ThreadDetailPromptArea({
       return true;
     } catch (error) {
       promptDraft.restoreIfEmpty(submittedDraft);
-      if (classifySendFailure(error) === "unconfirmed") {
-        recordDeliveryAttempt({ threadId, phase: "checking", draft: submittedDraft, text: promptInputText(submittedInput), attachmentCount: submittedDraft.attachments.length, requestId, dedupes, resend: send });
+      const failure = classifySendFailure(error);
+      if (failure === "unconfirmed" || failure === "not-sent") {
+        recordDeliveryAttempt({ threadId, phase: failure === "not-sent" ? "not-sent" : "checking", draft: submittedDraft, text: promptInputText(submittedInput), attachmentCount: submittedDraft.attachments.length, requestId, dedupes, resend: send });
       } else {
         showMutationErrorToast({ error, fallbackMessage, lifecycleOperation });
       }
@@ -2188,26 +2188,16 @@ export function ThreadDetailPromptArea({
   const cloudFixPrompt = cloudError || cloudState.data?.failedStart ? cloudThreadFixPrompt(thread.id, thread.providerId, cloudError) : null;
   const cloudStatusKey = `${thread.id}|${cloudState.data?.failedStart ? "failed" : ""}|${cloudError ?? ""}`;
   const cloudStatusDismissed = dismissedCloudStatus === cloudStatusKey;
-  const cloudAuthNotice = isCloud && !shouldHideComposer && cloudState.data?.authRequired ? (
+  const cloudAuthNotice = isCloud && !shouldHideComposer && cloudState.data?.authRequired && claudeThread ? (
     <PromptStackCard ariaLabel="Connect your account" className="w-full max-w-sm justify-self-center p-3 text-xs">
-      {claudeThread ? <ClaudeSignIn target={{ target: "cloud" }} onContinue={() => retryCloudStart.mutate()} continuing={retryCloudStart.isPending} /> : (
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-sm font-medium">Connect {thread.providerId === "acp-cursor" ? "Cursor" : "Codex"} to start</p>
-            <p className="text-muted-foreground">Your message is saved.</p>
-          </div>
-          <Button type="button" size="sm" className="h-7 text-xs" onClick={() => openCloudConnection(thread.id)}>Connect</Button>
-        </div>
-      )}
+      <ClaudeSignIn target={{ target: "cloud" }} onContinue={() => retryCloudStart.mutate()} continuing={retryCloudStart.isPending} />
       {retryCloudStart.error && <p role="alert" className="mt-2 text-destructive">{retryCloudStart.error.message}</p>}
     </PromptStackCard>
   ) : null;
-  const cloudNotice = cloudAuthNotice ?? cloudLimitNotice ?? (isCloud && !shouldHideComposer && (cloudError || cloudState.data?.failedStart) ? (<>
+  const cloudProviderAuth = isCloud && cloudState.data?.authRequired && !claudeThread ? (thread.providerId === "acp-cursor" ? "Cursor" : "Codex") : null;
+  const cloudNotice = cloudAuthNotice ?? cloudLimitNotice ?? (isCloud && !shouldHideComposer && !cloudProviderAuth && cloudError && !cloudState.data?.failedStart ? (<>
     {!cloudStatusDismissed && <PromptStackCard ariaLabel="Cloud thread status" className="space-y-2 p-3 text-xs" onDismiss={() => setDismissedCloudStatus(cloudStatusKey)}>
       {cloudError && <div role="alert" className="whitespace-pre-wrap break-words pr-6 text-destructive">{cloudError}</div>}
-      <div className="flex items-center gap-2">
-        {cloudState.data?.failedStart && <Button type="button" size="sm" variant="outline" disabled={retryCloudStart.isPending} onClick={() => retryCloudStart.mutate()}>Retry start</Button>}
-      </div>
       {cloudFixPrompt && <FixPrompt prompt={cloudFixPrompt} />}
     </PromptStackCard>}
   </>) : null);
@@ -2216,7 +2206,7 @@ export function ThreadDetailPromptArea({
     <FollowUpPromptBox
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={bottomAttachmentsConfig}
-      stack={<>{!isCloud && !teleporting && <TeleportCheckCard error={teleport.error} models={[...modelOptions, ...moreModelOptions]} reasoning={reasoningLevel} usedTokens={contextWindowUsage?.usedTokens ?? null} levelsFor={(model) => cloudReasoningLevels(cloudConnection.data, thread.providerId, model)} onTeleport={(choice) => teleport.mutate(choice)} onDismiss={teleport.reset} />}{thread.teleport && !movingToLocal && <TeleportNotice thread={thread} pendingDelivery={cloudState.data?.pendingDelivery} paused={cloudState.data?.paused} sending={sendMessage.isPending} />}{movingToLocal && <TeleportLocalNotice step={thread.teleportLocalStep} />}{thread.projectCopy && <ProjectCopyNotice thread={thread} />}{!shouldHideComposer && deliveryAttempt && <DeliveryUnconfirmedCard threadId={thread.id} draftInBox={arePromptDraftStatesEqual(currentPromptDraft, deliveryAttempt.draft)} clearDraftIfMatches={promptDraft.clearIfCurrentMatches} />}{!shouldHideComposer && !deliveryAttempt && <ThreadConnectionStatus cloud={isCloud ? { statusReadError: cloudState.error, reconnecting: Boolean(cloudState.data?.reconnecting) && !cloudError, isFetching: cloudState.isFetching, refetch: () => void cloudState.refetch() } : null} />}{cloudNotice}{isCloud && claudeThread && !shouldHideComposer && <CloudMcpSignInNotice />}{!isCloud && !shouldHideComposer && <LocalSignInNotice threadId={thread.id} providerId={thread.providerId} hostId={environmentHostId} environmentId={thread.environmentId} authFailed={providerAuthFailed} started={thread.status !== "pending"} />}{pendingInteractionNode ? pendingInteractionStack : promptStack}</>}
+      stack={<>{!isCloud && !teleporting && <TeleportCheckCard error={teleport.error} models={[...modelOptions, ...moreModelOptions]} reasoning={reasoningLevel} usedTokens={contextWindowUsage?.usedTokens ?? null} levelsFor={(model) => cloudReasoningLevels(cloudConnection.data, thread.providerId, model)} onTeleport={(choice) => teleport.mutate(choice)} onDismiss={teleport.reset} />}{thread.teleport && !movingToLocal && <TeleportNotice thread={thread} pendingDelivery={cloudState.data?.pendingDelivery} paused={cloudState.data?.paused} sending={sendMessage.isPending} />}{movingToLocal && <TeleportLocalNotice step={thread.teleportLocalStep} />}{thread.projectCopy && <ProjectCopyNotice thread={thread} />}{!shouldHideComposer && deliveryAttempt && <DeliveryUnconfirmedCard threadId={thread.id} draftInBox={arePromptDraftStatesEqual(currentPromptDraft, deliveryAttempt.draft)} clearDraftIfMatches={promptDraft.clearIfCurrentMatches} />}{!shouldHideComposer && <ThreadConnectionStatus onlyThreadStates={Boolean(deliveryAttempt)} detailsExtra={cloudFixPrompt && <FixPrompt prompt={cloudFixPrompt} />} cloud={isCloud ? { statusReadError: cloudState.error, reconnecting: Boolean(cloudState.data?.reconnecting) && !cloudError, isFetching: cloudState.isFetching, refetch: () => void cloudState.refetch(), failedStart: Boolean(cloudState.data?.failedStart), startError: cloudError ?? null, providerAuth: cloudProviderAuth, retryStartPending: retryCloudStart.isPending, onRetryStart: () => retryCloudStart.mutateAsync(), onConnect: () => openCloudConnection(thread.id) } : null} />}{cloudNotice}{isCloud && claudeThread && !shouldHideComposer && <CloudMcpSignInNotice />}{!isCloud && !shouldHideComposer && <LocalSignInNotice threadId={thread.id} providerId={thread.providerId} hostId={environmentHostId} environmentId={thread.environmentId} authFailed={providerAuthFailed} started={thread.status !== "pending"} />}{pendingInteractionNode ? pendingInteractionStack : promptStack}</>}
       pendingInteraction={pendingInteractionNode}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer || (teleporting && !movingToLocal) || transferredChild ? null : bottomComposerConfig}

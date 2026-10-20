@@ -177,6 +177,44 @@ describe("DeliveryUnconfirmedCard", () => {
     expect(screen.queryByText(/Delivered|In Cloudroom's queue/)).toBeNull();
   });
 
+  it("N3: during an automatic recheck after an earlier failed read, says it is checking rather than that it couldn't check", async () => {
+    queueReadFails = true;
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: threadQueuedMessagesQueryKey("thr_1"), exact: true });
+    });
+    expect(queryClient.getQueryState(threadQueuedMessagesQueryKey("thr_1"))?.status).toBe("error");
+    const pending = createDeferredPromise<ThreadQueuedMessage[]>();
+    queryClient.setQueryDefaults(threadQueuedMessagesQueryKey("thr_1"), { queryFn: () => pending.promise });
+    queryClient.getQueryCache().find({ queryKey: threadQueuedMessagesQueryKey("thr_1") })?.setOptions({
+      queryKey: threadQueuedMessagesQueryKey("thr_1"),
+      queryFn: () => pending.promise,
+    });
+    connection.state = "connected";
+    record();
+    renderCard();
+    await waitFor(() => expect(queryClient.getQueryState(threadQueuedMessagesQueryKey("thr_1"))?.fetchStatus).toBe("fetching"));
+    expect(queryClient.getQueryState(threadQueuedMessagesQueryKey("thr_1"))?.status).toBe("error");
+    expect(screen.getByText(/Checking the conversation now/)).toBeTruthy();
+    expect(screen.queryByText(/Couldn't check/)).toBeNull();
+    await act(async () => {
+      pending.resolve([]);
+    });
+  });
+
+  it("N4: a manual check that fails while the message is not found says it couldn't check", async () => {
+    connection.state = "connected";
+    record();
+    renderCard();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send again" })).toBeTruthy());
+    expect(screen.queryByText(/Couldn't check/)).toBeNull();
+    queueReadFails = true;
+    fireEvent.click(screen.getByRole("button", { name: "Check conversation" }));
+    await waitFor(() => expect(queryClient.getQueryState(threadQueuedMessagesQueryKey("thr_1"))?.status).toBe("error"));
+    await act(async () => {});
+    expect(screen.getByText(/Couldn't check the conversation just now/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send again" })).toBeTruthy();
+  });
+
   it("offers a manual decision when the message is not found, without resending by itself", async () => {
     const resend = vi.fn();
     connection.state = "connected";

@@ -33,7 +33,7 @@ export function States() {
       {states.map((state) => (
         <StoryRow key={state.label} label={state.label} hint={state.hint}>
           <ResponsiveStage>
-            <ThreadConnectionStatusBanner view={getThreadConnectionStatus(state.evidence)} onAction={noop} actionDisabled={false} />
+            <ThreadConnectionStatusBanner view={getThreadConnectionStatus(state.evidence)} onAction={noop} isActionDisabled={() => false} />
           </ResponsiveStage>
         </StoryRow>
       ))}
