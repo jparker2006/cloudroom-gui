@@ -496,3 +496,28 @@ describe("appendPromptDraft duplicate source labels", () => {
     expect(sent).toContain("target");
   });
 });
+
+describe("appendPromptDraft repeated moves", () => {
+  it("keeps every message when a draft that already has renamed labels moves again", () => {
+    const first = appendMessageContextToDraft(emptyPromptDraftState(), "first", 7);
+    const second = appendMessageContextToDraft(emptyPromptDraftState(), "second", 7);
+    const combined = appendPromptDraft(first, second);
+    const target = appendMessageContextToDraft(emptyPromptDraftState(), "target", 7);
+
+    const sent = JSON.stringify(promptDraftToInput(appendPromptDraft(target, combined)));
+
+    expect(sent).toContain("first");
+    expect(sent).toContain("second");
+    expect(sent).toContain("target");
+  });
+
+  it("renames a label without brackets cleanly", () => {
+    const target = { text: "<context> msg 1 </context>", mentions: [], attachments: [], contexts: [{ label: "msg 1", text: "a" }] };
+    const source = { text: "<context> msg 1 </context>", mentions: [], attachments: [], contexts: [{ label: "msg 1", text: "b" }] };
+
+    expect(appendPromptDraft(target, source).contexts?.map((context) => context.label)).toEqual([
+      "msg 1",
+      "msg 1 (2)",
+    ]);
+  });
+});

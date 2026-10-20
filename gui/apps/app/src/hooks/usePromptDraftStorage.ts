@@ -47,9 +47,22 @@ let promptDraftStorageObserverInitialized = false;
 const newThreadDraftRevs = new Map<string, string>();
 const unsavedPromptDraftKeys = new Set<string>();
 const promptDraftEditCounts = new Map<string, number>();
+const lastOwnWrittenRevs = new Map<string, string>();
 
 function promptDraftEditRevision(storageKey: string): string {
-  return String(promptDraftEditCounts.get(storageKey) ?? 0);
+  return `${promptDraftEditCounts.get(storageKey) ?? 0}:${newThreadDraftRevs.get(storageKey) ?? ""}`;
+}
+
+function isUnchangedSinceSend(storageKey: string, sentRevision: string): boolean {
+  const [editCount, sentRev] = sentRevision.split(":");
+  if (editCount !== String(promptDraftEditCounts.get(storageKey) ?? 0)) return false;
+  if (!isNewThreadProjectDraftKey(storageKey)) return true;
+  const storedRev = readStoredRev(readStoredPromptDraftValue(storageKey));
+  return (
+    storedRev === undefined ||
+    storedRev === sentRev ||
+    storedRev === lastOwnWrittenRevs.get(storageKey)
+  );
 }
 export type NewThreadDraftNotice = "sent-elsewhere" | "moved-elsewhere" | "unreadable";
 const newThreadDraftNotices = new Map<string, NewThreadDraftNotice>();
@@ -151,7 +164,11 @@ function emitPromptDraftChange(storageKey: string): void {
   if (!listeners || listeners.size === 0) return;
 
   for (const listener of listeners) {
-    listener();
+    try {
+      listener();
+    } catch (error) {
+      console.error(`[prompt-draft] a listener for ${storageKey} failed`, error);
+    }
   }
 }
 
@@ -252,6 +269,8 @@ function persistPromptDraftCacheNowQuietly(storageKey: string): void {
     }
     window.localStorage.setItem(storageKey, serialized);
     unsavedPromptDraftKeys.delete(storageKey);
+    const writtenRev = readStoredRev(serialized);
+    if (writtenRev) lastOwnWrittenRevs.set(storageKey, writtenRev);
     if (newThreadDraftNotices.get(storageKey) !== "sent-elsewhere") {
       newThreadDraftNotices.delete(storageKey);
     }
@@ -696,7 +715,12 @@ function moveNewThreadDraftNow(
 ): MoveNewThreadDraftResult {
   const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
   if (pendingPromptDraftStorageKeys.has(targetKey)) persistPromptDraftCacheNow(targetKey);
-  if (pendingPromptDraftStorageKeys.has(sourceKey)) persistPromptDraftCacheNow(sourceKey);
+  if (
+    pendingPromptDraftStorageKeys.has(sourceKey) ||
+    (unsavedPromptDraftKeys.has(sourceKey) && !newThreadDraftNotices.has(sourceKey))
+  ) {
+    persistPromptDraftCacheNow(sourceKey);
+  }
   if (unsavedPromptDraftKeys.has(sourceKey)) return { status: "failed" };
 
   const sourceRaw = readStoredPromptDraftValue(sourceKey);
@@ -952,7 +976,7 @@ function collectNewThreadDraftsNotShown(
       rows.push({ kind: "unlisted-project", key, projectId: recoveryProject, draft: record.draft });
     }
   }
-  for (const storageKey of unsavedPromptDraftKeys) {
+  for (const storageKey of new Set([...unsavedPromptDraftKeys, ...pendingPromptDraftStorageKeys])) {
     const draft = promptDraftCache.get(storageKey)?.draft;
     if (!isNewThreadProjectDraftKey(storageKey) || !draft || isPromptDraftEmpty(draft)) continue;
     const projectId = decodeURIComponent(newThreadProjectSegment(storageKey));
@@ -961,6 +985,19 @@ function collectNewThreadDraftsNotShown(
     if (storedRow) storedRow.draft = draft;
     else rows.push({ kind: "unlisted-project", key: storageKey, projectId, draft });
   }
+  const unique = rows.filter(
+    (row, index) =>
+      !row.draft ||
+      !rows
+        .slice(0, index)
+        .some(
+          (earlier) =>
+            earlier.projectId === row.projectId &&
+            earlier.draft !== undefined &&
+            arePromptDraftStatesEqual(earlier.draft, row.draft!),
+        ),
+  );
+  rows.splice(0, rows.length, ...unique);
 }
 
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
@@ -1116,10 +1153,9 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   const getRevision = useCallback(() => promptDraftEditRevision(storageKey), [storageKey]);
 
   const clearAfterSend = useCallback(
-    (expectedDraft: PromptDraftState, sentRevision?: string): Promise<boolean> => {
+    (expectedDraft: PromptDraftState, sentRevision: string): Promise<boolean> => {
       const clearIfUnchanged = () =>
-        (sentRevision === undefined || sentRevision === promptDraftEditRevision(storageKey)) &&
-        clearIfCurrentMatches(expectedDraft);
+        isUnchangedSinceSend(storageKey, sentRevision) && clearIfCurrentMatches(expectedDraft);
       return isNewThreadProjectDraftKey(storageKey)
         ? withDraftWriteLock(storageKey, clearIfUnchanged)
         : Promise.resolve(clearIfUnchanged());

@@ -1110,8 +1110,9 @@ describe("new-thread saves with Web Locks", () => {
     act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
     await releaseAll();
     const sent = result.current.getCurrent();
+    const revision = result.current.getRevision();
 
-    const cleared = result.current.clearAfterSend(sent);
+    const cleared = result.current.clearAfterSend(sent, revision);
     const otherWindowRecord = JSON.stringify({ text: "newer elsewhere", attachments: [], rev: "5656565656565656" });
     window.localStorage.setItem(alphaKey(), otherWindowRecord);
     await releaseAll();
@@ -1763,5 +1764,95 @@ describe("Luna re-review fixes", () => {
     }
 
     expect(listedNotShown([alphaId()]).map((row) => row.draft?.text)).toEqual(["newer unsaved"]);
+  });
+});
+
+describe("third-round review fixes", () => {
+  function failWritesTo(key: string, run: () => void) {
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, target: string, value: string) {
+        if (target === key) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, target, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      run();
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+  }
+
+  it("doesn't clear another window's newer save of the same text after a send", async () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "S", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+    const revision = result.current.getRevision();
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({ text: "S", attachments: [], rev: "b8b8b8b8b8b8b8b8", base: "c9c9c9c9c9c9c9c9" }),
+    );
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: alphaKey() }));
+    });
+
+    let cleared = true;
+    await act(async () => {
+      cleared = await result.current.clearAfterSend(sent, revision);
+    });
+
+    expect(cleared).toBe(false);
+    expect(storedRecord(alphaKey()).text).toBe("S");
+  });
+
+  it("finishes a move and reports success even when a listener throws", async () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stop = target.subscribe(() => {
+      throw new Error("listener failed");
+    });
+
+    const moved = await moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId());
+    stop();
+    error.mockRestore();
+
+    expect(moved.status).toBe("moved");
+    expect(target.getCurrent().text).toBe("legacy");
+  });
+
+  it("retries saving the source's unsaved text when moving again after storage recovers", async () => {
+    const sourceId = `${alphaId()}src`;
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: sourceId });
+    failWritesTo(source.storageKey, () =>
+      source.setDraft({ text: "held", mentions: [], attachments: [] }),
+    );
+
+    expect((await moveNewThreadDraft(source.storageKey, alphaId())).status).toBe("moved");
+    expect(getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() }).getCurrent().text).toBe(
+      "held",
+    );
+  });
+
+  it("lists unsaved first-time typing and lists one row for the same text", () => {
+    vi.useFakeTimers();
+    const typedId = `${alphaId()}typed`;
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: typedId }));
+    act(() => result.current.setTextAndMentions("not saved yet", []));
+    const failedId = `${alphaId()}failed`;
+    const failed = getPromptDraftAccessor({ kind: "new-thread", projectId: failedId });
+    failWritesTo(failed.storageKey, () =>
+      failed.setDraft({ text: "save failed", mentions: [], attachments: [] }),
+    );
+
+    expect(
+      listedNotShown([alphaId()])
+        .map((row) => row.draft?.text)
+        .sort(),
+    ).toEqual(["not saved yet", "save failed"]);
   });
 });

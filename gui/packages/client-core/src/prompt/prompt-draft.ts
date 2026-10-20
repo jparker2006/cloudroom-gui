@@ -228,40 +228,62 @@ export function serializePromptDraftStorage(
   });
 }
 
+function contextLabelWithSuffix(label: string, suffix: number): string {
+  return label.endsWith("]") ? `${label.slice(0, -1)} (${suffix})]` : `${label} (${suffix})`;
+}
+
+function nthIndexOf(text: string, search: string, occurrence: number): number {
+  let start = text.indexOf(search);
+  for (let index = 0; index < occurrence && start !== -1; index += 1) {
+    start = text.indexOf(search, start + search.length);
+  }
+  return start;
+}
+
 function relabelCollidingContexts(
   target: PromptDraftState,
   source: PromptDraftState,
 ): PromptDraftState {
-  const taken = new Map((target.contexts ?? []).map((context) => [context.label, context.text]));
-  let text = source.text;
-  let mentions = source.mentions;
+  const targetTexts = new Map((target.contexts ?? []).map((context) => [context.label, context.text]));
+  const reserved = new Set([
+    ...targetTexts.keys(),
+    ...(source.contexts ?? []).map((context) => context.label),
+  ]);
+  const keptTexts = new Map<string, string>();
+  const occurrences = new Map<string, number>();
+  const renames: { start: number; from: string; to: string }[] = [];
   const contexts: PromptDraftContext[] = [];
   for (const context of source.contexts ?? []) {
-    const existing = taken.get(context.label);
-    if (existing === context.text) continue;
-    if (existing === undefined) {
-      taken.set(context.label, context.text);
+    const occurrence = occurrences.get(context.label) ?? 0;
+    occurrences.set(context.label, occurrence + 1);
+    const owner = targetTexts.get(context.label) ?? keptTexts.get(context.label);
+    if (owner === undefined) {
+      keptTexts.set(context.label, context.text);
       contexts.push(context);
       continue;
     }
+    if (owner === context.text) continue;
     let label = context.label;
-    for (let suffix = 2; taken.has(label); suffix += 1) {
-      label = `${context.label.slice(0, -1)} (${suffix})]`;
+    for (let suffix = 2; reserved.has(label); suffix += 1) {
+      label = contextLabelWithSuffix(context.label, suffix);
     }
+    reserved.add(label);
     const from = messageContextLine(context.label);
-    const to = messageContextLine(label);
-    const delta = to.length - from.length;
-    for (let start = text.indexOf(from); start !== -1; start = text.indexOf(from, start + to.length)) {
-      text = `${text.slice(0, start)}${to}${text.slice(start + from.length)}`;
-      const lineEnd = start + from.length;
-      mentions = mentions.map((mention) =>
-        mention.start >= lineEnd
-          ? { ...mention, start: mention.start + delta, end: mention.end + delta }
-          : mention,
-      );
-    }
-    taken.set(label, context.text);
+    const start = nthIndexOf(source.text, from, occurrence);
+    if (start !== -1) renames.push({ start, from, to: messageContextLine(label) });
     contexts.push({ label, text: context.text });
+  }
+
+  let text = source.text;
+  let mentions = source.mentions;
+  for (const { start, from, to } of renames.sort((left, right) => right.start - left.start)) {
+    const delta = to.length - from.length;
+    text = `${text.slice(0, start)}${to}${text.slice(start + from.length)}`;
+    mentions = mentions.map((mention) =>
+      mention.start >= start + from.length
+        ? { ...mention, start: mention.start + delta, end: mention.end + delta }
+        : mention,
+    );
   }
   return { ...source, text, mentions, contexts };
 }
