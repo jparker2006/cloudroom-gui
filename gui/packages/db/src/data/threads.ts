@@ -407,6 +407,7 @@ export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
   visibility?: "visible" | "hidden" | "all";
+  limit?: number;
 }
 
 export interface PinThreadArgs {
@@ -1379,12 +1380,26 @@ export function listThreadsWithPendingInteractionStateForProjects(
     return [];
   }
 
-  const rows = threadWithPendingInteractionBaseQuery(db)
+  const query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .orderBy(...buildListThreadsOrderBy(options))
-    .all();
+    .orderBy(...buildListThreadsOrderBy(options));
+  const rows =
+    options.limit === undefined ? query.all() : query.limit(options.limit).all();
 
   return rows.map(toThreadWithPendingInteractionState);
+}
+
+export function countThreadsForProjects(
+  db: DbConnection,
+  options: ListThreadsForProjectsOptions,
+): number {
+  if (options.projectIds.length === 0) {
+    return 0;
+  }
+  return countThreadsWhere(
+    db,
+    and(...buildListThreadsForProjectsFilters(options)),
+  );
 }
 
 export function countLiveThreadsInEnvironment(

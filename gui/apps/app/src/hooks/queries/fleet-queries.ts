@@ -36,3 +36,22 @@ export function useFleetSupplement(bootstrapUpdatedAt: number) {
     retry: 1,
   });
 }
+
+const FLEET_ARCHIVED_QUERY_KEY = ["fleet-supplement", "archived"] as const;
+const ARCHIVED_STALE_MS = 30_000;
+
+export function useFleetArchived(enabled: boolean) {
+  return useQuery<FleetSupplementResponse>({
+    queryKey: FLEET_ARCHIVED_QUERY_KEY,
+    queryFn: ({ signal }) =>
+      request<FleetSupplementResponse>(
+        apiClient["fleet-supplement"].$get(
+          { query: { archived: "include" } },
+          requestOptions(signal),
+        ),
+      ),
+    enabled,
+    staleTime: ARCHIVED_STALE_MS,
+    retry: 1,
+  });
+}

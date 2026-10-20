@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import {
   familyCounts,
@@ -18,19 +19,20 @@ const TONE_CLASS = {
   new: "text-foreground",
 } as const;
 
-const HARNESS_GLYPH: Record<string, string> = {
-  "claude-code": "✳",
-  codex: "◎",
-  pi: "π",
-};
-const HARNESS_NAME: Record<string, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  pi: "Pi",
-};
+export interface FleetProviderPresentation {
+  name: string;
+  glyph: string | null;
+}
 
-export function harnessName(providerId: string): string {
-  return HARNESS_NAME[providerId] ?? providerId;
+export type FleetProviders = ReadonlyMap<string, FleetProviderPresentation>;
+
+export const FleetProvidersContext = createContext<FleetProviders>(new Map());
+
+export function harnessName(
+  providerId: string,
+  providers: FleetProviders,
+): string {
+  return providers.get(providerId)?.name ?? providerId;
 }
 
 export function effortWord(value: string | null | undefined): string | null {
@@ -130,6 +132,7 @@ export function cardAccessibleName(
   parent: FleetThread | undefined,
   now: number,
   pending: ReadonlySet<string>,
+  providers: FleetProviders,
 ): string {
   const kind = KIND_LABELS[thread.kind];
   const configured = configuredLine(
@@ -144,7 +147,7 @@ export function cardAccessibleName(
     kind
       ? `${kind}${thread.parentStatus === "known" && parent ? ` of ${redact.title(parent)}` : thread.parentStatus === "unknown" ? ", parent unknown" : thread.parentStatus === "archived" ? ", parent archived" : ""}`
       : null,
-    `${harnessName(thread.entry.providerId)}, configured ${configured.model}, ${configured.effort}`,
+    `${harnessName(thread.entry.providerId, providers)}, configured ${configured.model}, ${configured.effort}`,
     locationLine(thread, redact, now, pending.has("cloudSandboxState")),
     `updated ${new Date(thread.entry.updatedAt).toLocaleTimeString()}`,
   ]
@@ -183,6 +186,7 @@ export function FleetCard({
   onSelect,
   onOpen,
 }: FleetCardProps) {
+  const providers = useContext(FleetProvidersContext);
   const kind = KIND_LABELS[thread.kind];
   const configured = configuredLine(
     thread,
@@ -219,7 +223,7 @@ export function FleetCard({
       <button
         type="button"
         data-fleet-primary
-        aria-label={`Open details: ${cardAccessibleName(thread, redact, parent, now, pending)}`}
+        aria-label={`Open details: ${cardAccessibleName(thread, redact, parent, now, pending, providers)}`}
         aria-current={selected ? "true" : undefined}
         onClick={(event) =>
           event.metaKey || event.ctrlKey
@@ -322,7 +326,7 @@ export function FleetCard({
       </div>
       <div className="font-mono text-xs break-all text-muted-foreground md:truncate md:break-normal">
         <span aria-hidden="true">
-          {HARNESS_GLYPH[thread.entry.providerId] ?? "·"}{" "}
+          {providers.get(thread.entry.providerId)?.glyph ?? "·"}{" "}
         </span>
         <b className="font-medium text-foreground">{configured.model}</b>
       </div>

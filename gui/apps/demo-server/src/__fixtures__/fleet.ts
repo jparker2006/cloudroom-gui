@@ -680,7 +680,10 @@ export function fleetBootstrap(now: number): SidebarBootstrapResponse {
   };
 }
 
-export function fleetSupplement(now: number): FleetSupplementResponse {
+export function fleetSupplement(
+  now: number,
+  includeArchived = false,
+): FleetSupplementResponse {
   const all = allSpecs();
   return {
     source: "fixture",
@@ -689,7 +692,11 @@ export function fleetSupplement(now: number): FleetSupplementResponse {
       .filter((s) => !s.archived && s.origin !== undefined)
       .map((s) => entry(s, now)),
     extraProjects: [],
-    archivedThreads: all.filter((s) => s.archived).map((s) => entry(s, now)),
+    archivedThreads: includeArchived
+      ? all.filter((s) => s.archived).map((s) => entry(s, now))
+      : [],
+    archivedCount: all.filter((s) => s.archived).length,
+    archivedTruncated: false,
     threadFields: Object.fromEntries(all.map((s) => [s.id, fields(s, now)])),
     pendingFields: [],
     unavailableSources: [

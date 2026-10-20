@@ -178,6 +178,7 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
+  FleetSupplementQuery,
   FleetSupplementResponse,
   SystemAttentionResponse,
   SystemConfigReloadResponse,
@@ -324,6 +325,7 @@ import {
   projectFileContentQuerySchema,
   projectFilesQuerySchema,
   projectListQuerySchema,
+  fleetSupplementQuerySchema,
   projectPathsQuerySchema,
   projectSkillsQuerySchema,
   deleteSkillRequestSchema,
@@ -416,7 +418,9 @@ export const publicApiRoutes = {
     fleetSupplement: defineRoute({
       path: "/fleet-supplement",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, FleetSupplementQuery>(
+        fleetSupplementQuerySchema,
+      ),
       response: jsonResponse<FleetSupplementResponse>(),
     }),
     get: defineRoute({

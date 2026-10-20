@@ -34,6 +34,11 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   }),
 }));
 vi.mock("@/hooks/queries/fleet-queries", () => ({
+  useFleetArchived: () => ({
+    data: undefined,
+    isPending: false,
+    isError: false,
+  }),
   useFleetSupplement: () => ({
     data: state.supplement,
     dataUpdatedAt: NOW,
@@ -119,6 +124,8 @@ function seed(threads: ThreadListEntry[], hidden: ThreadListEntry[] = []) {
     hiddenThreads: hidden,
     archivedThreads: [],
     extraProjects: [],
+    archivedCount: 0,
+    archivedTruncated: false,
     threadFields: {},
     pendingFields: [],
     unavailableSources: [],
@@ -288,5 +295,29 @@ describe("FleetView", () => {
         name: /Collapse family of Title root: 2 children/,
       }),
     ).toBeTruthy();
+  });
+
+  it("on phone, contains focus in the details drawer instead of the cards behind it", () => {
+    state.compact = true;
+    seed([entry("a"), entry("b")]);
+    renderView();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Open details: Title a/ }),
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    const focusable = [
+      ...dialog.querySelectorAll<HTMLElement>(
+        "button, [href], [tabindex]:not([tabindex='-1'])",
+      ),
+    ];
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
   });
 });

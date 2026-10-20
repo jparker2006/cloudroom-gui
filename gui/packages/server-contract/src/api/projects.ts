@@ -494,6 +494,8 @@ export const fleetSupplementResponseSchema = z.object({
   generatedAt: z.number(),
   hiddenThreads: z.array(threadListEntrySchema),
   archivedThreads: z.array(threadListEntrySchema),
+  archivedCount: z.number().int().nonnegative(),
+  archivedTruncated: z.boolean(),
   extraProjects: z.array(
     z.object({ id: z.string(), name: z.string(), hidden: z.boolean() }),
   ),
@@ -501,6 +503,13 @@ export const fleetSupplementResponseSchema = z.object({
   pendingFields: z.array(fleetPendingFieldSchema),
   unavailableSources: z.array(z.string()),
 });
+export const FLEET_ARCHIVED_THREAD_LIMIT = 200;
+
+export const fleetSupplementQuerySchema = z.object({
+  archived: z.enum(["include"]).optional(),
+});
+export type FleetSupplementQuery = z.infer<typeof fleetSupplementQuerySchema>;
+
 export type FleetSupplementResponse = z.infer<
   typeof fleetSupplementResponseSchema
 >;

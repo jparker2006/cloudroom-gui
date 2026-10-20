@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useContext, useId } from "react";
+import { PersistentResponsiveDrawerShell } from "@cloudroom/shared-ui/responsive-overlay";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
 import { useEnvironmentPullRequest } from "@/hooks/queries/environment-queries";
 import {
   configuredLine,
   FleetStateLabel,
+  FleetProvidersContext,
   harnessName,
   locationLine,
 } from "./FleetCard";
@@ -159,6 +161,7 @@ export function FleetInspector({
   onOpen,
   onSelect,
 }: FleetInspectorProps) {
+  const providers = useContext(FleetProvidersContext);
   const timeline = useThreadTimeline(thread.id, { enabled: !thread.archived });
   const pullRequest = useEnvironmentPullRequest(thread.entry.environmentId, {
     enabled: !thread.archived,
@@ -195,21 +198,10 @@ export function FleetInspector({
             : pr
               ? `#${pr.number} ${pr.state} · ${pr.checks.pendingCount} checks pending, ${pr.checks.passedCount} passed`
               : "None found for this branch";
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (compact) headingRef.current?.focus();
-  }, [compact, thread.id]);
+  const headingId = useId();
 
-  return (
-    <aside
-      aria-label="Thread details"
-      className={cn(
-        "flex min-h-0 flex-col overflow-hidden bg-background",
-        compact
-          ? "fixed inset-x-0 bottom-0 z-40 max-h-[85dvh] rounded-t-2xl border-t border-border shadow-2xl"
-          : "w-[360px] shrink-0 border-l border-border-seam",
-      )}
-    >
+  const content = (
+    <>
       <div className="flex min-h-11 items-center justify-between gap-2 px-4 pt-2">
         <span className="truncate font-mono text-xs text-muted-foreground">
           {redact.project(thread.projectId, thread.projectName)} ›{" "}
@@ -226,8 +218,7 @@ export function FleetInspector({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         <h2
-          ref={headingRef}
-          tabIndex={-1}
+          id={headingId}
           className={cn(
             "mt-1 text-base font-semibold leading-snug text-foreground",
             redact.on && "italic text-muted-foreground",
@@ -347,7 +338,9 @@ export function FleetInspector({
 
         <Section title="EXECUTION">
           <dl className="grid grid-cols-[112px_1fr] gap-x-2 gap-y-1 text-sm">
-            <Row label="Harness">{harnessName(thread.entry.providerId)}</Row>
+            <Row label="Harness">
+              {harnessName(thread.entry.providerId, providers)}
+            </Row>
             <Row
               label="Model · effort"
               source={
@@ -465,6 +458,30 @@ export function FleetInspector({
           </button>
         )}
       </div>
+    </>
+  );
+
+  if (compact) {
+    return (
+      <PersistentResponsiveDrawerShell
+        open
+        onOpenChange={(next) => {
+          if (!next) onClose();
+        }}
+        labelledBy={headingId}
+        contentClassName="max-h-[85dvh] overflow-hidden"
+      >
+        {content}
+      </PersistentResponsiveDrawerShell>
+    );
+  }
+
+  return (
+    <aside
+      aria-label="Thread details"
+      className="flex min-h-0 w-[360px] shrink-0 flex-col overflow-hidden border-l border-border-seam bg-background"
+    >
+      {content}
     </aside>
   );
 }

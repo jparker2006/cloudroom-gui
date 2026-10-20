@@ -109,6 +109,8 @@ function supplement(
     generatedAt: NOW,
     hiddenThreads: [],
     extraProjects: [],
+    archivedCount: partial.archivedThreads?.length ?? 0,
+    archivedTruncated: false,
     archivedThreads: [],
     threadFields: {},
     pendingFields: [],

@@ -57,7 +57,21 @@ describe("GET /api/v1/fleet-supplement", () => {
       );
       expect(side?.sourceThreadId).toBe(parent.id);
       expect(side?.parentThreadId).toBeNull();
-      expect(body.archivedThreads.map((thread) => thread.id)).toEqual([old.id]);
+      expect(body.archivedThreads).toEqual([]);
+      expect(body.archivedCount).toBe(1);
+      expect(body.archivedTruncated).toBe(false);
+
+      const withArchive = fleetSupplementResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/fleet-supplement?archived=include",
+          ),
+        ),
+      );
+      expect(withArchive.archivedThreads.map((thread) => thread.id)).toEqual([
+        old.id,
+      ]);
+      expect(withArchive.archivedCount).toBe(1);
       expect(body.threadFields).toEqual({});
       expect(body.pendingFields).toEqual(
         expect.arrayContaining([
@@ -111,6 +125,38 @@ describe("GET /api/v1/fleet-supplement", () => {
       expect(
         bootstrap.projects.flatMap((p) => p.threads.map((t) => t.id)),
       ).not.toContain(visibleInHidden.id);
+    });
+  });
+
+  it("keeps the live refresh independent of archive size and caps the archive page", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      for (let index = 0; index < 205; index += 1) {
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          title: `Old ${index}`,
+        });
+        archiveThread(harness.db, harness.deps.hub, thread.id);
+      }
+
+      const live = fleetSupplementResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/fleet-supplement")),
+      );
+      expect(live.archivedThreads).toEqual([]);
+      expect(live.archivedCount).toBe(205);
+
+      const page = fleetSupplementResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/fleet-supplement?archived=include",
+          ),
+        ),
+      );
+      expect(page.archivedThreads).toHaveLength(200);
+      expect(page.archivedTruncated).toBe(true);
     });
   });
 });

@@ -12,6 +12,7 @@ import {
   listPublicProjects,
   listProjectSourcesByProjectIds,
   listThreadSections,
+  countThreadsForProjects,
   listThreadsWithPendingInteractionStateForProjects,
   reorderProject,
   updateProject,
@@ -27,6 +28,7 @@ import {
   type ProjectBranchesQuery,
   type ProjectListQuery,
   type ProjectResponse,
+  FLEET_ARCHIVED_THREAD_LIMIT,
   type FleetSupplementResponse,
   type ProjectWithThreadsResponse,
   type PublicApiSchema,
@@ -276,6 +278,7 @@ const FLEET_SERVER_UNAVAILABLE_SOURCES = [
 
 export function buildFleetSupplementResponse(
   deps: AppDeps,
+  options: { includeArchived: boolean },
 ): FleetSupplementResponse {
   const personalProject = getPersonalProject(deps.db);
   const visibleProjectIds = [
@@ -296,14 +299,18 @@ export function buildFleetSupplementResponse(
       visibility: "all",
     }),
   ];
-  const archivedRows = listThreadsWithPendingInteractionStateForProjects(
-    deps.db,
-    {
-      archived: true,
-      projectIds: [...visibleProjectIds, ...hiddenProjectIds],
-      visibility: "all",
-    },
-  );
+  const archivedFilter = {
+    archived: true,
+    projectIds: [...visibleProjectIds, ...hiddenProjectIds],
+    visibility: "all" as const,
+  };
+  const archivedCount = countThreadsForProjects(deps.db, archivedFilter);
+  const archivedRows = options.includeArchived
+    ? listThreadsWithPendingInteractionStateForProjects(deps.db, {
+        ...archivedFilter,
+        limit: FLEET_ARCHIVED_THREAD_LIMIT,
+      })
+    : [];
   return {
     source: "server",
     generatedAt: Date.now(),
@@ -311,6 +318,9 @@ export function buildFleetSupplementResponse(
     archivedThreads: toThreadListEntryResponses(deps, {
       threads: archivedRows,
     }),
+    archivedCount,
+    archivedTruncated:
+      options.includeArchived && archivedCount > archivedRows.length,
     extraProjects: hiddenProjects.map((project) => ({
       id: project.id,
       name: project.name,
@@ -374,8 +384,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.projects;
 
-  get(routes.fleetSupplement, (context) =>
-    context.json(buildFleetSupplementResponse(deps)),
+  get(routes.fleetSupplement, (context, query) =>
+    context.json(
+      buildFleetSupplementResponse(deps, {
+        includeArchived: query?.archived === "include",
+      }),
+    ),
   );
 
   get(routes.list, (context, query) => {

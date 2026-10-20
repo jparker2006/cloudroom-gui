@@ -55,7 +55,7 @@ import {
   fleetThread,
   fleetTimeline,
   isFleetThreadId,
-} from "./fixtures/fleet.js";
+} from "./__fixtures__/fleet.js";
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
@@ -181,14 +181,16 @@ export class DemoWorld {
 
   private readonly fleetFixture: boolean;
 
-  private handleFleetGet(api: string, now: number): Response | null {
+  private handleFleetGet(api: string, now: number, url: URL): Response | null {
     switch (api) {
       case "/sidebar-bootstrap":
         return json(fleetBootstrap(now));
       case "/hosts":
         return json(fleetHosts(now));
       case "/fleet-supplement":
-        return json(fleetSupplement(now));
+        return json(
+          fleetSupplement(now, url.searchParams.get("archived") === "include"),
+        );
       default:
         break;
     }
@@ -277,7 +279,7 @@ export class DemoWorld {
   ): Promise<Response | null> {
     const now = this.now();
     if (request.method === "GET" && this.fleetFixture) {
-      const fleet = this.handleFleetGet(api, now);
+      const fleet = this.handleFleetGet(api, now, new URL(request.url));
       if (fleet) return fleet;
     }
     if (request.method === "GET") {

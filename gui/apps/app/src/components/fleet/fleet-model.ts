@@ -477,7 +477,7 @@ export function buildFleetModel(args: {
     idle: open.filter(
       (thread) => thread.runtime === "idle" && thread.attention === null,
     ).length,
-    archived: threads.length - open.length,
+    archived: supplement?.archivedCount ?? threads.length - open.length,
     awake: open.filter((thread) => thread.sandbox === "awake").length,
     notAwake: open.filter((thread) => thread.sandbox === "not-awake").length,
     sandboxUnknown: open.filter((thread) => thread.sandbox === "unknown")
