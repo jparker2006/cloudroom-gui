@@ -4,6 +4,7 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPromptDraftAccessor,
+  listNewThreadDraftsNotShown,
   discardNewThreadDraft,
   moveNewThreadDraft,
   usePromptDraftInputThreadIds,
@@ -913,5 +914,49 @@ describe("discarding a draft the composer doesn't show", () => {
 
     expect(result).toBe("failed");
     expect(window.localStorage.getItem(LEGACY_KEY)).toBe("{bad");
+  });
+});
+
+describe("listing saved drafts the composer doesn't show", () => {
+  it("lists the pre-upgrade draft, unreadable records, conflict copies, unseen recovery copies and unlisted projects", () => {
+    const listed = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    listed.setDraft({ text: "listed project", mentions: [], attachments: [] });
+    const listedRev = String(storedRecord(alphaKey()).rev);
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    window.localStorage.setItem(
+      "bb.promptbox.contents-new-thread-proj_gone-3",
+      JSON.stringify({ text: "gone", attachments: [], rev: "1234123412341234" }),
+    );
+    window.localStorage.setItem("bb.promptbox.contents-new-thread-proj_bad-3", "{bad");
+    window.localStorage.setItem(
+      "bb.promptbox.contents-new-thread-proj_sent-3",
+      JSON.stringify({ rev: "5678567856785678", sent: true }),
+    );
+    window.localStorage.setItem(
+      "bb.promptbox.contents-new-thread-proj_personal-3",
+      storedDraft("no project"),
+    );
+    window.localStorage.setItem(
+      `bb.promptbox.conflict-new-thread-${alphaId()}-abababababababab-3`,
+      JSON.stringify({ text: "conflict", attachments: [], rev: "abababababababab" }),
+    );
+    window.localStorage.setItem(
+      `bb.promptbox.recovery-new-thread-${alphaId()}-cdcdcdcdcdcdcdcd-3`,
+      JSON.stringify({ text: "lost race", attachments: [], rev: "efefefefefefefef", base: "0000000000000000" }),
+    );
+
+    const rows = listNewThreadDraftsNotShown([alphaId()]);
+
+    expect(rows.map(({ kind, projectId }) => [kind, projectId]).sort()).toEqual(
+      [
+        ["conflict", alphaId()],
+        ["conflict", alphaId()],
+        ["legacy", null],
+        ["unlisted-project", "proj_gone"],
+        ["unreadable", "proj_bad"],
+      ].sort(),
+    );
+    expect(rows.some((row) => row.draft?.text === "listed project" || row.draft?.text === "no project")).toBe(false);
+    expect(listedRev).toMatch(/^[0-9a-f]{16}$/);
   });
 });

@@ -605,6 +605,71 @@ export function discardNewThreadDraft(
   return "discarded";
 }
 
+export interface NewThreadDraftNotShown {
+  kind: "legacy" | "unreadable" | "conflict" | "unlisted-project";
+  key: string;
+  projectId: string | null;
+  draft?: PromptDraftState;
+}
+
+const LEGACY_NEW_THREAD_DRAFT_KEY = `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+
+function parseNewThreadSideKey(key: string, prefix: string): string | null {
+  const match = new RegExp(`^${prefix.replaceAll(".", "\\.")}([^-]+)-[0-9a-f]{16}-3$`).exec(key);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+export function listNewThreadDraftsNotShown(
+  knownProjectIds: readonly string[],
+): NewThreadDraftNotShown[] {
+  if (typeof window === "undefined") return [];
+  const rows: NewThreadDraftNotShown[] = [];
+  const known = new Set([...knownProjectIds, "proj_personal"]);
+  const legacy = readNewThreadRecord(readStoredPromptDraftValue(LEGACY_NEW_THREAD_DRAFT_KEY));
+  if (legacy.kind === "unreadable") {
+    rows.push({ kind: "unreadable", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null });
+  } else if (legacy.kind === "draft" && !isPromptDraftEmpty(legacy.draft)) {
+    rows.push({ kind: "legacy", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null, draft: legacy.draft });
+  }
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key) continue;
+    const record = readNewThreadRecord(readStoredPromptDraftValue(key));
+    if (isNewThreadProjectDraftKey(key)) {
+      const projectId = decodeURIComponent(newThreadProjectSegment(key));
+      if (record.kind === "unreadable") {
+        rows.push({ kind: "unreadable", key, projectId });
+      } else if (
+        record.kind === "draft" &&
+        !isPromptDraftEmpty(record.draft) &&
+        !known.has(projectId)
+      ) {
+        rows.push({ kind: "unlisted-project", key, projectId, draft: record.draft });
+      }
+      continue;
+    }
+    if (record.kind !== "draft" || isPromptDraftEmpty(record.draft)) continue;
+    const conflictProject = parseNewThreadSideKey(key, "bb.promptbox.conflict-new-thread-");
+    if (conflictProject) {
+      rows.push({ kind: "conflict", key, projectId: conflictProject, draft: record.draft });
+      continue;
+    }
+    const recoveryProject = parseNewThreadSideKey(key, "bb.promptbox.recovery-new-thread-");
+    if (!recoveryProject) continue;
+    const storedRev = readStoredRev(
+      readStoredPromptDraftValue(
+        getPromptDraftStorageKey({ kind: "new-thread", projectId: recoveryProject }),
+      ),
+    );
+    const base = readStoredBase(readStoredPromptDraftValue(key));
+    if (record.rev !== storedRev && base !== storedRev) {
+      rows.push({ kind: "conflict", key, projectId: recoveryProject, draft: record.draft });
+    }
+  }
+  return rows;
+}
+
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
   storageKey: string;
   getCurrent: () => PromptDraftState;
