@@ -280,7 +280,8 @@ import {
 } from "./threadWorkspaceOpenPath";
 import {
   resolveThreadLocalFileLink,
-  resolveTimelineImagePreviewLink,
+  resolveOpenableTimelineImagePreviewLink,
+  resolveTimelineImagePreviewRootPath,
   type ThreadLocalFileLinkResolution,
 } from "@/lib/thread-local-file-links";
 import {
@@ -2133,6 +2134,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [openHostFile, openStorageFile, openWorkspaceFile],
   );
+  const activeThreadIdRef = useRef(threadId);
+  useEffect(() => {
+    activeThreadIdRef.current = threadId;
+  }, [threadId]);
   const handleOpenTimelineLocalFileLink = useCallback(
     (
       link: ThreadTimelineLocalFileLink,
@@ -2155,6 +2160,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
 
       void refetchThreadStorageFiles()
         .then((result) => {
+          if (activeThreadIdRef.current !== threadId) {
+            return;
+          }
           const resolvedThreadStorageRootPath =
             result.data?.storageRootPath ?? null;
           if (resolvedThreadStorageRootPath === null) {
@@ -2185,6 +2193,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       hostFileLinksAvailable,
       isCloudThread,
       refetchThreadStorageFiles,
+      threadId,
       threadStorageRootPath,
       workspacePreviewRootPath,
     ],
@@ -2227,10 +2236,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     [handleOpenUrlByPreference],
   );
   const isTimelineThreadLoaded = thread?.id === threadId;
-  const imagePreviewWorkspaceRootPath =
-    isTimelineThreadLoaded && environment?.id === thread.environmentId
-      ? workspacePreviewRootPath
-      : null;
+  const imagePreviewWorkspaceRootPath = resolveTimelineImagePreviewRootPath({
+    activeThreadId: threadId,
+    cloudWorkspacePath: cloudWorkspace.data?.path ?? null,
+    environment,
+    thread,
+  });
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
       switch (action.kind) {
@@ -2250,9 +2261,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           if (!isTimelineThreadLoaded) {
             return null;
           }
-          const link = resolveTimelineImagePreviewLink({
+          const link = resolveOpenableTimelineImagePreviewLink({
+            hostFileLinksAvailable,
             path: action.path,
-            workspaceRootPath: imagePreviewWorkspaceRootPath,
+            relativeRootPath: imagePreviewWorkspaceRootPath,
+            threadStorageRootPath,
+            workspaceRootPath: workspacePreviewRootPath,
           });
           return link === null
             ? null
@@ -2267,10 +2281,13 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     [
       handleOpenTimelineLocalFileLink,
       handleOpenTimelinePluginPanel,
+      hostFileLinksAvailable,
       imagePreviewWorkspaceRootPath,
       isTimelineThreadLoaded,
       openSecondaryPanelDiffFile,
       threadId,
+      threadStorageRootPath,
+      workspacePreviewRootPath,
     ],
   );
   const metadataStorage = useMemo(

@@ -946,16 +946,23 @@ describe("FilePreview", () => {
     expect(screen.getByTitle(path)).not.toBe(firstIframe);
   });
 
-  it("shows the missing-file state when the host reports ENOENT", () => {
+  it.each([
+    ["the workspace diff route's 502 ENOENT", 502, "ENOENT"],
+    ["a 404 from host and storage routes", 404, "ENOENT"],
+  ])("shows the missing-file state for %s", (_label, status, code) => {
     render(
       <SecondaryPanelFilePreview
         activePath="assets/missing.png"
         error={
           new BbHttpError({
-            body: null,
-            code: "ENOENT",
+            body: {
+              code,
+              message: "Path does not exist: /repo/assets/missing.png",
+              retryable: false,
+            },
+            code,
             message: "Path does not exist: /repo/assets/missing.png",
-            status: 502,
+            status,
           })
         }
         filePreview={undefined}

@@ -113,8 +113,13 @@ function renderSegment(
   const widthClass = segment.truncate
     ? "min-w-0 truncate whitespace-pre"
     : "shrink-0 whitespace-pre";
+  const isActionTarget =
+    interactive.onClick !== null &&
+    (segment.em || segment.accent === "file");
+  const isInertFileTarget =
+    segment.accent === "file" && !segment.em && !isActionTarget;
   const toneClass =
-    segment.accent !== undefined
+    segment.accent !== undefined && !isInertFileTarget
       ? accentToneClass(segment.accent, segment.em)
       : segment.em
         ? emToneClass(tone)
@@ -149,7 +154,7 @@ function renderSegment(
     );
   }
 
-  if ((segment.em || segment.accent === "file") && interactive.onClick) {
+  if (isActionTarget && interactive.onClick) {
     const onClick = interactive.onClick;
     return (
       <span
@@ -168,7 +173,7 @@ function renderSegment(
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             event.stopPropagation();
-            onClick();
+            if (!event.repeat) onClick();
           }
         }}
       >

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveOpenableTimelineImagePreviewLink,
   resolveThreadLocalFileLink,
   resolveTimelineImagePreviewLink,
+  resolveTimelineImagePreviewRootPath,
 } from "./thread-local-file-links";
 
 describe("resolveThreadLocalFileLink", () => {
@@ -169,12 +171,13 @@ describe("resolveTimelineImagePreviewLink", () => {
   function routeImage(args: {
     hostFileLinksAvailable: boolean;
     path: string;
+    relativeRootPath?: string | null;
     threadStorageRootPath: string | null;
     workspaceRootPath: string | null;
   }) {
     const link = resolveTimelineImagePreviewLink({
       path: args.path,
-      workspaceRootPath: args.workspaceRootPath,
+      workspaceRootPath: args.relativeRootPath ?? args.workspaceRootPath,
     });
     return link === null
       ? null
@@ -214,6 +217,8 @@ describe("resolveTimelineImagePreviewLink", () => {
     ["backslash separators", "assets\\..\\..\\shot.png"],
     ["control characters", "assets/shot\u0000.png"],
     ["newlines", "assets/shot\n.png"],
+    ["bidi overrides", "assets/a\u202Egnp.png"],
+    ["bidi isolates", "assets/\u2066shot\u2069.png"],
     ["non-PNG files", "assets/notes.txt"],
     ["PNG-looking directories", "assets/png/"],
     ["app routes", "/settings/general.png"],
@@ -251,23 +256,31 @@ describe("resolveTimelineImagePreviewLink", () => {
     });
   });
 
-  it("routes a cloud sandbox PNG to that thread's workspace", () => {
+  it("routes a relative cloud PNG through the thread's sandbox checkout", () => {
     expect(
       routeImage({
         hostFileLinksAvailable: true,
-        path: "/code/app/out/render.png",
+        path: "out/render.png",
+        relativeRootPath: "/code/app",
         threadStorageRootPath: null,
-        workspaceRootPath: "/code/app",
+        workspaceRootPath: null,
       }),
     ).toEqual({
-      kind: "open-workspace-path",
-      request: {
-        lineRange: null,
-        path: "/code/app/out/render.png",
-        relativePath: "out/render.png",
-        workspaceRootPath: "/code/app",
-      },
+      kind: "open-host-path",
+      request: { lineRange: null, path: "/code/app/out/render.png" },
     });
+  });
+
+  it("does not open a relative PNG before the cloud checkout is known", () => {
+    expect(
+      routeImage({
+        hostFileLinksAvailable: true,
+        path: "out/render.png",
+        relativeRootPath: null,
+        threadStorageRootPath: null,
+        workspaceRootPath: null,
+      }),
+    ).toBeNull();
   });
 
   it("routes thread storage PNGs to thread storage", () => {
@@ -284,14 +297,20 @@ describe("resolveTimelineImagePreviewLink", () => {
     });
   });
 
-  it("does not open another thread's storage as this thread's storage", () => {
+  it("never treats another thread's storage as this thread's storage", () => {
+    const path = "/home/me/.bb/thread-storage/thr_two/shots/a.png";
+    const args = {
+      path,
+      threadStorageRootPath: "/home/me/.bb/thread-storage/thr_one",
+      workspaceRootPath,
+    };
+
+    expect(routeImage({ ...args, hostFileLinksAvailable: true })).toEqual({
+      kind: "open-host-path",
+      request: { lineRange: null, path },
+    });
     expect(
-      routeImage({
-        hostFileLinksAvailable: false,
-        path: "/home/me/.bb/thread-storage/thr_two/shots/a.png",
-        threadStorageRootPath: "/home/me/.bb/thread-storage/thr_one",
-        workspaceRootPath,
-      }),
+      routeImage({ ...args, hostFileLinksAvailable: false }),
     ).toMatchObject({ kind: "error" });
   });
 
@@ -307,5 +326,99 @@ describe("resolveTimelineImagePreviewLink", () => {
       kind: "open-host-path",
       request: { lineRange: null, path: "/tmp/shot.png" },
     });
+  });
+});
+
+describe("resolveTimelineImagePreviewRootPath", () => {
+  const environment = { id: "env_one", path: "/home/me/project" };
+  const localThread = {
+    environmentId: "env_one",
+    executionTarget: "local",
+    id: "thr_one",
+  };
+
+  it("uses the loaded thread's own workspace", () => {
+    expect(
+      resolveTimelineImagePreviewRootPath({
+        activeThreadId: "thr_one",
+        cloudWorkspacePath: null,
+        environment,
+        thread: localThread,
+      }),
+    ).toBe("/home/me/project");
+  });
+
+  it("has no root while the previous thread is still loaded", () => {
+    expect(
+      resolveTimelineImagePreviewRootPath({
+        activeThreadId: "thr_two",
+        cloudWorkspacePath: null,
+        environment,
+        thread: localThread,
+      }),
+    ).toBeNull();
+  });
+
+  it("ignores an environment that belongs to another thread", () => {
+    expect(
+      resolveTimelineImagePreviewRootPath({
+        activeThreadId: "thr_one",
+        cloudWorkspacePath: null,
+        environment: { id: "env_two", path: "/home/me/other" },
+        thread: localThread,
+      }),
+    ).toBeNull();
+  });
+
+  it("uses the sandbox checkout for cloud threads", () => {
+    expect(
+      resolveTimelineImagePreviewRootPath({
+        activeThreadId: "thr_cloud",
+        cloudWorkspacePath: "/code/app",
+        environment: undefined,
+        thread: {
+          environmentId: null,
+          executionTarget: "cloud",
+          id: "thr_cloud",
+        },
+      }),
+    ).toBe("/code/app");
+  });
+
+  it("never uses a cloud checkout for a local thread", () => {
+    expect(
+      resolveTimelineImagePreviewRootPath({
+        activeThreadId: "thr_one",
+        cloudWorkspacePath: "/code/app",
+        environment: undefined,
+        thread: { ...localThread, environmentId: null },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("resolveOpenableTimelineImagePreviewLink", () => {
+  it("keeps host-only PNGs plain when the thread has no host access", () => {
+    expect(
+      resolveOpenableTimelineImagePreviewLink({
+        hostFileLinksAvailable: false,
+        path: "/tmp/shot.png",
+        relativeRootPath: null,
+        threadStorageRootPath: null,
+        workspaceRootPath: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("still opens workspace PNGs without host access", () => {
+    expect(
+      resolveOpenableTimelineImagePreviewLink({
+        hostFileLinksAvailable: false,
+        path: "assets/chart.png",
+        relativeRootPath: "/home/me/project",
+        threadStorageRootPath: null,
+        workspaceRootPath: "/home/me/project",
+      }),
+    ).toEqual({ lineRange: null, path: "/home/me/project/assets/chart.png" });
   });
 });

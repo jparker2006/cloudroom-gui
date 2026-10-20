@@ -19,9 +19,26 @@ interface ResolveThreadLocalFileLinkArgs {
   workspaceRootPath: string | null;
 }
 
+interface ResolveTimelineImagePreviewRootPathArgs {
+  activeThreadId: string;
+  cloudWorkspacePath: string | null;
+  environment: { id: string; path: string | null } | undefined;
+  thread:
+    | { environmentId: string | null; executionTarget?: string; id: string }
+    | undefined;
+}
+
 interface ResolveTimelineImagePreviewLinkArgs {
   path: string;
   workspaceRootPath: string | null;
+}
+
+interface ResolveOpenableTimelineImagePreviewLinkArgs extends Omit<
+  ResolveThreadLocalFileLinkArgs,
+  "link"
+> {
+  path: string;
+  relativeRootPath: string | null;
 }
 
 interface ThreadWorkspaceFileLinkOpenRequest {
@@ -199,7 +216,9 @@ export function resolveTimelineImagePreviewLink({
 }: ResolveTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
   if (
     !/\.png$/iu.test(path) ||
-    /[\u0000-\u001f\u007f\\]/u.test(path) ||
+    /[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069\\]/u.test(
+      path,
+    ) ||
     /^(?:~|[a-z][a-z0-9+.-]*:)/iu.test(path)
   ) {
     return null;
@@ -220,4 +239,35 @@ export function resolveTimelineImagePreviewLink({
   return resolvedPath === null
     ? null
     : { lineRange: null, path: resolvedPath.path };
+}
+
+export function resolveTimelineImagePreviewRootPath({
+  activeThreadId,
+  cloudWorkspacePath,
+  environment,
+  thread,
+}: ResolveTimelineImagePreviewRootPathArgs): string | null {
+  if (thread?.id !== activeThreadId) {
+    return null;
+  }
+  if (environment !== undefined && environment.id === thread.environmentId) {
+    return environment.path;
+  }
+  return thread.executionTarget === "cloud" ? cloudWorkspacePath : null;
+}
+
+export function resolveOpenableTimelineImagePreviewLink({
+  path,
+  relativeRootPath,
+  ...routing
+}: ResolveOpenableTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
+  const link = resolveTimelineImagePreviewLink({
+    path,
+    workspaceRootPath: relativeRootPath,
+  });
+  if (link === null) {
+    return null;
+  }
+  const { kind } = resolveThreadLocalFileLink({ ...routing, link });
+  return kind === "error" || kind === "app-route" ? null : link;
 }
