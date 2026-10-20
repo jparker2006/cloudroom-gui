@@ -5,7 +5,7 @@ Tests and design renders need Playwright (a tool, not a project dependency).
 
 Findings, source map, contract, design options and tickets: [FINDINGS.md](FINDINGS.md).
 Recovered upstream comparison: [RECONCILIATION.md](RECONCILIATION.md). Review status and validation: [REVIEWS.md](REVIEWS.md).
-No production implementation or design choice is approved.
+Selected: desktop 1 docked under the preview; mobile 1 bottom drawer with clipping corrected. See [morning selection and evidence](MORNING-SELECTION.md). Production integration and shipping remain gated.
 
 ## What runs
 
@@ -18,14 +18,15 @@ No production implementation or design choice is approved.
 | 4302 | The Cloudroom app (`app.<base>` in upstream v111; legacy `<handle>.<base>`) | Thread view, composer with an existing draft, queue, preview panel, review panel. Mock API for attachments, messages (queue-if-active only) and source verification. |
 
 Open `http://localhost:4302/` (desktop layout) or the same URL in a phone-sized window with `?tab=preview`.
-`?layout=b` shows design option B.
+`?layout=b` retains historical option B; A is selected.
 
 ## Commands
 
 ```sh
 node server.mjs
 CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/run.mjs            # current counts in REVIEWS.md; chromium-phone, webkit-phone, chromium-desktop
-CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/render-designs.mjs # writes designs/*.png
+CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/selected-layout.mjs # selected-layout and reading-position regressions
+CR8_PLAYWRIGHT=/path/to/playwright/index.mjs CR8_DESIGNS=desktop-A-docked-in-preview,mobile-A-half-sheet,mobile-A-sensitive-form node tests/render-designs.mjs # selected renders only
 electron --no-sandbox desktop/electron-select.cjs                          # native desktop path, needs a display (Xvfb)
 ```
 

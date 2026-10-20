@@ -1,6 +1,6 @@
 # CR8 review and validation ledger
 
-Status: **exact-head independent review pending**. No historical review approves the recovered remediation or the resumed checkpoint. No production implementation or design option has been approved.
+Status: **exact-final-head independent review pending**. Desktop 1 and mobile 1 are now selected; see [morning selection and new validation](MORNING-SELECTION.md). Selection does not approve production integration or shipping. The ledger below preserves the earlier resume and historical reviews; none approves the changed morning candidate.
 
 ## Historical reviewers
 
@@ -59,3 +59,8 @@ Result file hashes (SHA-256):
 2. Recover missing historical report text without waking Claude; finish disposition of any unseen findings.
 3. Present desktop A/B and phone A/B for the user's choice. Choice does not waive privacy, ownership, device or review gates.
 4. Production work, publishing, deployment, merge and upstream PR remain on hold.
+
+
+## Selected morning candidate
+
+Desktop 1 under-preview dock and mobile 1 bottom drawer are selected. [MORNING-SELECTION.md](MORNING-SELECTION.md) preserves both human source anchors, exact preflight, public guidance reads, changed files, red/green chronology and final result hashes. Final selected regressions pass **43/43**; final retrospective existing checks pass **162/162**. Replaying the exact final selected test on unchanged `0e346e6` gives **10/43**, providing retrospective sensitivity evidence. These checks do not replace independent exact-final-head review or close physical device, signed-in access, privacy, performance, accessibility, source-anchor or product integration gates. Root owns review reconciliation; no helpers/reviewers were awakened.

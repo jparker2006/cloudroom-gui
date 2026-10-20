@@ -3,13 +3,14 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "designs");
+const OUT = process.env.CR8_DESIGN_OUT ?? join(dirname(fileURLToPath(import.meta.url)), "..", "designs");
 const ROOM = process.env.CR8_ROOM ?? "http://localhost:4302";
 mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch();
 
 async function shoot(name, device, query, { pick = "#start-trial", request = "Make this full width on mobile and use our brand green.", selectOnly = false } = {}) {
+  if (process.env.CR8_DESIGNS && !process.env.CR8_DESIGNS.split(",").includes(name)) return;
   await fetch(`${ROOM}/api/reset`, { method: "POST" });
   const ctx = await browser.newContext(device);
   const page = await ctx.newPage();

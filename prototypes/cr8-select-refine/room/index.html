@@ -46,6 +46,7 @@
   <template id="review-template">
     <section class="review" role="region" aria-label="Change request for selected element">
       <div class="review-target"></div>
+      <div class="review-body">
       <figure class="crop">
         <div class="crop-stage"><canvas class="crop-canvas" aria-label="Selected element image"></canvas></div>
         <figcaption class="crop-caption"></figcaption>
@@ -60,6 +61,7 @@
         <textarea class="request-text" rows="3" placeholder="e.g. Make this button full width and use the brand green"></textarea>
       </label>
       <p class="review-note"></p>
+      </div>
       <div class="review-actions">
         <button type="button" data-action="parent" aria-label="Select parent element">↑ Parent</button>
         <button type="button" data-action="child" aria-label="Select child element">↓ Child</button>

@@ -34,6 +34,8 @@ let preview = null;
 let selecting = null;
 let selection = null;
 const checks = new Map();
+const readingPositions = new Map();
+let timelineThreadId = null;
 
 function confirmStillValid(nonce) {
   return new Promise((resolve) => {
@@ -121,8 +123,22 @@ function renderHeader() {
   els.finishTurn.hidden = !t.running;
 }
 
+function rememberReadingPosition() {
+  const el = els.timeline;
+  if (timelineThreadId && el.clientHeight > 0) readingPositions.set(timelineThreadId, { top: el.scrollTop, atBottom: el.scrollHeight - el.clientHeight - el.scrollTop <= 2 });
+}
+
+function restoreReadingPosition() {
+  if (els.timeline.clientHeight === 0) return;
+  const saved = readingPositions.get(timelineThreadId);
+  els.timeline.scrollTop = !saved || saved.atBottom ? els.timeline.scrollHeight : saved.top;
+}
+
 async function renderTimeline() {
+  const requestedThreadId = threadId;
   const log = await api("/api/log");
+  if (requestedThreadId !== threadId) return;
+  rememberReadingPosition();
   const t = thread();
   els.timeline.replaceChildren();
   const intro = [
@@ -140,7 +156,8 @@ async function renderTimeline() {
     row.append(b, q.text.split("\n").find((line) => line.trim()) ?? "");
     els.queue.append(row);
   }
-  els.timeline.scrollTop = els.timeline.scrollHeight;
+  timelineThreadId = t.id;
+  restoreReadingPosition();
 }
 
 function addMessage(who, text, attachments) {
@@ -414,6 +431,7 @@ async function showReview(next) {
   announce(`${next.element.role ?? next.element.tag}${next.element.name ? ` ${next.element.name}` : ""} selected. Describe the change, then send.`);
   els.selectHint.querySelector("span").textContent = "Tap an element to choose it. Drag to scroll.";
   view.querySelector(".request-text").focus({ preventScroll: true });
+  view.querySelector(".request-text").scrollIntoView({ block: "nearest" });
   revealSelection();
 }
 
@@ -445,7 +463,6 @@ function renderChips() {
     if (selection.removed.has(key)) continue;
     const li = document.createElement("li");
     li.dataset.key = key;
-    if (key === "source") li.className = "ok";
     const span = document.createElement("span");
     span.textContent = label;
     span.title = label;
@@ -625,6 +642,7 @@ async function sendSelection(button) {
       body: JSON.stringify({ projectId: owned.projectId, text: buildMessage(request), attachments, mode: "queue-if-active" }),
     });
     debug.sends++;
+    post({ type: "select:cancel", nonce: owned.nonce });
     clearSelection({ keepText: false });
     setSelecting(null);
     els.selectToggle.focus({ preventScroll: true });
@@ -669,6 +687,7 @@ function onReviewClick(event) {
 
 function switchThread(id) {
   if (id === threadId) return;
+  rememberReadingPosition();
   drafts.set(threadId, els.draft.value);
   invalidate("Switched threads. The selection was cleared.");
   threadId = id;
@@ -712,7 +731,9 @@ els.reload.addEventListener("click", () => {
 document.getElementById("mobile-tabs").addEventListener("click", (event) => {
   const tab = event.target.closest("button[data-tab]")?.dataset.tab;
   if (!tab) return;
+  rememberReadingPosition();
   app.dataset.tab = tab;
+  if (tab === "chat") restoreReadingPosition();
   for (const b of document.querySelectorAll("#mobile-tabs button")) b.setAttribute("aria-pressed", String(b.dataset.tab === tab));
 });
 document.addEventListener("keydown", (event) => {

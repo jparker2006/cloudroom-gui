@@ -1,6 +1,6 @@
 # CR8 — Select and refine: findings
 
-Status: fixture feasibility demonstrated; review remediation remains **unapproved pending exact-head independent review and your design choice**. Nothing here changes `gui/` or ships UI. See [v111 reconciliation](RECONCILIATION.md) and [review ledger](REVIEWS.md) for the recovered state and remaining gates.
+Status: **desktop A / desktop 1 and phone A / mobile 1 selected** in the bounded morning resume. See [selection source anchors and correction evidence](MORNING-SELECTION.md). Prototype remediation and any production integration remain gated on exact-head independent review and the unresolved device/privacy/source-anchor checks. Nothing here changes `gui/` or ships UI. See [v111 reconciliation](RECONCILIATION.md) and [review ledger](REVIEWS.md) for the recovered state and remaining gates.
 
 ## 1. Revisions inspected
 
@@ -145,13 +145,13 @@ No private service change has been demonstrated as necessary for the reserved-pa
 
 Interaction is the approved one in all options: Select → one element → highlighted preview beside an editable request → explicit Send/Queue through the thread's queue. Target project › thread is always shown. Draft untouched.
 
-**Desktop A — docked under the preview.** Review sits under the live preview it refers to. Chat stays readable. Recommended.
+**Desktop A / desktop 1 — selected, docked under the preview.** Review sits under the live preview it refers to. Chat stays readable. Recommended.
 ![Desktop A](designs/desktop-A-docked-in-preview.png)
 
 **Desktop B — card above the composer.** Review sits next to the conversation; preview keeps the highlight. Feels like composing, but crowds the chat column.
 ![Desktop B](designs/desktop-B-card-above-composer.png)
 
-**Phone A — review drawer over the preview.** Element is scrolled above the drawer and stays highlighted. Recommended as a composition direction only. This isolated mock uses a bespoke sheet; production must use `CompactSecondaryPanelShelf` and the persistent responsive drawer, including keyboard/safe-area and focus behavior. No production design is selected.
+**Phone A / mobile 1 — selected bottom drawer over the preview.** Element is scrolled above the drawer and stays highlighted. Recommended as a composition direction only. This isolated mock uses a bespoke sheet; production must use `CompactSecondaryPanelShelf` and the persistent responsive drawer, including keyboard/safe-area and focus behavior. The composition is selected; this mock does not implement the production drawer integration.
 ![Phone A](designs/mobile-A-half-sheet.png)
 
 **Phone B — full-screen review.** Bigger crop and text box; the live page is hidden while writing (the crop is the "highlighted preview").
@@ -159,7 +159,7 @@ Interaction is the approved one in all options: Select → one element → highl
 
 Also: selecting state ([phone](designs/mobile-0-selecting.png), [desktop](designs/desktop-0-selecting.png)), sensitive field ([phone](designs/mobile-A-sensitive-form.png)), native Electron highlight ([desktop](out/desktop-native-highlight.png)).
 
-## 9. Implementation tickets (after your choice)
+## 9. Production tickets (selected direction; review and integration gates still apply)
 
 Each is one PR, UI + SDK/CLI where it applies, with tests.
 

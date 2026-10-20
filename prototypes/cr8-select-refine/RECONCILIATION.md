@@ -1,6 +1,6 @@
 # CR8 bounded resume: v111 reconciliation
 
-Read-only comparison completed on 2026-10-20 before further source edits. Scope remains feasibility prototype, review remediation and design options. Production implementation requires the user's design choice and unresolved review gates.
+Read-only comparison completed on 2026-10-20 before further source edits. The later [morning selection](MORNING-SELECTION.md) satisfies only the design-choice gate; this reconciliation and the other acceptance gates remain applicable. Scope remains feasibility prototype, review remediation and design options. Production implementation requires the user's design choice and unresolved review gates.
 
 ## Recovered state
 

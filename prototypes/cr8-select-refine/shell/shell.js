@@ -55,7 +55,7 @@
     const win = frameWindow();
     lastHref = win ? hrefKey(win) : null;
     const wasSelecting = session !== null;
-    endSession();
+    endSession(false);
     post({ type: "navigated", reason, path: win ? currentPath(win) : null, wasSelecting });
   }
 
@@ -149,12 +149,26 @@
     return { x: event.clientX - outer.left, y: event.clientY - outer.top };
   }
 
-  function endSession() {
+  function rememberScroll(el) {
+    if (!session) return;
+    const win = frameWindow();
+    if (!session.returnPositions.has(win)) session.returnPositions.set(win, { x: win.scrollX, y: win.scrollY });
+    for (let node = el; node && node !== win.document.documentElement && node !== win.document.body; node = node.parentElement || node.getRootNode().host) {
+      if (!session.returnPositions.has(node)) session.returnPositions.set(node, { x: node.scrollLeft, y: node.scrollTop });
+    }
+  }
+
+  function endSession(restore = true) {
+    const ended = session;
     session = null;
     document.body.classList.remove("selecting");
     placeBox(hoverBox, null);
     placeBox(pickedBox, null);
     placeTag(null);
+    if (restore && ended) requestAnimationFrame(() => {
+      if (session || generation !== ended.generation || frameWindow()?.document !== ended.document) return;
+      for (const [target, point] of [...ended.returnPositions].reverse()) target.scrollTo(point.x, point.y);
+    });
   }
 
   async function choose(el) {
@@ -215,6 +229,7 @@
       if (!pointer.dragging && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > DRAG_SLOP) pointer.dragging = true;
       if (pointer.dragging) {
         pointer.target ??= scrollTargetAt(win, pointToFrame({ clientX: pointer.x, clientY: pointer.y }));
+        rememberScroll(pointer.target === win ? null : pointer.target);
         pointer.target.scrollBy(pointer.lastX - event.clientX, pointer.lastY - event.clientY);
         pointer.lastX = event.clientX;
         pointer.lastY = event.clientY;
@@ -252,7 +267,9 @@
     const win = frameWindow();
     if (!session || !win) return;
     event.preventDefault();
-    scrollTargetAt(win, pointToFrame(event)).scrollBy(event.deltaX, event.deltaY);
+    const target = scrollTargetAt(win, pointToFrame(event));
+    rememberScroll(target === win ? null : target);
+    target.scrollBy(event.deltaX, event.deltaY);
   }, { passive: false });
 
   catcher.addEventListener("keydown", (event) => {
@@ -274,6 +291,7 @@
       const index = list.indexOf(current);
       const next = list[(index + (event.shiftKey ? -1 : 1) + list.length) % list.length];
       session.hover = next;
+      rememberScroll(next);
       next.scrollIntoView({ block: "nearest" });
       reposition();
       catcher.setAttribute("aria-label", `Highlighted: ${label(next)}. Enter to choose.`);
@@ -308,7 +326,8 @@
         post({ type: "select:ended", nonce: data.nonce, reason: "unavailable" });
         return;
       }
-      session = { nonce: data.nonce, seq: 0, picked: null, hover: null, pointer: null };
+      session = { nonce: data.nonce, seq: 0, picked: null, hover: null, pointer: null, generation, document: frameWindow().document, returnPositions: new Map() };
+      rememberScroll(null);
       document.body.classList.add("selecting");
       catcher.focus({ preventScroll: true });
       return;
@@ -332,6 +351,7 @@
       const win = frameWindow();
       const rect = session.picked.getBoundingClientRect();
       const visible = Math.max(80, win.innerHeight - Math.max(0, data.bottomInset));
+      rememberScroll(session.picked);
       if (rect.top < 8 || rect.bottom > visible - 8) win.scrollBy(0, rect.top - Math.max(8, (visible - rect.height) / 2));
       reposition();
       return;
