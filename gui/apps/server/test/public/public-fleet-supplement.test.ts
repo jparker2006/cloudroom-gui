@@ -159,4 +159,57 @@ describe("GET /api/v1/fleet-supplement", () => {
       expect(page.archivedTruncated).toBe(true);
     });
   });
+  it("names archived parents that open threads still reference, without sending archive rows", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parent = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Archived parent",
+      });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Child",
+        parentThreadId: parent.id,
+      });
+      const source = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Archived source",
+      });
+      seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Side chat",
+        sourceThreadId: source.id,
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
+      });
+      const lone = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Archived alone",
+      });
+      for (const id of [parent.id, source.id, lone.id]) {
+        archiveThread(harness.db, harness.deps.hub, id);
+      }
+
+      const live = fleetSupplementResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/fleet-supplement")),
+      );
+      expect(live.archivedThreads).toEqual([]);
+      expect(live.archivedCount).toBe(3);
+      expect([...live.archivedParentIds].sort()).toEqual(
+        [parent.id, source.id].sort(),
+      );
+      const bootstrap = sidebarBootstrapResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/sidebar-bootstrap")),
+      );
+      expect(
+        bootstrap.projects
+          .flatMap((p) => p.threads)
+          .find((t) => t.id === child.id)?.parentThreadId,
+      ).toBe(parent.id);
+    });
+  });
 });

@@ -13,6 +13,7 @@ import {
   listProjectSourcesByProjectIds,
   listThreadSections,
   countThreadsForProjects,
+  listArchivedThreadIdsReferencedByOpenThreads,
   listThreadsWithPendingInteractionStateForProjects,
   reorderProject,
   updateProject,
@@ -321,6 +322,10 @@ export function buildFleetSupplementResponse(
     archivedCount,
     archivedTruncated:
       options.includeArchived && archivedCount > archivedRows.length,
+    archivedParentIds: listArchivedThreadIdsReferencedByOpenThreads(
+      deps.db,
+      archivedFilter.projectIds,
+    ),
     extraProjects: hiddenProjects.map((project) => ({
       id: project.id,
       name: project.name,

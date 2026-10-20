@@ -14,6 +14,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import type {
   JsonObject,
   ReasoningLevel,
@@ -1400,6 +1401,41 @@ export function countThreadsForProjects(
     db,
     and(...buildListThreadsForProjectsFilters(options)),
   );
+}
+
+/** Archived threads that a non-archived thread in these projects still names as its parent or source. */
+export function listArchivedThreadIdsReferencedByOpenThreads(
+  db: DbConnection,
+  projectIds: readonly string[],
+): string[] {
+  if (projectIds.length === 0) {
+    return [];
+  }
+  const children = alias(threads, "open_children");
+  return db
+    .selectDistinct({ id: threads.id })
+    .from(threads)
+    .innerJoin(
+      children,
+      or(
+        eq(children.parentThreadId, threads.id),
+        and(
+          eq(children.sourceThreadId, threads.id),
+          isNotNull(children.originKind),
+        ),
+      ),
+    )
+    .where(
+      and(
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        isNull(children.archivedAt),
+        isNull(children.deletedAt),
+        inArray(children.projectId, [...projectIds]),
+      ),
+    )
+    .all()
+    .map((row) => row.id);
 }
 
 export function countLiveThreadsInEnvironment(

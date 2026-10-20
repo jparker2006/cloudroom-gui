@@ -84,6 +84,7 @@ export {
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
   countThreadsForProjects,
+  listArchivedThreadIdsReferencedByOpenThreads,
   pinThread,
   reorderPinnedThread,
   updateThread,

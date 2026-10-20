@@ -356,10 +356,17 @@ export function buildFleetModel(args: {
   }
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
   const archivedView = filters.state === "archived";
+  const archivedParentIds = new Set(supplement?.archivedParentIds ?? []);
   for (const thread of threads) {
     const parent =
       thread.parentId !== null ? byId.get(thread.parentId) : undefined;
-    if (parent && !archivedView && parent.archived && !thread.archived) {
+    if (
+      !thread.archived &&
+      ((parent && !archivedView && parent.archived) ||
+        (!parent &&
+          thread.parentId !== null &&
+          archivedParentIds.has(thread.parentId)))
+    ) {
       thread.parentStatus = "archived";
       thread.parentId = null;
     } else if (parent) thread.parentStatus = "known";

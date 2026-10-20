@@ -126,6 +126,7 @@ function seed(threads: ThreadListEntry[], hidden: ThreadListEntry[] = []) {
     extraProjects: [],
     archivedCount: 0,
     archivedTruncated: false,
+    archivedParentIds: [],
     threadFields: {},
     pendingFields: [],
     unavailableSources: [],
@@ -319,5 +320,20 @@ describe("FleetView", () => {
     first.focus();
     fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
     expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+  it("on phone, keeps grid shortcuts from moving focus behind the open drawer", () => {
+    state.compact = true;
+    seed([entry("a"), entry("b", { status: "error" })]);
+    renderView();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Open details: Title a/ }),
+    );
+    const dialog = screen.getByRole("dialog");
+    const close = screen.getByRole("button", { name: "Close details" });
+    close.focus();
+    for (const key of ["n", "N", "/", "ArrowRight"]) {
+      fireEvent.keyDown(close, { key });
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
   });
 });

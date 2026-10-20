@@ -251,6 +251,9 @@ export function FleetView() {
     (event: KeyboardEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "SELECT") return;
+      // The phone drawer is a modal portal; its own handler owns Escape and
+      // grid shortcuts must not move focus behind it.
+      if (target.closest('[role="dialog"][aria-modal="true"]')) return;
       if (event.key === "Escape" && inspectorOpen && selected) {
         event.preventDefault();
         closeInspector();

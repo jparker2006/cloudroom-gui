@@ -111,6 +111,7 @@ function supplement(
     extraProjects: [],
     archivedCount: partial.archivedThreads?.length ?? 0,
     archivedTruncated: false,
+    archivedParentIds: [],
     archivedThreads: [],
     threadFields: {},
     pendingFields: [],
@@ -369,6 +370,18 @@ describe("buildFleetModel truth edges", () => {
     expect(
       model.projects[0]?.families.map((family) => family.thread.id),
     ).toEqual(["c"]);
+  });
+
+  it("labels a parent archived from the live id list when archive rows are not loaded", () => {
+    const model = build(
+      [
+        thread("c", { parentThreadId: "old" }),
+        thread("gone", { parentThreadId: "missing" }),
+      ],
+      { archivedParentIds: ["old"] },
+    );
+    expect(model.byId.get("c")?.parentStatus).toBe("archived");
+    expect(model.byId.get("gone")?.parentStatus).toBe("unknown");
   });
 
   it("follows the host unread rule: child threads never count as new replies", () => {

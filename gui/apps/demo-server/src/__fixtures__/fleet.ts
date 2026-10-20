@@ -697,6 +697,17 @@ export function fleetSupplement(
       : [],
     archivedCount: all.filter((s) => s.archived).length,
     archivedTruncated: false,
+    archivedParentIds: all
+      .filter(
+        (s) =>
+          s.archived &&
+          all.some(
+            (child) =>
+              !child.archived &&
+              (child.parent === s.id || child.source === s.id),
+          ),
+      )
+      .map((s) => s.id),
     threadFields: Object.fromEntries(all.map((s) => [s.id, fields(s, now)])),
     pendingFields: [],
     unavailableSources: [

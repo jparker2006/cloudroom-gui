@@ -496,6 +496,8 @@ export const fleetSupplementResponseSchema = z.object({
   archivedThreads: z.array(threadListEntrySchema),
   archivedCount: z.number().int().nonnegative(),
   archivedTruncated: z.boolean(),
+  /** Archived threads still named as parent or source by an open thread (ids only). */
+  archivedParentIds: z.array(z.string()),
   extraProjects: z.array(
     z.object({ id: z.string(), name: z.string(), hidden: z.boolean() }),
   ),
