@@ -2,6 +2,44 @@
 .mobile-session-bar {
   display: none;
 }
+.question-choices {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.numbered-choice {
+  width: 100%;
+  height: auto;
+  min-height: 76px;
+  justify-content: flex-start;
+  white-space: normal;
+}
+.answer-number {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-selected);
+  font-size: 12px;
+}
+.numbered-choice > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.numbered-choice strong,
+.numbered-choice small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.numbered-choice small {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  margin-top: 5px;
+}
 
 :root {
   font-family: var(--font-sans);
@@ -578,11 +616,6 @@ h1:focus {
   font-size: 12px;
   min-height: 42px;
 }
-.provider-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
 .choice-card {
   display: flex;
   text-align: left;
@@ -597,66 +630,6 @@ h1:focus {
 }
 .choice-card:hover {
   border-color: var(--foreground);
-}
-.choice-card.selected {
-  border: 1px solid var(--foreground);
-  box-shadow: inset 0 0 0 1px var(--foreground);
-}
-.provider-monogram {
-  display: grid;
-  place-items: center;
-  background: var(--foreground);
-  color: var(--background);
-  border-radius: 5px;
-  height: 27px;
-  width: 27px;
-  font-size: 16px;
-}
-.choice-radio {
-  margin-left: auto;
-  width: 13px;
-  height: 13px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.selected .choice-radio {
-  background: var(--foreground);
-  border: 4px solid var(--primary);
-  box-shadow: 0 0 0 1px var(--foreground);
-}
-.model-field {
-  display: flex;
-  gap: 15px;
-  justify-content: space-between;
-  padding: 18px 0 5px;
-  font-size: 11px;
-}
-.model-field > span {
-  color: var(--muted-foreground);
-}
-.project-options {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-}
-.project-choice {
-  min-height: 88px;
-}
-.project-choice > svg {
-  width: 25px;
-  height: 25px;
-  flex-shrink: 0;
-}
-.project-choice strong {
-  display: block;
-}
-.project-choice small {
-  display: block;
-  font-size: 10px;
-  line-height: 1.6;
-  color: var(--muted-foreground);
-  margin-top: 4px;
 }
 .actions {
   display: flex;
@@ -1339,27 +1312,6 @@ h1:focus {
   }
   .setup-summary button {
     min-height: 44px;
-  }
-  .provider-options {
-    gap: 8px;
-  }
-  .provider-options .choice-card {
-    padding: 14px 10px;
-    gap: 7px;
-    flex-wrap: wrap;
-  }
-  .provider-options strong {
-    font-size: 11px;
-  }
-  .project-choice {
-    padding: 16px 13px;
-    gap: 10px;
-  }
-  .project-choice small {
-    font-size: 11px;
-  }
-  .project-choice strong {
-    overflow-wrap: anywhere;
   }
   .details-header {
     padding: 0 20px 16px;

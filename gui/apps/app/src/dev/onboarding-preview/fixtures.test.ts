@@ -8,7 +8,7 @@ import {
   transition,
 } from "./fixtures";
 
-describe("onboarding design fixtures", () => {
+describe("onboarding design fixtures: retrospective guard checks", () => {
   it("requires a matching completed execution, rather than connection or launch acceptance", () => {
     const state = makeFixture("verifying");
     expect(isVerified(state)).toBe(false);
@@ -92,10 +92,14 @@ describe("onboarding design fixtures", () => {
 
   it("continues without requesting repo access for No project", () => {
     const state = transition(makeFixture("project"), {
-      type: "continue-project",
+      type: "select-project",
+      project: "No project",
     });
     expect(state.project).toBe("No project");
-    expect(state.phase).toBe("verifying");
+    expect(state.phase).toBe("verification-consent");
+    expect(transition(state, { type: "start-verification" }).phase).toBe(
+      "verifying",
+    );
   });
 
   it("requests repo access only after selection, and recovers from denial with No project", () => {
@@ -103,14 +107,15 @@ describe("onboarding design fixtures", () => {
       type: "select-project",
       project: "example/cloud-notes",
     });
-    const grant = transition(chosen, { type: "continue-project" });
+    const grant = chosen;
     expect(grant.phase).toBe("repo-access");
     const denied = transition(grant, { type: "deny-repo" });
     expect(denied.phase).toBe("repo-denied");
     const noProject = transition(denied, { type: "no-project" });
-    expect(transition(noProject, { type: "continue-project" }).phase).toBe(
-      "verifying",
-    );
+    expect(
+      transition(noProject, { type: "select-project", project: "No project" })
+        .phase,
+    ).toBe("verification-consent");
   });
 
   it("keeps the selected provider and unknown billing through expired authentication", () => {

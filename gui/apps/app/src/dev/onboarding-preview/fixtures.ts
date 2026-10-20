@@ -2,10 +2,13 @@ export type Provider = "codex" | "claude-code";
 export type Phase =
   | "identity"
   | "provider"
+  | "provider-connect"
   | "provider-approval"
+  | "model"
   | "project"
   | "repo-access"
   | "repo-denied"
+  | "verification-consent"
   | "verifying"
   | "approval"
   | "failed"
@@ -42,7 +45,10 @@ export type SetupFixture = {
 export const scenarios = {
   identity: "Start here",
   provider: "Connect provider",
+  "provider-connect": "Provider connection question",
+  model: "Choose model",
   project: "Choose project",
+  "verification-consent": "Review read-only check",
   verifying: "Setup in progress",
   approval: "Approval required",
   failed: "Failed step",
@@ -97,7 +103,15 @@ export function isVerified(state: SetupFixture): boolean {
 
 export function activeStep(state: SetupFixture): number {
   if (state.phase === "identity") return 0;
-  if (["provider", "provider-approval", "expired"].includes(state.phase))
+  if (
+    [
+      "provider",
+      "provider-connect",
+      "provider-approval",
+      "model",
+      "expired",
+    ].includes(state.phase)
+  )
     return 1;
   if (["project", "repo-access", "repo-denied"].includes(state.phase)) return 2;
   return 3;
@@ -107,9 +121,11 @@ export type Action =
   | { type: "signed-in" }
   | { type: "select-provider"; provider: Provider }
   | { type: "connect" }
+  | { type: "change-provider" }
   | { type: "connected" }
+  | { type: "select-model"; model: string }
   | { type: "select-project"; project: SetupFixture["project"] }
-  | { type: "continue-project" }
+  | { type: "start-verification" }
   | { type: "grant-repo" }
   | { type: "deny-repo" }
   | { type: "no-project" }
@@ -129,33 +145,46 @@ export function transition(state: SetupFixture, action: Action): SetupFixture {
       return state.phase === "provider"
         ? {
             ...state,
+            phase: "provider-connect",
             provider: action.provider,
             model: models[action.provider],
             receipt: null,
           }
         : state;
     case "connect":
-      return ["provider", "expired"].includes(state.phase)
+      return ["provider-connect", "expired"].includes(state.phase)
         ? { ...state, phase: "provider-approval" }
+        : state;
+    case "change-provider":
+      return state.phase === "provider-connect"
+        ? { ...state, phase: "provider" }
         : state;
     case "connected":
       return state.phase === "provider-approval"
-        ? { ...state, phase: "project", billing: "unknown" }
+        ? { ...state, phase: "model", billing: "unknown" }
+        : state;
+    case "select-model":
+      return state.phase === "model" && action.model === models[state.provider]
+        ? { ...state, model: action.model, phase: "project", receipt: null }
         : state;
     case "select-project":
       return state.phase === "project"
-        ? { ...state, project: action.project }
-        : state;
-    case "continue-project":
-      return state.phase === "project"
         ? {
             ...state,
-            phase: state.project === "No project" ? "verifying" : "repo-access",
+            project: action.project,
+            phase:
+              action.project === "No project"
+                ? "verification-consent"
+                : "repo-access",
           }
+        : state;
+    case "start-verification":
+      return state.phase === "verification-consent"
+        ? { ...state, phase: "verifying" }
         : state;
     case "grant-repo":
       return state.phase === "repo-access"
-        ? { ...state, phase: "verifying" }
+        ? { ...state, phase: "verification-consent" }
         : state;
     case "deny-repo":
       return state.phase === "repo-access"

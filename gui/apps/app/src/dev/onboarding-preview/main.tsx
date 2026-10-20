@@ -53,12 +53,13 @@ function Preview() {
   const [left, setLeft] = useState(false);
   const [composer, setComposer] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [help, setHelp] = useState(false);
   const [storageFailed, setStorageFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const detailsHeading = useRef<HTMLHeadingElement>(null);
   const step = activeStep(state);
   const verified = isVerified(state);
-  const hasSession = step === 3;
+  const hasSession = step === 3 && state.phase !== "verification-consent";
   const dispatch = (action: Action) =>
     setState((current) => transition(current, action));
 
@@ -111,13 +112,13 @@ function Preview() {
             href="?option=a"
             aria-current={option === "a" ? "page" : undefined}
           >
-            A · Focused steps
+            A · Selected focused steps
           </a>
           <a
             href="?option=b"
             aria-current={option === "b" ? "page" : undefined}
           >
-            B · Setup checklist
+            B · Earlier comparison
           </a>
         </nav>
         <label className="scenario-label">
@@ -421,6 +422,17 @@ function Preview() {
                   <button
                     type="button"
                     onClick={() => {
+                      setHelp(true);
+                      setAdvanced(false);
+                      setDetails(true);
+                    }}
+                  >
+                    Installation & update help
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHelp(false);
                       setAdvanced(true);
                       setDetails(true);
                     }}
@@ -465,9 +477,18 @@ function Preview() {
         open={details}
         onOpenChange={(open) => {
           setDetails(open);
-          if (!open) setAdvanced(false);
+          if (!open) {
+            setAdvanced(false);
+            setHelp(false);
+          }
         }}
-        srLabel={advanced ? "Advanced setup preview" : "Setup session details"}
+        srLabel={
+          help
+            ? "Installation and update help"
+            : advanced
+              ? "Advanced setup preview"
+              : "Setup session details"
+        }
         contentClassName="setup-details-drawer"
         onAfterCloseAutoFocus={() => heading.current?.focus()}
       >
@@ -479,7 +500,11 @@ function Preview() {
                 : "LOCAL BOOTSTRAP · FIXTURE"}
             </p>
             <h2 ref={detailsHeading} tabIndex={-1}>
-              {advanced ? "Agent-driven setup" : "Behind the setup"}
+              {help
+                ? "Installation & updates"
+                : advanced
+                  ? "Agent-driven setup"
+                  : "Behind the setup"}
             </h2>
           </div>
           <Button
@@ -489,6 +514,7 @@ function Preview() {
             onClick={() => {
               setDetails(false);
               setAdvanced(false);
+              setHelp(false);
             }}
           >
             <Icon name="X" />
@@ -499,7 +525,9 @@ function Preview() {
             Simulated session viewer. Production must link the actual setup
             thread and its existing interaction controls.
           </div>
-          {advanced ? (
+          {help ? (
+            <InstallationHelp />
+          ) : advanced ? (
             <>
               <h3>Use the setup session directly</h3>
               <p>
@@ -592,13 +620,13 @@ function Preview() {
                       </p>
                       <div className="actions">
                         <Button onClick={() => dispatch({ type: "approve" })}>
-                          Allow once
+                          1. Allow once
                         </Button>
                         <Button
                           variant="outline"
                           onClick={() => dispatch({ type: "cancel" })}
                         >
-                          Deny & pause
+                          2. Deny & pause
                         </Button>
                       </div>
                     </div>
@@ -619,7 +647,7 @@ function Preview() {
                           })
                         }
                       >
-                        Check cloud status
+                        1. Check cloud status
                       </Button>
                     </>
                   )}
@@ -713,16 +741,23 @@ function stageCopy(state: SetupFixture) {
     case "identity":
       return {
         label: "01 / YOUR ACCOUNT",
-        title: "An idea starts with you.",
+        title: "How would you like to sign in?",
         description:
           "Sign in to Cloudroom with GitHub. You’ll connect your coding agent in the next step.",
       };
     case "provider":
       return {
         label: "02 / YOUR AGENT",
-        title: "Bring your favorite agent.",
+        title: "Which provider would you like to use?",
         description:
-          "Choose a supported provider and model. Connect through its secure sign-in flow.",
+          "Choose one provider. Connection and model choice come next, one question at a time.",
+      };
+    case "provider-connect":
+      return {
+        label: "02 / SECURE CONNECTION",
+        title: `Connect ${providerName(state.provider)}?`,
+        description:
+          "Use the provider’s existing secure sign-in flow. This preview simulates authorization and never collects credentials.",
       };
     case "provider-approval":
       return {
@@ -734,9 +769,22 @@ function stageCopy(state: SetupFixture) {
     case "project":
       return {
         label: "03 / YOUR STARTING POINT",
-        title: "What are we working on?",
+        title: "Where would you like to start?",
         description:
           "Choose a repository, or start without a project. You can add one later.",
+      };
+    case "model":
+      return {
+        label: "02 / YOUR MODEL",
+        title: "Which model would you like to use?",
+        description: `${providerName(state.provider)} is connected in this fixture. Choose a model before choosing a project. Live model availability is not queried here.`,
+      };
+    case "verification-consent":
+      return {
+        label: "04 / READ-ONLY CHECK",
+        title: "Run the read-only check?",
+        description:
+          "We’ll use your selected model to return one short response. A completed execution is required before the composer opens. This preview runs no paid task.",
       };
     case "repo-access":
       return {
@@ -869,6 +917,69 @@ function Notice({
   );
 }
 
+function NumberedChoice({
+  number,
+  label,
+  description,
+  onClick,
+}: {
+  number: number;
+  label: string;
+  description?: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      variant="outline"
+      className="choice-card numbered-choice"
+      aria-label={`${number}. ${label}`}
+      onClick={onClick}
+    >
+      <span className="answer-number" aria-hidden="true">
+        {number}
+      </span>
+      <span>
+        <strong>{label}</strong>
+        {description && <small>{description}</small>}
+      </span>
+      <Icon name="ArrowRight" aria-hidden="true" />
+    </Button>
+  );
+}
+
+function InstallationHelp() {
+  return (
+    <>
+      <h3>Keep using your existing installation</h3>
+      <p>
+        If Cloudroom is already installed, open its existing icon. Completing
+        setup does not require installing another copy.
+      </p>
+      <h3>Desktop app updates</h3>
+      <p>
+        Open Settings → Updates. When Cloudroom says an update is ready, use
+        Relaunch. This preview cannot check for or apply updates.
+      </p>
+      <h3>Phone or installed web app</h3>
+      <p>
+        Update status cannot be verified by this preview. Keep your current
+        installation and note the app address, device, and browser if it appears
+        out of date.
+      </p>
+      <div className="notice warning">
+        <div>
+          <strong>User reports to verify</strong>
+          <p>
+            Jake reported duplicate PWA installations and missing update
+            instructions. Neither report has been reproduced or confirmed here.
+            Device and signed-in checks remain open.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function StageContent({
   state,
   dispatch,
@@ -914,7 +1025,7 @@ function StageContent({
             className="primary-cta"
             onClick={() => dispatch({ type: "signed-in" })}
           >
-            <Icon name="Github" /> Continue with GitHub{" "}
+            <Icon name="Github" /> 1. Continue with GitHub{" "}
             <Icon name="ArrowRight" />
           </Button>
           <p className="fine-print">
@@ -924,42 +1035,88 @@ function StageContent({
       );
     case "provider":
       return (
+        <div
+          className="question-choices"
+          role="group"
+          aria-label="Provider choice"
+        >
+          {(["codex", "claude-code"] as const).map((provider, index) => (
+            <NumberedChoice
+              key={provider}
+              number={index + 1}
+              label={providerName(provider)}
+              onClick={() => dispatch({ type: "select-provider", provider })}
+            />
+          ))}
+        </div>
+      );
+    case "provider-connect":
+      return (
+        <>
+          {billing}
+          <div
+            className="question-choices"
+            role="group"
+            aria-label="Connection choice"
+          >
+            <NumberedChoice
+              number={1}
+              label={`Connect ${providerName(state.provider)}`}
+              description="Secure browser authorization · simulated here"
+              onClick={() => dispatch({ type: "connect" })}
+            />
+            <NumberedChoice
+              number={2}
+              label="Choose another provider"
+              onClick={() => dispatch({ type: "change-provider" })}
+            />
+          </div>
+        </>
+      );
+    case "model":
+      return (
         <>
           <div
-            className="provider-options"
+            className="question-choices"
             role="group"
-            aria-label="Supported provider"
+            aria-label="Model choice"
           >
-            {(["codex", "claude-code"] as const).map((provider) => (
-              <button
-                type="button"
-                className={`choice-card ${provider === state.provider ? "selected" : ""}`}
-                key={provider}
-                aria-pressed={provider === state.provider}
-                onClick={() => dispatch({ type: "select-provider", provider })}
-              >
-                <span className="provider-monogram">
-                  {provider === "codex" ? "C" : "✳"}
-                </span>
-                <strong>{providerName(provider)}</strong>
-                <span className="choice-radio" />
-              </button>
-            ))}
+            <NumberedChoice
+              number={1}
+              label={models[state.provider]}
+              description="Illustrative fixture model; availability is not verified"
+              onClick={() =>
+                dispatch({
+                  type: "select-model",
+                  model: models[state.provider],
+                })
+              }
+            />
           </div>
-          <div className="model-field">
-            <span>Selected model</span>
-            <strong>{models[state.provider]}</strong>
-          </div>
+        </>
+      );
+    case "verification-consent":
+      return (
+        <>
+          {selection}
           {billing}
-          <Button
-            className="primary-cta"
-            onClick={() => dispatch({ type: "connect" })}
+          <div className="task-spec">
+            <strong>Read-only task</strong>
+            <p>Do not change files or settings. Reply exactly:</p>
+            <code>CLOUDROOM_SETUP_OK</code>
+          </div>
+          <div
+            className="question-choices"
+            role="group"
+            aria-label="Verification choice"
           >
-            Connect {providerName(state.provider)} <Icon name="ArrowRight" />
-          </Button>
-          <p className="fine-print">
-            Uses the provider’s existing secure authentication flow.
-          </p>
+            <NumberedChoice
+              number={1}
+              label="Run simulated read-only check"
+              description="Fixture only · no usage purchased or billing mode changed"
+              onClick={() => dispatch({ type: "start-verification" })}
+            />
+          </div>
         </>
       );
     case "provider-approval":
@@ -978,7 +1135,7 @@ function StageContent({
               variant="outline"
               onClick={() => dispatch({ type: "connected" })}
             >
-              Simulate connection confirmed
+              1. Simulate connection confirmed
             </Button>
           </div>
         </>
@@ -998,7 +1155,8 @@ function StageContent({
             className="primary-cta"
             onClick={() => dispatch({ type: "connect" })}
           >
-            Reconnect {providerName(state.provider)} <Icon name="ArrowRight" />
+            1. Reconnect {providerName(state.provider)}{" "}
+            <Icon name="ArrowRight" />
           </Button>
         </>
       );
@@ -1009,46 +1167,34 @@ function StageContent({
             <Icon name="Check" /> {providerName(state.provider)} connected
           </span>
           <div
-            className="project-options"
+            className="question-choices"
             role="group"
             aria-label="Project choice"
           >
-            {(["No project", "example/cloud-notes"] as const).map((project) => (
-              <button
-                type="button"
-                key={project}
-                aria-pressed={state.project === project}
-                className={`choice-card project-choice ${state.project === project ? "selected" : ""}`}
-                onClick={() => dispatch({ type: "select-project", project })}
-              >
-                <Icon
-                  name={project === "No project" ? "MessageSquare" : "Github"}
-                />
-                <span>
-                  <strong>{project}</strong>
-                  <small>
-                    {project === "No project"
-                      ? "A fresh space. No repository access needed."
-                      : "Example repository · review access next"}
-                  </small>
-                </span>
-                <span className="choice-radio" />
-              </button>
-            ))}
+            <NumberedChoice
+              number={1}
+              label="No project"
+              description="A fresh space. No repository access needed."
+              onClick={() =>
+                dispatch({ type: "select-project", project: "No project" })
+              }
+            />
+            <NumberedChoice
+              number={2}
+              label="example/cloud-notes"
+              description="Example repository · review access next"
+              onClick={() =>
+                dispatch({
+                  type: "select-project",
+                  project: "example/cloud-notes",
+                })
+              }
+            />
           </div>
           <p className="fine-print">
             Repository permissions are requested only when you choose a
             repository.
           </p>
-          <Button
-            className="primary-cta"
-            onClick={() => dispatch({ type: "continue-project" })}
-          >
-            {state.project === "No project"
-              ? "Continue with No project"
-              : "Review repository access"}
-            <Icon name="ArrowRight" />
-          </Button>
         </>
       );
     case "repo-access":
@@ -1070,13 +1216,13 @@ function StageContent({
           </Notice>
           <div className="actions">
             <Button onClick={() => dispatch({ type: "grant-repo" })}>
-              Simulate access granted
+              1. Simulate access granted
             </Button>
             <Button
               variant="outline"
               onClick={() => dispatch({ type: "deny-repo" })}
             >
-              Deny access
+              2. Deny access
             </Button>
           </div>
         </>
@@ -1095,7 +1241,7 @@ function StageContent({
             className="primary-cta"
             onClick={() => dispatch({ type: "no-project" })}
           >
-            Choose No project <Icon name="ArrowRight" />
+            1. Choose No project <Icon name="ArrowRight" />
           </Button>
         </>
       );
@@ -1160,7 +1306,7 @@ function StageContent({
             </p>
           </Notice>
           <Button className="primary-cta" onClick={openDetails}>
-            Review approval <Icon name="ArrowRight" />
+            1. Review approval <Icon name="ArrowRight" />
           </Button>
           <Button variant="ghost" onClick={() => dispatch({ type: "cancel" })}>
             Pause setup
@@ -1199,7 +1345,9 @@ function StageContent({
                 )
               }
             >
-              {state.reconciled ? "Retry verification" : "Check cloud status"}
+              {state.reconciled
+                ? "1. Retry verification"
+                : "1. Check cloud status"}
               <Icon name="ArrowRight" />
             </Button>
           </div>
@@ -1237,7 +1385,7 @@ function StageContent({
                 })
               }
             >
-              Check cloud status <Icon name="ArrowRight" />
+              1. Check cloud status <Icon name="ArrowRight" />
             </Button>
           </div>
         </>
@@ -1262,7 +1410,7 @@ function StageContent({
             onClick={openComposer}
             disabled={!isVerified(state)}
           >
-            Open composer <Icon name="ArrowRight" />
+            1. Open composer <Icon name="ArrowRight" />
           </Button>
           <p className="fine-print">
             Verified execution receipt is simulated in this design preview.
