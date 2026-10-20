@@ -379,13 +379,16 @@ export function latestCheckRuns<
   },
 >(entries: T[]): T[] {
   const latest = new Map<string, T>();
-  for (const entry of entries) {
-    const name = JSON.stringify([
+  for (const [index, entry] of entries.entries()) {
+    const kind =
       entry.__typename ??
-        (entry.context === undefined ? "CheckRun" : "StatusContext"),
-      entry.workflowName ?? "",
-      entry.name ?? entry.context ?? "check",
-    ]);
+      (entry.context === undefined ? "CheckRun" : "StatusContext");
+    const workflow = String(entry.workflowName ?? "");
+    const name = JSON.stringify(
+      kind === "CheckRun" && workflow === ""
+        ? [kind, index]
+        : [kind, workflow, entry.name ?? entry.context ?? "check"],
+    );
     const current = latest.get(name);
     const started = Date.parse(String(entry.startedAt ?? ""));
     const currentStarted = Date.parse(String(current?.startedAt ?? ""));
@@ -1774,6 +1777,7 @@ export default async function plugin(bb: BbPluginApi) {
           __typename?: unknown;
           name?: unknown;
           context?: unknown;
+          workflowName?: unknown;
           status?: unknown;
           conclusion?: unknown;
           state?: unknown;
@@ -1812,7 +1816,12 @@ export default async function plugin(bb: BbPluginApi) {
 
       const checks = Array.isArray(view.statusCheckRollup)
         ? latestCheckRuns(view.statusCheckRollup).map((entry) => ({
-            name: String(entry.name ?? entry.context ?? "check"),
+            name: [
+              entry.workflowName,
+              String(entry.name ?? entry.context ?? "check"),
+            ]
+              .filter((part) => typeof part === "string" && part !== "")
+              .join(" / "),
             status: mapCheckRollupStatus(entry),
             url: String(entry.detailsUrl ?? entry.targetUrl ?? ""),
           }))

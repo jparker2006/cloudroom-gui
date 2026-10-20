@@ -953,12 +953,14 @@ esac
         statusCheckRollup: [
           {
             name: "test",
+            workflowName: "CI",
             status: "COMPLETED",
             conclusion: "FAILURE",
             startedAt: "2026-10-01T00:00:00Z",
           },
           {
             name: "test",
+            workflowName: "CI",
             status: "COMPLETED",
             conclusion: "SUCCESS",
             startedAt: "2026-10-01T01:00:00Z",
@@ -979,7 +981,7 @@ esac
     ).resolves.toMatchObject({
       pull: {
         checks: [
-          { name: "test", status: "success" },
+          { name: "CI / test", status: "success" },
           { name: "old", status: "failure" },
         ],
       },
@@ -1033,6 +1035,47 @@ esac
     expect(
       pull.checks?.filter((check) => check.status === "failure"),
     ).toHaveLength(2);
+    expect(pull.checks?.map((check) => check.name).sort()).toEqual([
+      "CI / build",
+      "CI / test",
+      "Nightly / test",
+      "build",
+    ]);
+  });
+
+  it("keeps same-named checks from apps without a workflow apart", async () => {
+    writeGh({
+      42: pullView(42, {
+        statusCheckRollup: [
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T12:00:00Z",
+            detailsUrl: "https://ci-one.example/build/1",
+          },
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T12:01:00Z",
+            detailsUrl: "https://ci-two.example/build/9",
+          },
+        ],
+      }),
+    });
+    const { harness } = await loadPlugin(newWorld());
+
+    const { pull } = (await harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    })) as FetchedPull;
+    expect(pull.checks).toHaveLength(2);
+    expect(pull.checks?.map((check) => check.status)).toContain("failure");
   });
 
   it("refuses detail that GitHub reports for a different number", async () => {

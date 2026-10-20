@@ -2565,6 +2565,7 @@ function SessionPullPanel({ threadId }: { threadId: string }) {
 
   const choose = useCallback(
     (pull: PullRef | null) => {
+      userReload.current = false;
       setAnnouncement(
         pull === null
           ? "Clearing your saved choice…"

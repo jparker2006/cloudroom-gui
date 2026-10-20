@@ -389,6 +389,60 @@ describe("session PR panel freshness and truth", () => {
     slot.lifecycle.unmount();
   });
 
+  it("does not announce a match refresh that a failed save superseded", async () => {
+    let reads = 0;
+    let rejectSave: (error: Error) => void = () => {};
+    const slot = render({
+      pullForThread: () => {
+        reads += 1;
+        if (reads === 1) return association("thr-1", { kind: "none" });
+        return new Promise(() => {});
+      },
+      listItems: () => ({
+        items: [
+          {
+            repo: "acme/widgets",
+            number: 43,
+            kind: "pr",
+            title: "Pull 43",
+            state: "OPEN",
+            author: "octocat",
+            labels: [],
+            assignees: [],
+            url: "https://github.com/acme/widgets/pull/43",
+            body: "",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      setPullForThread: () =>
+        new Promise((_, reject) => {
+          rejectSave = reject;
+        }),
+    });
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Refresh" }).click(),
+    );
+    await settle();
+    await act(async () =>
+      slot.getByRole("button", { name: "Choose a PR…" }).click(),
+    );
+    await settle();
+    await act(async () => slot.getByText("acme/widgets#43").click());
+    await settle();
+    rejectSave(new Error("gh: HTTP 404 Could not resolve to a PullRequest"));
+    await settle();
+
+    expect(slot.getByRole("alert").textContent).toContain(
+      "Couldn’t save that choice.",
+    );
+    expect(slot.getByRole("status").textContent).toBe(
+      "Couldn’t save that choice.",
+    );
+    slot.lifecycle.unmount();
+  });
+
   it("does not claim earlier data when a refresh fails with none", async () => {
     const slot = render({
       pullForThread: () => candidate(42, ["workspace"]),
