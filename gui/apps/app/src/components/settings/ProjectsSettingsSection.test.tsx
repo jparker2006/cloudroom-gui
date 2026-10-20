@@ -432,6 +432,28 @@ describe("ProjectsSettingsSection", () => {
     expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
   });
 
+  it("does not claim all projects are hidden from stale data during a refetch", async () => {
+    stubSidebarBootstrapFetch([]);
+    vi.mocked(sdk.projects.list)
+      .mockResolvedValueOnce([{ id: "proj_hidden", name: "secret" }] as Awaited<
+        ReturnType<typeof sdk.projects.list>
+      >)
+      .mockReturnValue(new Promise(() => {}));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <ProjectsSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    expect(await screen.findByText("All projects are hidden.")).toBeDefined();
+
+    void queryClient.invalidateQueries({ queryKey: hiddenProjectsQueryKey() });
+
+    expect(await screen.findByText("Loading…")).toBeDefined();
+    expect(screen.queryByText("All projects are hidden.")).toBeNull();
+  });
+
   it("keeps plain copy when hidden projects cannot be checked", async () => {
     stubSidebarBootstrapFetch([]);
     vi.mocked(sdk.projects.list).mockRejectedValue(new Error("offline"));

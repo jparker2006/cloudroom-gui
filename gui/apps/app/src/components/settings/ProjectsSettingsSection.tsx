@@ -341,7 +341,8 @@ export function ProjectsSettingsSection() {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 &&
           (sidebarNavigationQuery.isPlaceholderData ||
-            hiddenProjectsQuery.isPending) ? (
+            hiddenProjectsQuery.isPending ||
+            hiddenProjectsQuery.isFetching) ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 &&
           (hiddenProjectsQuery.data?.length ?? 0) > 0 ? (
@@ -352,8 +353,6 @@ export function ProjectsSettingsSection() {
           <p className="text-sm text-subtle-foreground">
             No visible projects. Couldn't check for hidden projects.
           </p>
-        ) : projects.length === 0 && hiddenProjectsQuery.isFetching ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 ? (
           <EmptyStateScene
             scene="projects"
