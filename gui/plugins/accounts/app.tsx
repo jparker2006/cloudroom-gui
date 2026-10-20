@@ -18,6 +18,8 @@ import {
   ACCOUNTS_CHANGED,
   LOCAL,
   MAX_ACCOUNTS,
+  nextResetAt,
+  resetPassedText,
   type AccountView,
   type Provider,
   type accountsRpcContract,
@@ -87,6 +89,16 @@ function AccountTile({
   onSignInAgain?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [resetTick, rerenderAtReset] = useState(0);
+  const nextReset = nextResetAt(account.windows, Date.now());
+  useEffect(() => {
+    if (nextReset === null) return;
+    const timer = window.setTimeout(
+      () => rerenderAtReset((tick) => tick + 1),
+      Math.min(nextReset - Date.now() + 1, 2 ** 31 - 1),
+    );
+    return () => window.clearTimeout(timer);
+  }, [nextReset, resetTick]);
   const local = account.id === LOCAL;
   const fallback =
     account.email ?? (local ? "This Mac" : `Account ${index + 1}`);
@@ -188,23 +200,40 @@ function AccountTile({
         </button>
       ) : null}
       <div className="mt-auto space-y-1.5 pt-4">
-        {account.windows.slice(0, 2).map((window) => (
-          <div
-            key={window.label}
-            className="flex items-center gap-2 text-xs tabular-nums text-subtle-foreground"
-          >
-            <span className="w-5">{windowLabel(window.label)}</span>
-            <span className="h-[3px] flex-1 bg-border">
-              <span
-                className="block h-full bg-muted-foreground"
-                style={{ width: `${Math.min(100, window.usedPercent)}%` }}
-              />
-            </span>
-            <span className="w-8 text-right">
-              {Math.round(window.usedPercent)}%
-            </span>
-          </div>
-        ))}
+        {account.windows.slice(0, 2).map((window) => {
+          const resetPassed = resetPassedText(
+            window,
+            account.observedAt,
+            Date.now(),
+          );
+          return (
+            <div
+              key={window.label}
+              title={resetPassed ?? undefined}
+              className="flex items-center gap-2 text-xs tabular-nums text-subtle-foreground"
+            >
+              <span className="w-5">{windowLabel(window.label)}</span>
+              <span className="h-[3px] flex-1 bg-border">
+                {resetPassed === null ? (
+                  <span
+                    className="block h-full bg-muted-foreground"
+                    style={{ width: `${Math.min(100, window.usedPercent)}%` }}
+                  />
+                ) : null}
+              </span>
+              <span className="w-8 text-right">
+                {resetPassed === null ? (
+                  `${Math.round(window.usedPercent)}%`
+                ) : (
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">{resetPassed}</span>
+                  </>
+                )}
+              </span>
+            </div>
+          );
+        })}
         {account.inUse ? null : (
           <Button
             variant="outline"

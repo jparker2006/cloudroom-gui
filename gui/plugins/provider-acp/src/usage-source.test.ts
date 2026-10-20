@@ -213,3 +213,70 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
     await harness.lifecycle.dispose();
   }
 });
+
+it("selects and marks raw reported usage only from a finite nonnegative number", async () => {
+  const legacy = { kind: "custom", usedPercent: 100, resetsAt: null };
+  const raw = [130, 100, 0, undefined, null, "130", -5, Number.NaN, Infinity];
+  const { bb, harness } = createFakePluginHost({
+    sdk: {
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host", status: "connected" }),
+        ],
+      },
+      providers: {
+        list: async () => [
+          {
+            id: "acp-custom",
+            displayName: "Provider",
+            pluginId: "provider-acp",
+          },
+        ],
+      },
+      system: {
+        usageLimits: async () => ({
+          "acp-custom": {
+            status: "ok",
+            accountEmail: null,
+            planLabel: null,
+            windows: raw.map((reportedUsedPercent, index) => ({
+              ...legacy,
+              label: `w${index}`,
+              ...(reportedUsedPercent === undefined
+                ? {}
+                : { reportedUsedPercent }),
+            })),
+          },
+        }),
+      },
+    },
+  });
+  try {
+    plugin(bb);
+    const value = usageMeasurementSchema.parse(
+      await harness.behavior.callRpc(usageFetchMethod, {
+        resourceId: JSON.stringify(["host", "acp-custom"]),
+        refresh: true,
+      }),
+    );
+    expect(
+      value.usage.status === "ok" &&
+        value.usage.windows.map(({ usedPercent, usedPercentCapped }) => [
+          usedPercent,
+          usedPercentCapped,
+        ]),
+    ).toEqual([
+      [130, false],
+      [100, false],
+      [0, false],
+      [100, true],
+      [100, true],
+      [100, true],
+      [100, true],
+      [100, true],
+      [100, true],
+    ]);
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});

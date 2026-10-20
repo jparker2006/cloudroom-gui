@@ -1101,7 +1101,15 @@ actions: `experimental_npmGlobalInstallCommand` (`npm install -g
 `experimental_npmCommand` (`npm` / `npm.cmd`) and
 `experimental_formatCommand` (a display command line with shell-unsafe
 arguments single-quoted). `experimental_clampPercent` rounds a usage
-percentage into 0–100. The codex, claude-code and pi bridges and the ACP kit
+percentage into 0–100. Usage windows also carry an optional
+`reportedUsedPercent`: the provider's finite, nonnegative value before that
+rounding and cap, which may exceed 100. Any other value parses as absent, so
+the window keeps its capped reading. `usedPercent` keeps its 0–100 meaning
+for older readers. Every usage schema level is passthrough, so older daemons,
+servers and SDK clients keep the field without parsing it; producers that do
+not set it leave consumers on the capped value. The change is additive and
+backward compatible, so the host-daemon and bridge protocol versions are
+unchanged. The codex, claude-code and pi bridges and the ACP kit
 build their maintenance answers from these; each keeps its own policy (the
 minimum supported version, the login command, credential and usage readers,
 dist-tag and `doctor` parsing) beside them.
@@ -1125,6 +1133,9 @@ dist-tag and `doctor` parsing) beside them.
 4. **`downloadedInstallerCommand` is POSIX.** `sh -c` with `mktemp`, `curl`
    and `bash`; there is no Windows form. Decide whether it should refuse on
    win32 rather than hand the daemon a command that cannot run.
+5. **Two usage percentages.** Decide whether stabilization keeps the capped
+   `usedPercent` beside `reportedUsedPercent`, or replaces both with one
+   uncapped field once no older reader remains.
 
 ## Presentation builders (`experimental_presentationTitle`, `experimental_presentationDetail`, `experimental_withTitle`, `experimental_presentationFileName`, `experimental_COMPACTION_PRESENTATION`, `experimental_REASONING_PRESENTATION`, `experimental_fileReadPresentation`, `experimental_searchPresentation`, `experimental_webSearchPresentation`, `experimental_webFetchPresentation`, `experimental_planStepsPresentation`, `experimental_toolPresentation`) (`@get-bb/plugin-sdk/provider-bridge`)
 
@@ -2175,7 +2186,10 @@ An item is either an `action`, whose `onActivate` callback runs when selected,
 or a `disclosure`, whose React component is revealed above the footer row. The
 host owns button chrome, accessibility, responsive containment, and a
 single active disclosure across all plugins. A disclosure component owns
-everything inside its boundary and receives only `dismiss()`.
+everything inside its boundary and receives `dismiss()` and
+`openPluginDetails()`. The latter hides the disclosure and opens the plugin's
+existing detail page, the same destination as an action's
+`openPluginDetails()`; it grants no other navigation or access.
 
 Registering an action returns nothing. Registering a disclosure returns a
 controller that can request `open`, `close`, or `toggle`. Those requests go
@@ -2206,6 +2220,9 @@ renders in the same footer row.
 7. **Focus and dismissal.** Validate icon toggling, Escape, focus return,
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
+8. **Detail navigation.** Confirm disclosures should keep
+   `openPluginDetails()` rather than a general navigation API, and that
+   closing the compact sidebar on navigation is the right default.
 
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 
