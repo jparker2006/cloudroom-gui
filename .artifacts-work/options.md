@@ -1,135 +1,151 @@
-# Artifacts tab: design options (Phase 1b)
+# Artifacts tab: design options (Phase 1c)
 
-Option C (chronological feed) is **dropped**. Reviewers agreed it groups by event, not by file.
+Option C (chronological feed) stays **dropped**: it groups by event, not by file.
 
-Options A and B are both rendered inside the real `ThreadSecondaryPanel` chrome (Info / Diff / **Artifacts**). They use the app's components and tokens: `Input`, `Button`, `EmptyStatePanel`, `CHROME_SECTION_LABEL_CLASS`, and `Icon`. The mock source is `stories/ArtifactsOptions.stories.tsx` (throwaway). Mobile renders use touch emulation with `pointer: coarse`, so the 44px targets are visible.
+Options A and B are both rendered inside the real `ThreadSecondaryPanel` chrome (Info / Diff / **Artifacts**), using the app's components and tokens. The mock source is `stories/ArtifactsOptions.stories.tsx` (throwaway). Mobile renders use touch emulation (`pointer: coarse`).
 
 ## Mock data
 
-Every file in the mocks qualifies through successful evidence (`discovery.md` §1.1):
-- `hero-banner.png`: generated, plus a view.
-- `ThreadArtifacts.tsx`: created and edited inside a subagent. It also carries a **failed** edit and a **denied** edit, shown as occurrences only.
-- Two `README.md` files: workspace vs. thread storage, never merged.
-- `client.ts`: "Moved from src/client.ts", keyed by the new path.
-- `launch-brief…pdf`: "Uploaded to this project". This shows the state *after* the validation-proof dependency (Blocker D3); until then it would read "Referenced by path".
-- `old-report.html`: generated, a historical "Deleted" occurrence, and a current-read **"Not available now"**.
-- `q3-metrics.csv`: "Referenced by path", outside scope.
-- `logo.svg`: a relative image-view path. **Not verified** (unresolved), with no actions.
-- `summary.json`: cloud workspace. **Preview unavailable**.
+Every listed file qualifies through successful evidence (`discovery.md` §1.1). Failed-only files aren't artifacts (D-d).
 
-`deploy.config.json` was removed: it qualified only through failed and pending writes.
+- `hero-banner.png`: generated, then viewed.
+- `ThreadArtifacts.tsx`: created and edited, including inside a subagent. Its failed and denied edits appear only as occurrences.
+- Two `README.md` files: workspace vs. thread storage. They're never merged, and their accessible names differ.
+- `client.ts`: "Moved from src/client.ts".
+- `launch-brief…pdf`: **"Referenced by path"** in every default mock. "Uploaded to this project" appears only in one stage labelled **"POST-D3 ONLY"**.
+- `old-report.html`: generated, with a historical "Deleted" occurrence. It's **neutral** in the list. "Not available now" appears only in stages labelled "after a failed Open" (D-b).
+- `q3-metrics.csv`: outside scope.
+- `logo.svg`: not verified (unresolved).
+- `summary.json`: cloud, "Preview unavailable".
 
-## Shared behavior (both options)
+## Shared behavior (A and B)
 
-**Grouping and history**
-- Grouping uses the dependency's history identity `(owner, key)`, or an attachment identity. It never groups by basename.
-- Rejected, outside, unresolved, and unavailable items keep their own groups and history.
+**Identity and access**
+- Grouping uses the server identity `(owner, key)`. Unresolved occurrences each stay separate (D-a).
+- The list never pre-checks availability (D-b).
 
 **Occurrences**
-- Each occurrence shows a status glyph: ✓ success, ✗ failed, a **ban glyph for denied**, and a clock for pending. Each has a **Jump** button named by context, for example `Jump to "Edit failed" for ThreadArtifacts.tsx in Turn 6`.
-- Jumps are event-level unless `searchRowId` lands (`discovery.md` §4).
+- Each shows a status glyph: ✓ success, ✗ failed, a ban glyph for denied, a clock for pending.
+- Each has a **Jump** button. Its accessible name starts with the visible word ("Jump to "Edit failed" for ThreadArtifacts.tsx in Turn 6"). Jumps are event-level unless `searchRowId` lands.
 
 **Opening files**
-- The current-file caveat has its **own full-width wrapping line**, never truncated (checked at 390px): "Opens what's on disk now. It may differ from when the agent wrote it. Each change listed here shows its own diff." Attachments use "Opens the stored upload as it is now."
-- Open and Download appear only when access is `allowed`. Download is `<a download>` on the scoped content URL only.
-- Missing and rejected share one text: "Not available now. It may have been moved or deleted, or it's outside this thread's files." This avoids an existence oracle.
-- "Outside scope" (identity owner `outside`), "Not verified" (`unresolved`), and "Preview unavailable" (cloud) are three distinct, text-labelled statuses.
+- The current-file caveat has its own full-width, wrapping `text-xs` line, never truncated (checked at 390px): "Opens what's on disk now. It may differ from when the agent wrote it. Each change listed here shows its own diff."
+- Open and Download appear only once access resolves `allowed`.
+- After a failed open, the row shows the shared text "Not available now. It may have been moved or deleted, or it's outside this thread's files." It's the same text as a scope rejection.
+- "Outside scope", "Not verified", and "Preview unavailable" are distinct text statuses. Status notes are `text-xs`.
 
-**Coverage copy**
-- "Checked 18 turns so far. Earlier turns may contain more files." with **Check earlier**. It never shows "N of M".
-- Context-clear note: "History before the context was cleared isn't available here."
-- Complete: "Checked every turn in this thread."
-- Initial loading: "Finding files in this thread…" with a skeleton.
-- Fetch error: "Couldn't load this thread's history", with **Retry** (`role="alert"`).
+**Coverage states** (all rendered in A; context-cleared also in B):
+- **Partial:** "Checked 18 turns so far. Earlier turns may contain more files." plus Check earlier.
+- **Context cleared:** "History before the context was cleared isn't available here." Never shown as complete.
+- **Older history unreachable** (`hasOlderRows` true, cursor null): "Can't load earlier history." with no button.
+- **Complete, empty:** "Checked every turn in this thread." with "No files yet".
+- **Initial loading** and **fetch error with Retry**.
 
 **Accessibility**
-- The search input keeps the default focus ring (`focus-visible:ring-0` removed).
-- Type filters are `role="group"` with `aria-pressed` toggle buttons.
-- All spinners use `motion-reduce:animate-none`.
-- Interactive elements get `max-md:pointer-coarse:min-h-11` (44px): rows, chips, Check earlier, Open, Download, Jump, Retry, and Back. The search input is `h-11` on coarse pointers.
+- **Accessible names come from visible text, in visible order (WCAG 2.5.3).** Row buttons carry no `aria-label`, so their name is the row content: name, provenance labels, owner, folder, status note, and "N sources". The two README rows read "README.md Modified Workspace Workspace root 1 source" and "README.md Generated Thread storage notes 1 source". Phase 2 may add `aria-describedby` for occurrence summaries.
+- Type filters are `role="group"` with `aria-pressed`.
+- The search input keeps the default focus ring.
+- Spinners use `motion-reduce:animate-none`.
+- Coarse-pointer targets are ≥44px (`max-md:pointer-coarse:min-h-11`).
 
-## Option A: grouped list with inline expandable sources (recommended)
+## Option A: grouped list, inline expandable sources (recommended)
 
 Screens:
-- `screens/options/option-a-desktop.png`: default, statuses, loading, error, search+filter, context cleared, empty, and no results.
+- `screens/options/option-a-desktop.png`: default; statuses after a failed Open; loading; fetch error; search + filter; context cleared; POST-D3 upload; history unreachable; empty; no results.
 - `screens/options/option-a-mobile.png`
 - `screens/options/option-a-mobile-statuses.png`
 
-**Layout.** Search, type filter, coverage note, then one row per file. The **whole row header is one button** with `aria-expanded`, labelled "Sources for `<name>`, N source(s)" with correct plurals. It shows icon, name, provenance tags, owner + folder, a status line where relevant, and "N sources". Expanding reveals the occurrence list, then the caveat line, then Open current file / Download.
+**Layout.** The whole row header is one `aria-expanded` button. Expanding shows the sources, then the caveat line, then Open current file / Download.
 
-**Mobile.** The same list in the compact shelf's full presentation. Tags wrap under the name. There's no second navigation level.
-
-**Focus.** Expanding keeps focus on the row button. Jump moves focus to the timeline target; Back/Escape returns to the row.
+**Mobile.** The same list. Tags wrap under the name, with no second navigation level.
 
 **Tradeoffs.**
-- \+ Fewest new patterns, and everything is visible in one scroll.
-- \+ It works on mobile without push navigation.
-- − Tall when many rows are expanded. Phase 2 should allow one expanded row at a time, or remember the expanded set per thread.
+- \+ Fewest new patterns; works on mobile without push navigation.
+- − Tall when several rows are expanded. Phase 2 should keep one expanded row at a time, or remember the expanded set per thread.
 
-## Option B: compact list + detail (fallback)
+## Option B: list + detail (fallback)
 
 Screens:
-- `screens/options/option-b-desktop.png`: split view, statuses, loading, error, cloud detail, deleted/not-available detail, context cleared, and no results.
+- `screens/options/option-b-desktop.png`: split view; statuses after a failed Open; loading; error; cloud detail; neutral deleted detail; context cleared; no results.
 - `screens/options/option-b-mobile-list.png`
 - `screens/options/option-b-mobile-detail.png`
 
-**Layout.** A one-line list (name, owner, first tag, source count, and "Not available now" / "Preview unavailable" text). Desktop splits vertically into list and detail. The detail shows full path, owner, all tags, a "Current file" card with the caveat and actions, and "Sources in this thread".
+**Layout.** Two-line list rows:
+1. the filename (truncates first) and "N sources" (`shrink-0`);
+2. the owner (`shrink-0`), all provenance labels, and any status text.
 
-**Mobile.** The list pushes to the detail, with "‹ All artifacts" to go back. Focus moves to the detail heading and returns to the row on back.
+The detail shows the full path, tags, a "Current file" card, and sources. On mobile, the list pushes to the detail with "‹ All artifacts"; focus moves to the detail heading and returns on back.
 
 **Tradeoffs.**
-- \+ The densest scan, and the most prominent current-file explanation.
-- − Two-level navigation on mobile.
-- − Names and owners truncate hard at 390px; see the mobile list render.
-- − More state to manage (selection, plus scroll restoration).
+- \+ Densest scan, and the most prominent current-file explanation.
+- − Two-level navigation on mobile, and more state (selection, scroll restore).
 
 ## Recommendation
 
-**Option A**, with B's current-file wording, which A now uses verbatim.
+**Option A**, using B's current-file wording verbatim.
 
 ## Blockers (final integration waits on these)
 
 ### Dependency requirements (owned by the PNG/daemon thread; interface in `discovery.md` §7)
 
-**D1. Server-derived scoping interface.**
-- Request: `{threadId, rawPath, evidenceKind, isProjectAttachment}`.
-- Response: a history identity `(owner, key) | unresolved`, plus access `allowed {contentUrl, previewTab} | unavailable | preview-unavailable`.
-- The server derives every root (`environment.path`, thread storage, `thread.projectId`). The client supplies no cwd, roots, namespace, or projectId.
+**D1. Occurrence-reference interface (D-b, D-c).**
+- The client sends only `OccurrenceRef {threadId, sourceSeqStart, occurrenceId, index}`. It never sends paths it classified, roots, cwd, projectId, evidence kind, or attachment flags.
+- The server loads the raw event (`apps/server/src/routes/threads/data.ts:608` shows events are reachable) and derives evidence kind and attachment-ness.
+- Two calls:
+  - `identify(refs[])`: batched, **no filesystem access**. Returns `(owner, key, basis)` or `unresolved`.
+  - `resolveAccess(ref)`: single, on a user action only.
 
-**D2. No host-path open for event paths.**
-- Artifacts never uses `openHostFile` / `hostFileContent` (`apps/server/src/routes/threads/data.ts:810`). Its local branch reads `query.path` with no root (L837).
-- It also never uses trusted-host Markdown routing, `resolveThreadLocalFileLink`, `openOnMac`/`copyToMac`, or `buildThreadHostFileContentUrl`.
-- The PNG helpers stay out of the Artifacts import graph, enforced by a test. The allowed imports are listed in `discovery.md` §7.3.
+**D2. Identity derivation rule (D-a).**
+- Use the raw event path. Absolute paths as-is. Relative paths against the event's recorded cwd (only `commandExecution` has one), otherwise against `environment.path` with `basis: "current-workspace"` (documented drift).
+- With no environment: unresolved, with per-occurrence identity, never merged by raw string.
+- Collapse `.` and duplicate slashes. Never collapse `..` lexically.
+- **Accepted:** identity is lexical, so a retargeted symlink can change which file a key names. Access re-verifies on every read, so scope can't be escaped.
 
-**D3. Proof of attachment upload.** "Uploaded to this project" needs **all** of:
-- `initiator === "user"`, `senderThreadId === null`, and `turnRequest.status === "accepted"`;
-- a relative stored path;
-- **a server-supplied marker that validation ran for that send**. Cloud skips validation (`apps/server/src/services/threads/queued-messages.ts:215-224`; `apps/server/src/routes/threads/actions.ts:265-269`).
-
-Until then: "Referenced by path". Attachment reads are **not** exempt: `resolveContainedPath` is lexical, and `readAttachment` has a `stat`/`readFile` gap.
+**D3. Upload validation marker.**
+- "Uploaded to this project" needs `initiator === "user"`, `senderThreadId === null`, `turnRequest.status === "accepted"`, a relative stored path, **and** a server marker that validation ran for that send.
+- Cloud skips validation (`apps/server/src/services/threads/queued-messages.ts:215-224`; `apps/server/src/routes/threads/actions.ts:265-269`).
+- Until then: "Referenced by path".
 
 **D4. Side-effect-free, current cloud read.**
-- `cloudFile` writes every fetch into thread storage under `Cloud files/`.
-- It also returns the saved copy after errors (`apps/server/src/services/cloudroom/teleport-local.ts:195-207`).
-
-The dependency must provide a read with no writes and an explicit stale/unavailable marker. Until then, cloud items show **"Preview unavailable"** and have no open or download.
+- `cloudFile` writes into thread storage and returns a stale copy after errors (`apps/server/src/services/cloudroom/teleport-local.ts:195-207`).
+- Until fixed, cloud items show "Preview unavailable".
 
 **D5. Atomic check→read.**
-- Today the daemon calls `realpath` → `stat` → `readFile` as separate steps (`apps/host-daemon/src/command-handlers/file-read.ts:268`, L348/367, L398/409).
-- Required: an `O_NOFOLLOW` open (plus a no-follow per-component walk), then `fstat` with a dev/ino recheck, then a read from that same fd. The storage root itself must be resolved before containment, to fix the symlinked-root fail-open.
-- Residual risk: hard links inside a root that point outside it.
-- This also applies to attachment reads.
+- Today the daemon does `realpath` → `stat` → `readFile` as separate steps (`apps/host-daemon/src/command-handlers/file-read.ts:268`, L348/367, L398/409).
+- Required: an `O_NOFOLLOW` open (plus a no-follow component walk), then `fstat` with a dev/ino recheck, then a read from the same fd. Resolve the storage root before containment.
+- Residual risk: hard links.
+- This also applies to `readAttachment` (lexical `resolveContainedPath`; a `stat`/`readFile` gap).
 
-**D6. No existence oracle.** Rejected and missing both return `unavailable`, with the same message and timing class, for preview and download. Downloads only use `<a download>` on the scoped content URL.
+**D6. No existence oracle.**
+- Missing and rejected return the same `unavailable`, with the same message and timing class.
+- Downloads use `<a download>` on the scoped content only.
+
+**D7. Thread- and identity-bound content reads.**
+- Content must come from an opaque server-issued `contentToken`, or from a thread-scoped route that re-verifies thread + identity on every read.
+- Never the generic `GET /projects/:id/files/content?environmentId=` (`apps/server/src/routes/projects.ts:565-588`), which reaches other threads' worktrees in the same project.
+- Never a client-chosen thread id.
+- Never `openHostFile` / `hostFileContent` (`data.ts:810`; no root at L837), trusted-host routing, `resolveThreadLocalFileLink`, `openOnMac` (`teleport-local.ts:179`), or `copyToMac` (L133).
+- PNG helpers stay out of the import graph (allow-list in `discovery.md` §7.3).
+
+**D8. Contained Markdown image routing in previews.**
+- Previews opened from Artifacts must not route `![](/abs)` through `trusted-host` / `buildThreadHostFileContentUrl`. Today that happens via `buildMarkdownFileImageRouting` with a `threadId` (`apps/app/src/components/secondary-panel/ThreadSecondaryPanelTabContent.tsx:358-361`, L427-433, L566-572; `apps/app/src/components/ui/markdown-file-image-routing.ts:39-51`).
+- Phase 2 adds a test that absolute image sources inside a previewed `.md` are blocked.
+
+**D9. Pagination invariant.**
+- Required: `hasOlderRows === true ⇒ olderCursor !== null`. Today the empty-selection branch can return `hasOlderRows: true` with a null cursor (`apps/server/src/services/threads/timeline-pagination.ts:155-163`).
+- If it's violated, the UI shows "Can't load earlier history." with no button (rendered in A).
 
 ### Decisions still open
 
-1. **mdast dependency:** add `mdast-util-from-markdown` + GFM as direct app deps for link extraction. Recommend yes.
-2. **Attachment display name:** stored basename (recommended), a display-only suffix strip, or a contract change that carries `name`.
-3. **Command `activityIntents` reads:** recommendation stays **no**, since they're inferred from shell strings.
-4. **`searchRowId`** in the jump location state for exact change-row jumps. Recommend yes.
-5. **Reviewer choice of option.** A is recommended.
+1. **Markdown parser deps.** The extractor must be shared with the server (D-c re-derives links by ordinal), so it lives in `packages/thread-view`.
+   - `remark-gfm` is a direct app dep (`apps/app/package.json:85`) but is only a plugin. Parsing still needs a parser.
+   - Recommend adding `mdast-util-from-markdown@2.0.2` + `mdast-util-gfm@3.1.0` + `micromark-extension-gfm@3.0.0` to `packages/thread-view`. All are already locked.
+   - The alternative is `unified@11.0.5` + `remark-parse@11.0.0` + `remark-gfm`.
+2. **Attachment display name:** stored basename (recommended), a display-only suffix strip, or a contract change carrying `name`.
+3. **Command `activityIntents` reads:** recommendation stays **no**.
+4. **`searchRowId`** in jump state for exact change rows: recommend yes.
+5. **Reviewer choice of option:** A is recommended.
 
 ### Not a blocker, but affects completeness
 
-History before the latest context clear isn't served by the timeline API. The tab says so whenever `contextBoundarySeq !== null`.
+History before the latest context clear isn't served by the timeline API. The tab always says so when `contextBoundarySeq !== null`, and never claims completeness.

@@ -1,4 +1,4 @@
-// THROWAWAY design-options story for the Artifacts tab (Phase 1b).
+// THROWAWAY design-options story for the Artifacts tab (Phase 1c).
 // Lives in .artifacts-work/ and is copied into apps/app/src only while rendering screenshots.
 // Mock data only. Not production code.
 import { useMemo, type ReactNode } from "react";
@@ -85,14 +85,14 @@ const ARTIFACTS: Artifact[] = [
     occurrences: [{ id: "o9", verb: "Moved from src/client.ts", status: "ok", where: "Turn 5", when: "38m ago" }],
   },
   {
-    id: "a6", name: "launch-brief-1760….pdf", dir: "stored as launch-brief-1760…-k3x9q2.pdf", owner: "attachment", type: "doc", labels: ["uploaded"], access: "allowed",
+    id: "a6", name: "launch-brief-1760….pdf", dir: "stored as launch-brief-1760…-k3x9q2.pdf", owner: "attachment", type: "doc", labels: ["referenced"], access: "allowed",
     occurrences: [
-      { id: "o10", verb: "Attached by you", status: "ok", where: "Message 1", when: "3h ago", earlier: true },
+      { id: "o10", verb: "Referenced by path", status: "ok", where: "Message 1", when: "3h ago", earlier: true },
       { id: "o11", verb: "Read by agent", status: "ok", where: "Turn 1", when: "3h ago", earlier: true },
     ],
   },
   {
-    id: "a7", name: "old-report.html", dir: "reports", owner: "thread-storage", type: "doc", labels: ["generated"], access: "unavailable",
+    id: "a7", name: "old-report.html", dir: "reports", owner: "thread-storage", type: "doc", labels: ["generated"], access: "allowed",
     occurrences: [
       { id: "o12", verb: "Created file", status: "ok", where: "Turn 2", when: "2h ago", earlier: true },
       { id: "o13", verb: "Deleted", status: "ok", where: "Turn 5", when: "38m ago" },
@@ -202,7 +202,7 @@ function AccessNote({ artifact }: { artifact: Artifact }) {
             : null;
   if (note === null) return null;
   return (
-    <span className={cn("flex items-start gap-1 text-[11px] leading-4", note.tone)}>
+    <span className={cn("flex items-start gap-1 text-xs leading-4", note.tone)}>
       <Icon name={note.icon} className="mt-0.5 size-3 shrink-0" aria-hidden />
       <span>{note.text}</span>
     </span>
@@ -258,7 +258,7 @@ function SearchAndFilters({ query, type }: { query: string; type: FileType | "al
   );
 }
 
-type Coverage = "partial" | "complete" | "checking" | "context-clear";
+type Coverage = "partial" | "complete" | "checking" | "context-clear" | "unreachable";
 
 function CoverageNote({ coverage }: { coverage: Coverage }) {
   if (coverage === "complete") {
@@ -279,7 +279,15 @@ function CoverageNote({ coverage }: { coverage: Coverage }) {
   }
   return (
     <div role="status" className="mx-3 mt-2 flex flex-col gap-2 rounded-md border border-border bg-surface-recessed px-2.5 py-2 text-xs">
-      {coverage === "partial" ? (
+      {coverage === "unreachable" ? (
+        <div className="flex items-start gap-2">
+          <Icon name="AlertTriangle" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="text-foreground">Can't load earlier history.</div>
+            <div className="text-muted-foreground">Checked 18 turns so far. Earlier turns may contain more files.</div>
+          </div>
+        </div>
+      ) : coverage === "partial" ? (
         <div className="flex items-start gap-2">
           <Icon name="Clock" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0 flex-1">
@@ -294,7 +302,6 @@ function CoverageNote({ coverage }: { coverage: Coverage }) {
         <div className="flex items-start gap-2">
           <Icon name="Info" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0 flex-1 text-muted-foreground">
-            <span className="text-foreground">Checked every turn since the context was cleared. </span>
             History before the context was cleared isn't available here.
           </div>
         </div>
@@ -345,7 +352,7 @@ function FileActions({ artifact, layout = "inline" }: { artifact: Artifact; layo
   if (artifact.access !== "allowed") return null;
   return (
     <div className={cn("flex flex-col gap-1.5", layout === "inline" ? "py-1.5 pl-7 pr-2" : "")}>
-      <p className="text-[11px] leading-4 text-muted-foreground">{artifact.owner === "attachment" ? "Opens the stored upload as it is now." : CURRENT_FILE_COPY}</p>
+      <p className="text-xs leading-4 text-muted-foreground">{artifact.owner === "attachment" ? "Opens the stored file as it is now." : CURRENT_FILE_COPY}</p>
       <div className="flex flex-wrap gap-1.5">
         <Button type="button" size="sm" variant={layout === "detail" ? "default" : "outline"} className={cn("h-7 px-2.5 text-xs", TOUCH)}>
           <Icon name="ArrowUpRight" className="size-3.5" />
@@ -369,7 +376,6 @@ function OptionARow({ artifact, expanded }: { artifact: Artifact; expanded: bool
       <button
         type="button"
         aria-expanded={expanded}
-        aria-label={`Sources for ${artifact.name}, ${plural(count, "source")}`}
         className={cn(ROW_CLASS, "items-start hover:bg-state-hover", expanded && "bg-state-hover")}
       >
         <Icon name={expanded ? "ChevronDown" : "ChevronRight"} className="mt-1 size-3 shrink-0 text-muted-foreground" aria-hidden />
@@ -397,7 +403,7 @@ function OptionARow({ artifact, expanded }: { artifact: Artifact; expanded: bool
   );
 }
 
-type PanelState = "default" | "filtered" | "empty" | "no-results" | "loading" | "error" | "context-clear" | "statuses";
+type PanelState = "default" | "filtered" | "empty" | "no-results" | "loading" | "error" | "context-clear" | "statuses" | "post-d3" | "unreachable";
 
 function useStateData(state: PanelState) {
   return useMemo(() => {
@@ -407,7 +413,23 @@ function useStateData(state: PanelState) {
       case "no-results":
         return { query: "invoice", type: "all" as const, items: [] };
       case "statuses":
-        return { query: "", type: "all" as const, items: ARTIFACTS.filter((a) => ["a6", "a7", "a8", "a9", "a10"].includes(a.id)) };
+        return {
+          query: "",
+          type: "all" as const,
+          items: ARTIFACTS.filter((a) => ["a6", "a7", "a8", "a9", "a10"].includes(a.id)).map((a) =>
+            a.id === "a7" ? { ...a, access: "unavailable" as const } : a,
+          ),
+        };
+      case "post-d3":
+        return {
+          query: "",
+          type: "all" as const,
+          items: ARTIFACTS.filter((a) => a.id === "a6").map((a) => ({
+            ...a,
+            labels: ["uploaded" as const],
+            occurrences: a.occurrences.map((o) => (o.id === "o10" ? { ...o, verb: "Uploaded by you" } : o)),
+          })),
+        };
       case "context-clear":
         return { query: "", type: "all" as const, items: ARTIFACTS.slice(0, 2) };
       default:
@@ -468,6 +490,7 @@ function coverageFor(state: PanelState): Coverage | null {
   if (state === "loading" || state === "error") return null;
   if (state === "empty") return "complete";
   if (state === "context-clear") return "context-clear";
+  if (state === "unreachable") return "unreachable";
   return "partial";
 }
 
@@ -497,17 +520,20 @@ function OptionBListRow({ artifact, selected }: { artifact: Artifact; selected: 
       <button
         type="button"
         aria-current={selected ? "true" : undefined}
-        aria-label={`${artifact.name}, ${OWNER_TEXT[artifact.owner]}, ${plural(count, "source")}`}
-        className={cn(ROW_CLASS, "hover:bg-state-hover", selected && "bg-state-active")}
+        className={cn(ROW_CLASS, "items-start hover:bg-state-hover", selected && "bg-state-active")}
       >
-        <FileIcon artifact={artifact} />
-        <span className="min-w-0 truncate text-sm text-foreground">{artifact.name}</span>
-        <span className="min-w-0 truncate text-xs text-subtle-foreground">{OWNER_TEXT[artifact.owner]}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          {artifact.access === "unavailable" ? <span className="text-[11px] text-destructive-text">Not available now</span> : null}
-          {artifact.access === "preview-unavailable" ? <span className="text-[11px] text-muted-foreground">Preview unavailable</span> : null}
-          {artifact.labels.slice(0, 1).map((l) => <LabelTag key={l} label={l} />)}
-          <span className="text-[11px] text-muted-foreground">{count}</span>
+        <span className="mt-0.5"><FileIcon artifact={artifact} /></span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">{artifact.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{plural(count, "source")}</span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0 text-xs text-subtle-foreground">{OWNER_TEXT[artifact.owner]}</span>
+            {artifact.labels.map((l) => <LabelTag key={l} label={l} />)}
+            {artifact.access === "unavailable" ? <span className="min-w-0 truncate text-xs text-destructive-text">Not available now</span> : null}
+            {artifact.access === "preview-unavailable" ? <span className="min-w-0 truncate text-xs text-muted-foreground">Preview unavailable</span> : null}
+          </span>
         </span>
       </button>
     </li>
@@ -687,7 +713,7 @@ export function OptionADesktop() {
   return (
     <Grid>
       <Stage label="A · default: partial history, one file expanded (failed + denied edits as occurrences)"><OptionAContent /></Stage>
-      <Stage label="A · statuses: uploaded, Deleted + Not available now, outside scope, not verified, cloud preview unavailable">
+      <Stage label="A · statuses: attachment (Referenced by path), old-report.html after a failed Open, outside scope, not verified, cloud preview unavailable">
         <OptionAContent state="statuses" expandedIds={["a7", "a10"]} />
       </Stage>
       <div className="flex flex-col gap-4">
@@ -695,7 +721,9 @@ export function OptionADesktop() {
         <Stage label="A · history fetch error" height={SMALL}><OptionAContent state="error" /></Stage>
       </div>
       <Stage label="A · search “readme” + Docs (same basename, different owner)" height={SMALL}><OptionAContent state="filtered" expandedIds={[]} /></Stage>
-      <Stage label="A · context cleared (complete since the clear)" height={SMALL}><OptionAContent state="context-clear" expandedIds={[]} /></Stage>
+      <Stage label="A · context cleared (never shown as complete)" height={SMALL}><OptionAContent state="context-clear" expandedIds={[]} /></Stage>
+      <Stage label="A · POST-D3 ONLY: “Uploaded to this project” (needs server validation marker; not shown before D3)" height={SMALL}><OptionAContent state="post-d3" expandedIds={["a6"]} /></Stage>
+      <Stage label="A · older history unreachable (hasOlderRows true, cursor null)" height={SMALL}><OptionAContent state="unreachable" expandedIds={[]} /></Stage>
       <div className="flex flex-col gap-4">
         <Stage label="A · no artifacts (complete)" height={SMALL / 2 + 100}><OptionAContent state="empty" /></Stage>
         <Stage label="A · no search results" height={SMALL / 2 + 100}><OptionAContent state="no-results" /></Stage>
@@ -709,20 +737,20 @@ export function OptionAMobile() {
 }
 
 export function OptionAMobileStatuses() {
-  return <MobileStage><OptionAContent state="statuses" expandedIds={["a6", "a7"]} /></MobileStage>;
+  return <MobileStage><OptionAContent state="statuses" expandedIds={["a7"]} /></MobileStage>;
 }
 
 export function OptionBDesktop() {
   return (
     <Grid>
       <Stage label="B · list + detail (repeated file; failed + denied edits)"><OptionBContent /></Stage>
-      <Stage label="B · statuses in list"><OptionBContent state="statuses" layout="list" /></Stage>
+      <Stage label="B · statuses in list (old-report.html after a failed Open)"><OptionBContent state="statuses" layout="list" /></Stage>
       <div className="flex flex-col gap-4">
         <Stage label="B · initial loading" height={SMALL}><OptionBContent state="loading" layout="list" /></Stage>
         <Stage label="B · history fetch error" height={SMALL}><OptionBContent state="error" layout="list" /></Stage>
       </div>
       <Stage label="B · detail: cloud file (preview unavailable)" height={SMALL}><OptionBContent layout="detail" selectedId="a10" /></Stage>
-      <Stage label="B · detail: deleted earlier, not available now" height={SMALL}><OptionBContent layout="detail" selectedId="a7" /></Stage>
+      <Stage label="B · detail: deleted earlier (neutral until the user acts)" height={SMALL}><OptionBContent layout="detail" selectedId="a7" /></Stage>
       <div className="flex flex-col gap-4">
         <Stage label="B · context cleared" height={SMALL / 2 + 100}><OptionBContent state="context-clear" layout="list" /></Stage>
         <Stage label="B · no search results" height={SMALL / 2 + 100}><OptionBContent state="no-results" layout="list" /></Stage>
