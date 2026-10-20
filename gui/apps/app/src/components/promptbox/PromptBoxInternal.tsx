@@ -86,7 +86,11 @@ import {
 } from "@cloudroom/client-core";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
 import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
-import { AttachmentPreview, useUploadingImageCount } from "./AttachmentPreview";
+import {
+  AttachmentPreview,
+  type AttachmentPreviewVariant,
+} from "./AttachmentPreview";
+import type { PendingAttachment } from "./pending-attachments";
 import type { ExecutionControlsProps } from "./ExecutionControls";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
@@ -423,6 +427,9 @@ export interface AttachmentsConfig {
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   onRemove?: (path: string) => void;
   projectId?: string;
+  pending?: readonly PendingAttachment[];
+  onDismissPending?: (id: string) => void;
+  trayVariant?: AttachmentPreviewVariant;
 }
 
 interface PromptBoxCompactConfig {
@@ -1333,6 +1340,9 @@ export function PromptBoxInternal({
     onAttachFiles,
     onRemove: onRemoveAttachment,
     projectId: attachmentProjectId,
+    pending: pendingAttachments,
+    onDismissPending: onDismissPendingAttachment,
+    trayVariant: attachmentTrayVariant,
   } = attachmentConfig;
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
@@ -1386,8 +1396,6 @@ export function PromptBoxInternal({
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   const syncTriggerStateRef = useRef<(editor: Editor) => void>(() => {});
   const onAttachFilesRef = useRef(onAttachFiles);
-  const { uploadingImageCount, trackUpload } =
-    useUploadingImageCount(attachments);
   const dismissedTriggerRef = useRef<DismissedTriggerRange | null>(null);
   const isRestoringAppliedMentionRef = useRef(false);
   const [activeTrigger, setActiveTrigger] = useState<ActiveTrigger | null>(
@@ -1872,7 +1880,7 @@ export function PromptBoxInternal({
 
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
-            trackUpload(pastedFiles, attachFiles(pastedFiles));
+            void attachFiles(pastedFiles);
           }
 
           const plainText = event.clipboardData?.getData("text/plain") ?? "";
@@ -2689,6 +2697,20 @@ export function PromptBoxInternal({
     [scheduleRevealEditorSelection, syncTriggerState],
   );
 
+  const restoreEditorFocusAfterAttachmentRemoval = useCallback(
+    (viaKeyboard: boolean) => {
+      const currentEditor = editorRef.current;
+      if (
+        (isPointerCoarse && !viaKeyboard) ||
+        !currentEditor ||
+        currentEditor.isDestroyed
+      )
+        return;
+      focusAfterPromptAction(currentEditor);
+    },
+    [focusAfterPromptAction, isPointerCoarse],
+  );
+
   const applyPromptAction = useCallback(
     (action: PromptBoxAction) => {
       if (action.text.length === 0) return;
@@ -2789,10 +2811,10 @@ export function PromptBoxInternal({
   const emitAttachmentFiles = useCallback(
     (files: File[]) => {
       if (!onAttachFiles || files.length === 0) return;
-      trackUpload(files, onAttachFiles(files));
+      void onAttachFiles(files);
       focusEnd();
     },
-    [focusEnd, onAttachFiles, trackUpload],
+    [focusEnd, onAttachFiles],
   );
 
   useImperativeHandle(
@@ -3298,6 +3320,12 @@ export function PromptBoxInternal({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [cancelVoiceInput, showVoiceActionGroup, voice]);
 
+  const attachmentErrorAlert = attachmentError ? (
+    <div role="alert" className="mx-3 mb-1 mt-1 text-xs text-destructive-text">
+      {attachmentError}
+    </div>
+  ) : null;
+
   return (
     <form
       ref={formRef}
@@ -3393,6 +3421,7 @@ export function PromptBoxInternal({
             <AttachmentPreview
               compact
               attachments={attachments}
+              pending={pendingAttachments}
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3488,18 +3517,19 @@ export function PromptBoxInternal({
               >
                 <AttachmentPreview
                   attachments={attachments}
-                  uploadingImageCount={uploadingImageCount}
+                  pending={pendingAttachments}
+                  variant={attachmentTrayVariant}
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
                   onRemoveAttachment={onRemoveAttachment}
+                  onDismissPending={onDismissPendingAttachment}
+                  onRestoreEditorFocus={
+                    restoreEditorFocusAfterAttachmentRemoval
+                  }
                 />
 
-                {attachmentError ? (
-                  <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
-                    {attachmentError}
-                  </div>
-                ) : null}
+                {attachmentErrorAlert}
               </div>
             </>
           ) : null}
@@ -3696,6 +3726,7 @@ export function PromptBoxInternal({
           </PluginComposerViewProvider>
         </div>
       </div>
+      {showCompactLayout ? attachmentErrorAlert : null}
     </form>
   );
 }
