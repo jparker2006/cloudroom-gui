@@ -178,6 +178,7 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
+  FleetSupplementResponse,
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
@@ -411,6 +412,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SidebarBootstrapResponse>(),
+    }),
+    fleetSupplement: defineRoute({
+      path: "/fleet-supplement",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<FleetSupplementResponse>(),
     }),
     get: defineRoute({
       path: "/projects/:id",
@@ -1355,7 +1362,9 @@ export const publicApiRoutes = {
     setGoal: defineRoute({
       path: "/threads/:id/goal",
       method: "post",
-      request: jsonRequest<PathId, ThreadGoalSetRequest>(threadGoalSetRequestSchema),
+      request: jsonRequest<PathId, ThreadGoalSetRequest>(
+        threadGoalSetRequestSchema,
+      ),
       response: jsonResponse<{ ok: true }>(),
     }),
     open: defineRoute({
@@ -1503,7 +1512,10 @@ export const publicApiRoutes = {
       path: "/threads/:id/output",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ output: string | null; error?: string | null }>(),
+      response: jsonResponse<{
+        output: string | null;
+        error?: string | null;
+      }>(),
     }),
     events: defineRoute({
       path: "/threads/:id/events",

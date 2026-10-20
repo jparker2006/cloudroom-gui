@@ -406,6 +406,7 @@ type ThreadRow = typeof threads.$inferSelect;
 export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
+  visibility?: "visible" | "hidden" | "all";
 }
 
 export interface PinThreadArgs {
@@ -690,7 +691,9 @@ function buildListThreadsForProjectsFilters(
 ) {
   return [
     inArray(threads.projectId, [...options.projectIds]),
-    eq(threads.visibility, "visible"),
+    options.visibility === "all"
+      ? undefined
+      : eq(threads.visibility, options.visibility ?? "visible"),
     nonDeletedThreads(),
     options.archived === true
       ? isNotNull(threads.archivedAt)

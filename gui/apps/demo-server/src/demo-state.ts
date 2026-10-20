@@ -1,10 +1,13 @@
 import { DemoWorld } from "./demo-world.js";
 
 export class DemoStateDO {
-  private readonly world = new DemoWorld();
+  private readonly world: DemoWorld;
   private readonly sockets = new Set<WebSocket>();
 
-  constructor() {
+  constructor(_state: unknown, env: { DEMO_FLEET_FIXTURE?: string } = {}) {
+    this.world = new DemoWorld({
+      fleetFixture: env.DEMO_FLEET_FIXTURE === "1",
+    });
     this.world.onChanged((message) => {
       const raw = JSON.stringify(message);
       for (const socket of this.sockets) {

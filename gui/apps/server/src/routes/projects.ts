@@ -27,6 +27,7 @@ import {
   type ProjectBranchesQuery,
   type ProjectListQuery,
   type ProjectResponse,
+  type FleetSupplementResponse,
   type ProjectWithThreadsResponse,
   type PublicApiSchema,
 } from "@cloudroom/server-contract";
@@ -258,6 +259,64 @@ function buildProjectsWithThreadsResponseFromRows(
   }));
 }
 
+const FLEET_SERVER_PENDING_FIELDS: FleetSupplementResponse["pendingFields"] = [
+  "configuredExecution",
+  "inputRequest",
+  "activityLabel",
+  "fallbackModel",
+  "cloudSandboxState",
+  "workflowLineage",
+];
+
+const FLEET_SERVER_UNAVAILABLE_SOURCES = [
+  "Threads on other Macs' servers",
+  "Agents run outside Cloudroom",
+];
+
+export function buildFleetSupplementResponse(
+  deps: AppDeps,
+): FleetSupplementResponse {
+  const personalProject = getPersonalProject(deps.db);
+  const visibleProjectIds = [
+    ...listPublicProjects(deps.db).map((project) => project.id),
+    ...(personalProject ? [personalProject.id] : []),
+  ];
+  const hiddenProjectIds = listPublicProjects(deps.db, "hidden").map(
+    (project) => project.id,
+  );
+  const hiddenRows = [
+    ...listThreadsWithPendingInteractionStateForProjects(deps.db, {
+      archived: false,
+      projectIds: visibleProjectIds,
+      visibility: "hidden",
+    }),
+    ...listThreadsWithPendingInteractionStateForProjects(deps.db, {
+      archived: false,
+      projectIds: hiddenProjectIds,
+      visibility: "all",
+    }),
+  ];
+  const archivedRows = listThreadsWithPendingInteractionStateForProjects(
+    deps.db,
+    {
+      archived: true,
+      projectIds: [...visibleProjectIds, ...hiddenProjectIds],
+      visibility: "all",
+    },
+  );
+  return {
+    source: "server",
+    generatedAt: Date.now(),
+    hiddenThreads: toThreadListEntryResponses(deps, { threads: hiddenRows }),
+    archivedThreads: toThreadListEntryResponses(deps, {
+      threads: archivedRows,
+    }),
+    threadFields: {},
+    pendingFields: FLEET_SERVER_PENDING_FIELDS,
+    unavailableSources: FLEET_SERVER_UNAVAILABLE_SOURCES,
+  };
+}
+
 function buildSidebarBootstrapResponse(deps: AppDeps) {
   const personalProject = getPersonalProject(deps.db);
   if (!personalProject) {
@@ -309,6 +368,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.projects;
+
+  get(routes.fleetSupplement, (context) =>
+    context.json(buildFleetSupplementResponse(deps)),
+  );
 
   get(routes.list, (context, query) => {
     if (query.hidden === "true") {

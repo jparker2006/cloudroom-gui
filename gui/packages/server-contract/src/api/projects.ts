@@ -455,6 +455,52 @@ export type SidebarBootstrapResponse = z.infer<
   typeof sidebarBootstrapResponseSchema
 >;
 
+export const fleetPendingFieldValues = [
+  "configuredExecution",
+  "inputRequest",
+  "activityLabel",
+  "fallbackModel",
+  "cloudSandboxState",
+  "workflowLineage",
+] as const;
+export const fleetPendingFieldSchema = z.enum(fleetPendingFieldValues);
+export type FleetPendingField = z.infer<typeof fleetPendingFieldSchema>;
+
+export const fleetCloudSandboxStateSchema = z.object({
+  state: z.enum(["awake", "not-awake", "unknown"]),
+  lastSuccessfulCheckAt: z.number().nullable(),
+  lastCheckError: z.string().nullable(),
+});
+export type FleetCloudSandboxState = z.infer<
+  typeof fleetCloudSandboxStateSchema
+>;
+
+export const fleetThreadFieldsSchema = z.object({
+  configuredModel: z.string().nullable(),
+  configuredReasoning: z.string().nullable(),
+  inputKind: z.enum(["approval", "question"]).nullable(),
+  inputSummary: z.string().max(120).nullable(),
+  lastErrorSummary: z.string().max(120).nullable(),
+  latestActivityLabel: z.string().max(80).nullable(),
+  fallbackModel: z.string().nullable(),
+  cloudSandbox: fleetCloudSandboxStateSchema.nullable(),
+  workflowParentThreadId: z.string().nullable(),
+});
+export type FleetThreadFields = z.infer<typeof fleetThreadFieldsSchema>;
+
+export const fleetSupplementResponseSchema = z.object({
+  source: z.enum(["server", "fixture"]),
+  generatedAt: z.number(),
+  hiddenThreads: z.array(threadListEntrySchema),
+  archivedThreads: z.array(threadListEntrySchema),
+  threadFields: z.record(z.string(), fleetThreadFieldsSchema),
+  pendingFields: z.array(fleetPendingFieldSchema),
+  unavailableSources: z.array(z.string()),
+});
+export type FleetSupplementResponse = z.infer<
+  typeof fleetSupplementResponseSchema
+>;
+
 export const uploadedPromptAttachmentSchema = z.object({
   type: z.enum(["localImage", "localFile"]),
   path: z.string(),
