@@ -2314,3 +2314,38 @@ describe("discarding a held copy", () => {
     expect(backups).toContain("moved text, typed");
   });
 });
+
+describe("recovery when the leftover copy fails", () => {
+  it("still keeps a recovery copy of the new typing", () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({
+        text: "",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+        rev: "a5a5a5a5a5a5a5a5",
+        moved: true,
+      }),
+    );
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key.startsWith("bb.promptbox.leftover-")) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => result.current.setDraft({ text: "unique new typing", mentions: [], attachments: [] }));
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith(`bb.promptbox.recovery-new-thread-${alphaId()}-`))
+        .map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null").text),
+    ).toContain("unique new typing");
+  });
+});

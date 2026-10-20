@@ -371,6 +371,7 @@ function reconcileWithStoredNewThreadDraft(
         console.warn(`[prompt-draft] could not keep the leftovers of ${storageKey}`, error);
         unsavedPromptDraftKeys.add(storageKey);
         cachedEntry.rawValue = rawValue;
+        if (!isPromptDraftEmpty(cachedEntry.draft)) writeRecoveryCopyOnly(storageKey);
         return false;
       }
     }
