@@ -15,6 +15,12 @@ import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@cloudroom/domain";
 import { TooltipProvider } from "@cloudroom/shared-ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@cloudroom/shared-ui/dropdown-menu";
 import type { BbDesktopInfo } from "@cloudroom/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -103,9 +109,16 @@ function ThreadHeaderHelpProbe({ threadId }: { threadId: string }) {
   return (
     <>
       <ThreadHeaderHelpButton threadId={threadId} relevantTopicIds={[]} />
-      <button type="button" onClick={menuAction.onSelect}>
-        {`${menuAction.label} menu ${threadId}`}
-      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger aria-label={`Thread actions ${threadId}`}>
+          …
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onSelect={menuAction.onSelect}>
+            {menuAction.label}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </>
   );
 }
@@ -566,7 +579,11 @@ function threadPath(threadId: string): string {
 function LocationProbe() {
   const location = useLocation();
   return (
-    <div data-testid="location" data-hash={location.hash}>
+    <div
+      data-testid="location"
+      data-hash={location.hash}
+      data-search={location.search}
+    >
       {location.pathname}
     </div>
   );
@@ -2308,6 +2325,10 @@ describe("SplitThreadArea thread help", () => {
     helpProbeState.enabled = true;
   });
 
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
   function helpTrigger(threadId: string) {
     return within(screen.getByTestId(`pane-${threadId}`)).getByRole("button", {
       name: "Thread help",
@@ -2346,37 +2367,60 @@ describe("SplitThreadArea thread help", () => {
     expect(expanded("thr-b")).toBe("false");
   });
 
-  it("opens Help from a pane's menu in that pane", async () => {
+  async function openPaneMenu(threadId: string) {
+    const trigger = await screen.findByRole("button", {
+      name: `Thread actions ${threadId}`,
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    return screen.findByRole("menuitem", { name: "Help" });
+  }
+
+  const helpSearch = () =>
+    screen.queryByRole("searchbox", { name: "Search thread help" });
+
+  it("opens Help chosen by keyboard from the unfocused pane's real menu in that pane, with focus in help", async () => {
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
-    const menuItem = await screen.findByRole("button", {
-      name: "Help menu thr-b",
-    });
-    fireEvent.pointerDown(menuItem);
-    fireEvent.click(menuItem);
+    fireEvent.keyDown(await openPaneMenu("thr-b"), { key: "Enter" });
     await waitFor(() => expect(expanded("thr-b")).toBe("true"));
     expect(expanded("thr-a")).toBe("false");
-    expect(
-      screen.getByRole("searchbox", { name: "Search thread help" }),
-    ).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe(
+      threadPath("thr-b"),
+    );
+    expect(screen.getByTestId("pane-thr-b").getAttribute("data-focused")).toBe(
+      "true",
+    );
+    await waitFor(() => expect(document.activeElement).toBe(helpSearch()));
   });
 
-  it("opens Help chosen by keyboard from the unfocused pane's menu in that pane", async () => {
+  it("opens Help chosen with the pointer from the unfocused pane's real menu in that pane", async () => {
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Help menu thr-b" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("searchbox", { name: "Search thread help" }),
-      ).toBeTruthy(),
-    );
-    expect(expanded("thr-b")).toBe("true");
+    const item = await openPaneMenu("thr-b");
+    fireEvent.pointerDown(item);
+    fireEvent.click(item);
+    await waitFor(() => expect(expanded("thr-b")).toBe("true"));
     expect(expanded("thr-a")).toBe("false");
+    await waitFor(() => expect(document.activeElement).toBe(helpSearch()));
+  });
+
+  it("keeps the routed pane's path and search when Help is chosen from its own menu", async () => {
+    window.history.replaceState(null, "", `${threadPath("thr-a")}?view=diff`);
+    renderSplitArea({
+      path: `${threadPath("thr-a")}?view=diff`,
+      layout: twoPaneLayout("pane-1"),
+    });
+    fireEvent.keyDown(await openPaneMenu("thr-a"), { key: "Enter" });
+    await waitFor(() => expect(expanded("thr-a")).toBe("true"));
+    expect(expanded("thr-b")).toBe("false");
+    const location = screen.getByTestId("location");
+    expect(location.textContent).toBe(threadPath("thr-a"));
+    expect(location.getAttribute("data-search")).toBe("?view=diff");
+    expect(location.getAttribute("data-hash")).toBe("#thread-help");
   });
 });

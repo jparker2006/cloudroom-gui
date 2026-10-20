@@ -41,11 +41,21 @@ export function threadHelpMenuAction(
     onSelect: () => {
       const pathname = getThreadRoutePath(thread);
       const current = window.location.pathname;
-      void navigate(
-        current === pathname || current.startsWith(`${pathname}/`)
-          ? { search: window.location.search, hash: THREAD_HELP_HASH }
-          : { pathname, hash: THREAD_HELP_HASH },
-      );
+      const openHelp = () =>
+        void navigate(
+          current === pathname || current.startsWith(`${pathname}/`)
+            ? { search: window.location.search, hash: THREAD_HELP_HASH }
+            : { pathname, hash: THREAD_HELP_HASH },
+        );
+      const deadline = Date.now() + 1000;
+      const openAfterMenuCloses = () => {
+        if (document.querySelector('[role="menu"]') && Date.now() < deadline) {
+          requestAnimationFrame(openAfterMenuCloses);
+        } else if (window.location.pathname === current) {
+          openHelp();
+        }
+      };
+      requestAnimationFrame(openAfterMenuCloses);
     },
   };
 }

@@ -991,72 +991,73 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("makes no requests of its own while static help is opened, searched and browsed, and leaves clicked Retry and docs actions working", async () => {
+  it("makes zero requests, query fetches or mutations while static help is used with polling frozen, and keeps clicked Docs and Retry working", async () => {
     const queryKey = ["cloudroom-thread", "thr_1"];
     const statusUrl = "/api/v1/cloudroom/threads/thr_1";
     const status = { sessionId: "cloud-session", paused: false, model: "gpt-6-astra", reasoning: "medium", error: null, pendingDelivery: 0, reconnecting: true };
     testQueryClient.setQueryDefaults(queryKey, { staleTime: Infinity });
     testQueryClient.setQueryData(queryKey, status);
-    const requests: { phase: string; url: string; body: string; stack: string }[] = [];
-    const other: string[] = [];
+    const events: { phase: string; what: string }[] = [];
     let phase = "render";
+    vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({ phase, url: input instanceof Request ? input.url : String(input), body: typeof init?.body === "string" ? init.body : "", stack: new Error().stack ?? "" });
+      events.push({ phase, what: `fetch ${init?.method ?? "GET"} ${input instanceof Request ? input.url : String(input)}` });
       return new Response(JSON.stringify(status), { headers: { "content-type": "application/json" } });
     }));
-    vi.stubGlobal("WebSocket", vi.fn(() => { other.push(`${phase}: WebSocket`); }));
-    vi.stubGlobal("EventSource", vi.fn(() => { other.push(`${phase}: EventSource`); }));
-    const xhrOpen = vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => { other.push(`${phase}: XMLHttpRequest`); });
-    const windowOpen = vi.spyOn(window, "open").mockImplementation(() => null);
-    Object.defineProperty(navigator, "sendBeacon", { configurable: true, value: () => { other.push(`${phase}: sendBeacon`); return true; } });
-    const queryFetches: { phase: string; key: string }[] = [];
+    vi.stubGlobal("WebSocket", vi.fn(() => { events.push({ phase, what: "WebSocket" }); }));
+    vi.stubGlobal("EventSource", vi.fn(() => { events.push({ phase, what: "EventSource" }); }));
+    const xhrOpen = vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => { events.push({ phase, what: "XMLHttpRequest" }); });
+    const windowOpen = vi.spyOn(window, "open").mockImplementation((url) => { events.push({ phase, what: `window.open ${String(url)}` }); return null; });
+    Object.defineProperty(navigator, "sendBeacon", { configurable: true, value: () => { events.push({ phase, what: "sendBeacon" }); return true; } });
     const stopQueries = testQueryClient.getQueryCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "fetch") queryFetches.push({ phase, key: JSON.stringify(event.query.queryKey) });
+      if (event.type === "updated" && event.action.type === "fetch") events.push({ phase, what: `query ${JSON.stringify(event.query.queryKey)}` });
     });
     const stopMutations = testQueryClient.getMutationCache().subscribe((event) => {
-      if (event.type === "added") other.push(`${phase}: mutation ${JSON.stringify(event.mutation.options.mutationKey)}`);
+      if (event.type === "added") events.push({ phase, what: `mutation ${JSON.stringify(event.mutation.options.mutationKey)}` });
     });
-    const backgroundOwner = (request: { stack: string; body: string }) =>
-      /\/hooks\/queries\//.test(request.stack) || (/useCloudThreadWake\.ts/.test(request.stack) && request.body === JSON.stringify({ reason: "view" }));
-    const expectNoRequestsOwnedBy = (current: string) => {
-      const inPhase = requests.filter((request) => request.phase === current);
-      expect(inPhase.filter((request) => /\/components\/thread-help\//.test(request.stack))).toEqual([]);
-      expect(inPhase.filter((request) => !backgroundOwner(request)).map((request) => request.url)).toEqual([]);
-      const renderKeys = new Set(queryFetches.filter((fetch) => fetch.phase === "render").map((fetch) => fetch.key));
-      renderKeys.add(JSON.stringify(queryKey));
-      expect(queryFetches.filter((fetch) => fetch.phase === current && !renderKeys.has(fetch.key))).toEqual([]);
-      expect(other).toEqual([]);
-    };
+    const inPhase = (name: string) => events.filter((event) => event.phase === name).map((event) => event.what);
+    const flush = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
     try {
       renderPromptArea({ thread: makeThread({ executionTarget: "cloud", status: "idle" }) });
+      await flush(600);
+
       phase = "help";
       fireEvent.click(screen.getByRole("button", { name: "About reconnecting" }));
-      await screen.findByRole("heading", { level: 3, name: "Reconnecting or offline" });
+      await flush(250);
+      expect(screen.getByRole("heading", { level: 3, name: "Reconnecting or offline" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "All help topics" }));
-      fireEvent.change(await screen.findByRole("searchbox", { name: "Search thread help" }), { target: { value: "context" } });
+      await flush(0);
+      fireEvent.change(screen.getByRole("searchbox", { name: "Search thread help" }), { target: { value: "context" } });
       fireEvent.click(screen.getByRole("button", { name: /Context usage/ }));
-      await screen.findByRole("heading", { level: 3, name: "Context usage" });
+      await flush(0);
+      expect(screen.getByRole("heading", { level: 3, name: "Context usage" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "All help topics" }));
-      fireEvent.change(await screen.findByRole("searchbox", { name: "Search thread help" }), { target: { value: "kubernetes" } });
-      fireEvent.click(await screen.findByRole("button", { name: "Show all topics" }));
+      await flush(0);
+      fireEvent.change(screen.getByRole("searchbox", { name: "Search thread help" }), { target: { value: "kubernetes" } });
+      fireEvent.click(screen.getByRole("button", { name: "Show all topics" }));
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("searchbox", { name: "Search thread help" })).toBeNull());
-      expectNoRequestsOwnedBy("help");
-      expect(windowOpen).not.toHaveBeenCalled();
+      await flush(300);
+      expect(screen.queryByRole("searchbox", { name: "Search thread help" })).toBeNull();
+      expect(inPhase("help")).toEqual([]);
       expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
 
       phase = "docs";
       fireEvent.click(screen.getByRole("button", { name: "About reconnecting" }));
-      fireEvent.click(await screen.findByRole("link", { name: /^Docs:/ }));
-      expect(windowOpen).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/www\.cloudroom\.dev\/docs\//), "_blank", "noopener,noreferrer");
-      expectNoRequestsOwnedBy("docs");
+      await flush(0);
+      fireEvent.click(screen.getByRole("link", { name: /^Docs:/ }));
+      await flush(0);
+      expect(inPhase("docs")).toEqual([expect.stringMatching(/^window\.open https:\/\/www\.cloudroom\.dev\/docs\//)]);
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      await flush(0);
 
       phase = "retry";
-      await waitFor(() => expect(testQueryClient.getQueryState(queryKey)?.fetchStatus).toBe("idle"));
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(testQueryClient.getQueryState(queryKey)?.fetchStatus).toBe("fetching");
-      await waitFor(() => expect(requests.some((request) => request.phase === "retry" && request.url.endsWith(statusUrl))).toBe(true));
+      await flush(0);
+      expect(inPhase("retry")).toEqual([`query ${JSON.stringify(queryKey)}`, expect.stringMatching(new RegExp(`^fetch GET .*${statusUrl}$`))]);
+
+      phase = "poll";
+      await flush(1500);
+      expect(inPhase("poll")).toContainEqual(expect.stringMatching(new RegExp(`^fetch GET .*${statusUrl}$`)));
     } finally {
       stopQueries();
       stopMutations();
@@ -1064,6 +1065,7 @@ describe("ThreadDetailPromptArea", () => {
       windowOpen.mockRestore();
       Reflect.deleteProperty(navigator, "sendBeacon");
       vi.unstubAllGlobals();
+      vi.useRealTimers();
     }
   });
 
