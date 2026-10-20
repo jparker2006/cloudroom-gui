@@ -362,18 +362,18 @@ function reconcileWithStoredNewThreadDraft(
 }
 
 function writeTerminalRecord(storageKey: string, value: string): boolean {
-  if (isNewThreadProjectDraftKey(storageKey)) {
-    const replacedRev = readStoredRev(readStoredPromptDraftValue(storageKey));
-    if (replacedRev) removeRecoveryCopiesWithRev(storageKey, replacedRev);
-    window.localStorage.removeItem(newThreadRecoveryKey(storageKey));
-  }
+  const replacedRev = readStoredRev(readStoredPromptDraftValue(storageKey));
   try {
     window.localStorage.setItem(storageKey, value);
-    return true;
   } catch (error) {
     console.warn(`[prompt-draft] could not update ${storageKey}`, error);
     return false;
   }
+  if (isNewThreadProjectDraftKey(storageKey)) {
+    if (replacedRev) removeRecoveryCopiesWithRev(storageKey, replacedRev);
+    window.localStorage.removeItem(newThreadRecoveryKey(storageKey));
+  }
+  return true;
 }
 
 function writeNewThreadSentMarker(storageKey: string): boolean {
@@ -644,6 +644,9 @@ export async function moveNewThreadDraft(
   sourceKey: string,
   targetProjectId: string,
 ): Promise<MoveNewThreadDraftResult> {
+  if (sourceKey === getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId })) {
+    return { status: "nothing-to-move" };
+  }
   const locks = webLocks();
   if (!locks) return moveNewThreadDraftNow(sourceKey, targetProjectId);
   const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });

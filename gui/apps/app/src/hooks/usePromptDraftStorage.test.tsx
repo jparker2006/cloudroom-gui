@@ -1387,3 +1387,42 @@ describe("re-review fixes", () => {
     expect(result.current.isUnsaved).toBe(false);
   });
 });
+
+describe("re-review fixes: P3", () => {
+  it("does nothing when asked to move a project's draft into itself", async () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "only once", mentions: [], attachments: [] });
+
+    expect(await moveNewThreadDraft(alphaKey(), alphaId())).toEqual({ status: "nothing-to-move" });
+    expect(storedRecord(alphaKey()).text).toBe("only once");
+  });
+
+  it("keeps this window's recovery copy when the sent marker can't be saved", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === alphaKey()) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => {
+        result.current.clearIfCurrentMatches(result.current.getCurrent());
+      });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(
+      Object.keys(window.localStorage).filter((key) =>
+        key.startsWith(`bb.promptbox.recovery-new-thread-${alphaId()}-`),
+      ),
+    ).toHaveLength(1);
+  });
+});
