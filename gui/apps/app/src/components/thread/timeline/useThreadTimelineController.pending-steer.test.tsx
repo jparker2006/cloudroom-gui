@@ -399,6 +399,39 @@ describe("steer queued until the turn starts", () => {
     expect(ids()).toEqual(["qmsg-steer"]);
   });
 
+  it("keeps a steer that left the queue while the user was on another thread", () => {
+    const queryClient = makeQueryClient();
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      turnStartingSteer(),
+    ]);
+    const { hook } = renderHandoff(queryClient);
+    const ids = () => hook.result.current.map((message) => message.id);
+
+    hook.rerender({ queue: [], status: "active", threadId: "thread-2" });
+    expect(ids()).toEqual([]);
+    hook.rerender({ queue: [], status: "active", threadId: "thread-1" });
+    expect(ids()).toEqual(["qmsg-steer"]);
+  });
+
+  it("does not treat messages that differ only in spacing as the same steer", () => {
+    const rows = appendPendingSteerRows(
+      [
+        userRow("first", "turn-1", 1),
+        userRow("use foobar", "other-row", 12),
+      ],
+      [
+        turnStartingSteer({
+          content: [{ type: "text", text: "use foo bar", mentions: [] }],
+        }),
+      ],
+    );
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "user" ? [row.text] : [],
+      ),
+    ).toEqual(["first", "use foobar", "use foo bar"]);
+  });
+
   it("returns a steer to the strip when the thread stops before its turn starts", () => {
     const queryClient = makeQueryClient();
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
