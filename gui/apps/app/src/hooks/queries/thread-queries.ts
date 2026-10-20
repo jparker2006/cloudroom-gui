@@ -12,6 +12,7 @@ import { getMediaQuerySnapshot } from "@cloudroom/shared-ui/hooks/use-media-quer
 import type { PendingInteraction, ThreadListEntry } from "@cloudroom/domain";
 import type {
   PromptHistoryResponse,
+  RecordedCompactionsList,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
   ThreadPendingInteractionsResponse,
@@ -73,6 +74,7 @@ import {
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
+  threadRecordedCompactionsQueryKey,
   threadQueryKey,
   threadSearchQueryKey,
   threadStorageFilesQueryKey,
@@ -721,6 +723,33 @@ export function useThreadPromptHistory(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? PROMPT_HISTORY_STALE_TIME_MS,
+  });
+}
+
+export function useThreadRecordedCompactions(
+  threadId: string,
+  revision: string | null,
+  enabled: boolean,
+) {
+  const queryClient = useQueryClient();
+  return useQuery<RecordedCompactionsList | null>({
+    queryKey: threadRecordedCompactionsQueryKey(threadId, revision ?? ""),
+    queryFn: async ({ signal }) => {
+      const list =
+        (await sdk.threads.context({ threadId, signal })).compactions ?? null;
+      if (list !== null && list.revision !== revision) {
+        queryClient.setQueryData(
+          threadRecordedCompactionsQueryKey(threadId, list.revision),
+          list,
+        );
+      }
+      return list;
+    },
+    enabled: enabled && Boolean(threadId) && revision !== null,
+    staleTime: (query) =>
+      query.state.data === null || query.state.data?.revision === revision
+        ? Infinity
+        : 0,
   });
 }
 

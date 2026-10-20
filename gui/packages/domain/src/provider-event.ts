@@ -517,6 +517,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     type: z.literal("thread/compacted"),
     threadId: z.string(),
     providerThreadId: z.string(),
+    itemId: z.string().optional(),
   }),
   z.object({
     type: z.literal("thread/context/cleared"),

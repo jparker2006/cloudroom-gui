@@ -32,6 +32,7 @@ const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
 const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
+const THREAD_RECORDED_COMPACTIONS_QUERY_KEY = "threadRecordedCompactions";
 const THREAD_PENDING_INTERACTIONS_QUERY_KEY = "threadPendingInteractions";
 const TERMINALS_QUERY_KEY = "terminals";
 const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
@@ -221,6 +222,14 @@ type ThreadPromptHistoryQueryKeyPrefix = readonly [
 ];
 type ThreadPromptHistoryQueryKey = readonly [
   typeof THREAD_PROMPT_HISTORY_QUERY_KEY,
+  string,
+];
+type ThreadRecordedCompactionsQueryKeyPrefix = readonly [
+  typeof THREAD_RECORDED_COMPACTIONS_QUERY_KEY,
+];
+type ThreadRecordedCompactionsQueryKey = readonly [
+  typeof THREAD_RECORDED_COMPACTIONS_QUERY_KEY,
+  string,
   string,
 ];
 type ThreadPendingInteractionsQueryKeyPrefix = readonly [
@@ -747,6 +756,17 @@ export function threadPromptHistoryQueryKey(
 
 export function threadPromptHistoryQueryKeyPrefix(): ThreadPromptHistoryQueryKeyPrefix {
   return [THREAD_PROMPT_HISTORY_QUERY_KEY];
+}
+
+export function threadRecordedCompactionsQueryKey(
+  threadId: string,
+  revision: string,
+): ThreadRecordedCompactionsQueryKey {
+  return [THREAD_RECORDED_COMPACTIONS_QUERY_KEY, threadId, revision];
+}
+
+export function allThreadRecordedCompactionsQueryKeyPrefix(): ThreadRecordedCompactionsQueryKeyPrefix {
+  return [THREAD_RECORDED_COMPACTIONS_QUERY_KEY];
 }
 
 export function threadPendingInteractionsQueryKey(

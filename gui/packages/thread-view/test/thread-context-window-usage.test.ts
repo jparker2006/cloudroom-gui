@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { threadScope, type ContextSnapshot } from "@cloudroom/domain";
 import type { ThreadEventWithMeta } from "../src/build-event-projection.js";
-import { extractThreadContextWindowUsage } from "../src/thread-context-window-usage.js";
+import {
+  extractThreadContextWindowUsage,
+  getThreadContextWindowUsageState,
+} from "../src/thread-context-window-usage.js";
 
 const snapshot: ContextSnapshot = {
   capturedAt: "2026-09-11T12:00:00.000Z",
@@ -80,5 +83,20 @@ describe("context snapshot projection", () => {
         event(2, { usedTokens: 200, modelContextWindow: 1_000, snapshot }),
       ]),
     ).not.toHaveProperty("snapshot");
+  });
+  it("reports usage state so unknown usage is never shown as zero", () => {
+    expect(getThreadContextWindowUsageState([])).toBeNull();
+    expect(getThreadContextWindowUsageState([first])).toBe("reported");
+    expect(
+      getThreadContextWindowUsageState([
+        first,
+        event(2, { usedTokens: null, modelContextWindow: null }),
+      ]),
+    ).toBe("unknown");
+    expect(
+      getThreadContextWindowUsageState([
+        event(1, { usedTokens: 100, modelContextWindow: null }),
+      ]),
+    ).toBe("unknown");
   });
 });

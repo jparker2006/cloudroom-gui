@@ -1,5 +1,6 @@
 import {
   and,
+  asc,
   desc,
   eq,
   gt,
@@ -3224,6 +3225,89 @@ export function listContextWindowUsageRows(
     eventType: "thread/contextWindowUsage/updated",
     contextWindowJsonPath: "$.contextWindowUsage.modelContextWindow",
   });
+}
+
+export const RECORDED_COMPACTION_OPERATIONS = [
+  THREAD_CONTEXT_CLEAR_OPERATION,
+  "edit_message",
+  "import",
+  "teleport",
+] as const;
+
+export function listRecordedCompactionEventRows(
+  db: DbQueryConnection,
+  args: { threadId: string; afterSequence?: number; sequenceEnd: number },
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gt(events.sequence, args.afterSequence ?? 0),
+        lte(events.sequence, args.sequenceEnd),
+        or(
+          and(
+            inArray(events.type, ["item/started", "item/completed"]),
+            eq(events.itemKind, "contextCompaction"),
+          ),
+          inArray(events.type, ["thread/compacted", "thread/context/cleared"]),
+          and(
+            eq(events.type, "system/operation"),
+            inArray(
+              sql`json_extract(${events.data}, '$.operation')`,
+              [...RECORDED_COMPACTION_OPERATIONS],
+            ),
+          ),
+          eq(events.type, "provider/error"),
+          and(
+            eq(events.type, "turn/completed"),
+            sql`json_extract(${events.data}, '$.status') != 'completed'`,
+          ),
+          and(
+            eq(events.type, "provider/warning"),
+            sql`json_extract(${events.data}, '$.category') = 'compaction-skipped'`,
+          ),
+          and(
+            eq(events.type, "provider/unhandled"),
+            sql`lower(json_extract(${events.data}, '$.rawType')) LIKE '%compact%'`,
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(events.sequence))
+    .all();
+}
+
+export function hasThreadEventsBetween(
+  db: DbQueryConnection,
+  args: {
+    threadId: string;
+    afterSequence: number;
+    beforeSequence: number;
+    turnLifecycleOf: string | null;
+  },
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gt(events.sequence, args.afterSequence),
+        lt(events.sequence, args.beforeSequence),
+        args.turnLifecycleOf === null
+          ? undefined
+          : or(
+              isNull(events.turnId),
+              sql`${events.turnId} != ${args.turnLifecycleOf}`,
+              notInArray(events.type, ["turn/started", "turn/completed"]),
+            ),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
 }
 
 export function listContextWindowUsageHistory(
