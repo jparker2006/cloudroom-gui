@@ -2420,13 +2420,13 @@ function FailureNotice({
   const machine =
     where === "workspace"
       ? "the machine that hosts this thread’s workspace"
-      : "the machine running the Cloudroom server, where the GitHub plugin runs";
+      : "the machine running the Cloudroom server (where the GitHub plugin runs)";
   if (reason === "auth" && isPermissionFailure(message)) {
     return (
       <Notice tone="error">
-        <b>GitHub access needed.</b> The GitHub account signed in to{" "}
-        <code>gh</code> on {machine} can’t read this repository. Ask for access,
-        or authorize it for the organization’s single sign-on (for example{" "}
+        <b>GitHub access needed.</b> <code>gh</code> is signed in on {machine},
+        but that GitHub account can’t read this repository. Ask for access, or
+        authorize it for the organization’s single sign-on (for example{" "}
         <code>gh auth refresh -h github.com</code>), then Refresh.
         <span className="mt-1 block text-muted-foreground">
           Details: {message}
@@ -2437,8 +2437,8 @@ function FailureNotice({
   if (reason === "auth") {
     return (
       <Notice tone="error">
-        <b>GitHub sign-in needed.</b> <code>gh</code> on {machine} isn’t signed
-        in, so this session’s pull request is unknown. Run{" "}
+        <b>GitHub sign-in needed.</b> <code>gh</code> isn’t signed in on{" "}
+        {machine}, so this session’s pull request is unknown. Run{" "}
         <code>gh auth login</code> there, then Refresh.
         <span className="mt-1 block text-muted-foreground">
           Details: {message}
