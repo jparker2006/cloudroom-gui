@@ -183,6 +183,18 @@ function withAttachmentNote(prompt: { text: string; content: unknown }, note: st
   };
 }
 
+function prepareWithAttachmentNote(prompt: { text: string; content: unknown }, missing: string[], instructions: string) {
+  const notes = missing.length === 0 ? [] : [
+    missing.map((name) => `[Attachment "${name}" could not be delivered: its file is missing or unreadable. You have not seen it. If the task depends on it, ask the user to attach it again before continuing.]`).join("\n"),
+    `[${missing.length} attachment(s) could not be delivered. You have not seen them.]`,
+  ];
+  for (const note of notes) {
+    try { return prepareCloudInstructionInput(withAttachmentNote(prompt, note), instructions); }
+    catch { continue; }
+  }
+  return prepareCloudInstructionInput(prompt, instructions);
+}
+
 function requireClaudeSkillSupport(content: unknown, capabilities: Capabilities, harness: string | undefined): void {
   if (harness !== "claude-code" || (capabilities.structured_prompt && harnessProfile(capabilities, harness)?.skill_mentions)) return;
   const input = z.array(promptInputSchema).parse(content ?? []);
@@ -1598,7 +1610,7 @@ class CloudroomService {
         path: String(input.path ?? ""),
       });
     }
-    return { uploaded, note: missing.map((name) => `[Attachment "${name}" could not be delivered: its file is missing or unreadable. You have not seen it. If the task depends on it, ask the user to attach it again before continuing.]`).join("\n") };
+    return { uploaded, missing };
   }
 
   async queueMessage(thread: Thread, payload: SendMessageRequest) {
@@ -2038,10 +2050,10 @@ class CloudroomService {
             if (parsed.attachments?.length) {
               if (!capabilities.attachments) throw new ApiError(400, "cloudroom_unsupported", "Update the cloud core to use attachments. Your message is saved.");
             }
-            const { uploaded: attachments, note } = capabilities.attachments
+            const { uploaded: attachments, missing } = capabilities.attachments
               ? await this.uploadAttachments(client, sessionId, pending.id, parsed.attachments ?? [], getThread(this.deps.db, threadId)?.projectId ?? "", capabilities.upload_parts)
-              : { uploaded: [], note: "" };
-            const enriched = prepareCloudInstructionInput(withAttachmentNote({ text: parsed.text, content: cloudTextContent(parsed.content) }, note), parsed.customInstructions);
+              : { uploaded: [], missing: [] };
+            const enriched = prepareWithAttachmentNote({ text: parsed.text, content: cloudTextContent(parsed.content) }, missing, parsed.customInstructions);
             // A fork's first message is a native fork of the copied conversation (fork.ts).
             const fork = pending.id === `first_${threadId}` ? cloudForkOf(pending.input) : null;
             const child = pending.id === `first_${threadId}` && Boolean(JSON.parse(pending.input).code_from);
@@ -2070,8 +2082,8 @@ class CloudroomService {
               customInstructions: z.string().default(""),
             }).parse(JSON.parse(pending.input));
             requireClaudeSkillSupport(parsed.content, capabilities, harness);
-            const { uploaded: attachments, note } = await this.uploadAttachments(client, sessionId, pending.id, parsed.attachments ?? [], getThread(this.deps.db, threadId)!.projectId, capabilities.upload_parts);
-            const enriched = prepareCloudInstructionInput(withAttachmentNote({ text: parsed.text, content: cloudTextContent(parsed.content) }, note), parsed.customInstructions);
+            const { uploaded: attachments, missing } = await this.uploadAttachments(client, sessionId, pending.id, parsed.attachments ?? [], getThread(this.deps.db, threadId)!.projectId, capabilities.upload_parts);
+            const enriched = prepareWithAttachmentNote({ text: parsed.text, content: cloudTextContent(parsed.content) }, missing, parsed.customInstructions);
             accepted = await client.edit(sessionId, pending.id, parsed.target_request_id, parsed.expected_revision, enriched.text, {
               ...(enriched.content === undefined ? {} : { content: enriched.content as never }),
               attachments: attachments as never,
@@ -2092,8 +2104,8 @@ class CloudroomService {
           } else if (pending.command === "rewind") {
             const parsed = z.object({ before: z.string(), last_turn_id: z.string().optional(), customInstructions: z.string().default(""), replacement: z.object({ request_id: z.string(), text: z.string(), content: z.unknown().optional(), attachments: z.array(z.object({ name: z.string(), kind: z.enum(["image", "file"]), localPath: z.string().optional(), path: z.string().optional(), id: z.string().optional() })).optional(), reasoning: z.string().optional(), service_tier: z.string().optional() }) }).parse(JSON.parse(pending.input));
             requireClaudeSkillSupport(parsed.replacement.content, capabilities, harness);
-            const { uploaded: attachments, note } = await this.uploadAttachments(client, sessionId, parsed.replacement.request_id, parsed.replacement.attachments ?? [], getThread(this.deps.db, threadId)!.projectId, capabilities.upload_parts);
-            const enriched = prepareCloudInstructionInput(withAttachmentNote({ text: parsed.replacement.text, content: cloudTextContent(parsed.replacement.content) }, note), parsed.customInstructions);
+            const { uploaded: attachments, missing } = await this.uploadAttachments(client, sessionId, parsed.replacement.request_id, parsed.replacement.attachments ?? [], getThread(this.deps.db, threadId)!.projectId, capabilities.upload_parts);
+            const enriched = prepareWithAttachmentNote({ text: parsed.replacement.text, content: cloudTextContent(parsed.replacement.content) }, missing, parsed.customInstructions);
             accepted = await client.rewind(sessionId, pending.id, parsed.before, parsed.last_turn_id, { ...parsed.replacement, ...enriched, content: enriched.content as never, attachments: attachments as never });
           } else if (pending.command === "stop" || pending.command === "resume" || pending.command === "sleep") {
             accepted = await client[pending.command](sessionId, pending.id);

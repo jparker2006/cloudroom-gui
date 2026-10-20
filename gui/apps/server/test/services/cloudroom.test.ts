@@ -1225,16 +1225,23 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     expect(await absoluteSend.text()).toContain("Cloud attachments must be uploaded files");
     expect(command(harness.db, "cross-send")).toBeNull();
     expect(command(harness.db, "absolute-send")).toBeNull();
-    const storeLegacyPrompt = (requestId: string, localPath: string, at: number) => harness.db.insert(cloudroomCommands).values({
+    const storeLegacyPrompt = (requestId: string, localPath: string, at: number, text = requestId) => harness.db.insert(cloudroomCommands).values({
       id: requestId, threadId: thread.id, command: "prompt", createdAt: at,
-      input: JSON.stringify({ text: requestId, content: [{ type: "text", text: requestId, mentions: [] }, { type: "localImage", path: localPath }], attachments: [{ name: localPath, kind: "image", localPath }], customInstructions: "" }),
+      input: JSON.stringify({ text, content: [{ type: "text", text, mentions: [] }, { type: "localImage", path: localPath }], attachments: [{ name: localPath, kind: "image", localPath }], customInstructions: "" }),
     }).run();
+    const shortNote = "[1 attachment(s) could not be delivered. You have not seen them.]";
+    const nearLimit = "n".repeat(32768 - 2 - shortNote.length);
+    const atLimit = "a".repeat(32768);
     storeLegacyPrompt("legacy-bare-name", onlyInA, Date.now());
     storeLegacyPrompt("legacy-escaping", `../${projectA.id}/${onlyInA}`, Date.now() + 1);
     storeLegacyPrompt("legacy-absolute", join(harness.config.dataDir, "attachments", projectA.id, onlyInA), Date.now() + 2);
+    storeLegacyPrompt("legacy-near-limit", onlyInA, Date.now() + 3, nearLimit);
+    storeLegacyPrompt("legacy-at-limit", onlyInA, Date.now() + 4, atLimit);
     expect((await request(`/threads/${thread.id}/send`, { requestId: "continues", mode: "auto", input: [{ type: "text", text: "continues", mentions: [] }, { type: "localImage", path }] })).status).toBe(200);
 
-    await expect.poll(() => prompts.map((prompt) => prompt.request_id), { timeout: 5000 }).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "legacy-absolute", "continues"]);
+    await expect.poll(() => prompts.map((prompt) => prompt.request_id), { timeout: 5000 }).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "legacy-absolute", "legacy-near-limit", "legacy-at-limit", "continues"]);
+    expect(prompts.find((item) => item.request_id === "legacy-near-limit")!.text).toBe(`${nearLimit}\n\n${shortNote}`);
+    expect(prompts.find((item) => item.request_id === "legacy-at-limit")!.text).toBe(atLimit);
     for (const id of ["legacy-bare-name", "legacy-escaping", "legacy-absolute"]) {
       const prompt = prompts.find((item) => item.request_id === id)!;
       expect(prompt.attachments ?? []).toEqual([]);
