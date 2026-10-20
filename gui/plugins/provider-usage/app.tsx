@@ -43,8 +43,11 @@ import {
   allowanceText,
   formatObservedAge,
   formatPercent,
+  formatObservedClock,
   formatObservedTime,
+  formatPacePoints,
   freshnessText,
+  measurementTime,
   paceText,
   usageAllowance,
   usageAllowanceMessages,
@@ -296,8 +299,10 @@ function UsageWindow({
               : "text-subtle-foreground",
           )}
         >
-          {pace.status} {Math.round(pace.points * 10) / 10} pts · as of{" "}
-          {formatObservedTime(pace.observedAt)}
+          {pace.status} {formatPacePoints(pace.points)} pts vs even · as of{" "}
+          <time dateTime={new Date(pace.observedAt).toISOString()}>
+            {formatObservedClock(pace.observedAt, now)}
+          </time>
         </span>
       ) : null}
       {allowance.kind === "reported" && allowance.overLimit ? (
@@ -333,6 +338,7 @@ function shownAccounts(accounts: UsageProvider[]): UsageProvider[] {
 
 function AccountFreshness({ account }: { account: UsageProvider }) {
   if (account.usage?.status !== "ok") return null;
+  const observedAt = measurementTime(account.observedAt);
   return (
     <span
       className={cn(
@@ -340,9 +346,9 @@ function AccountFreshness({ account }: { account: UsageProvider }) {
         account.refreshFailed && "text-warning-text",
       )}
     >
-      {account.observedAt === null
+      {observedAt === null
         ? usageAllowanceMessages.updateUnavailable
-        : `updated ${formatObservedAge(account.observedAt, Date.now())}`}
+        : `updated ${formatObservedAge(observedAt, Date.now())}`}
     </span>
   );
 }
@@ -351,8 +357,12 @@ function RefreshFailedNote({ account }: { account: UsageProvider }) {
   if (!account.refreshFailed) return null;
   return (
     <p className="flex items-center gap-1 text-warning-text">
-      <Icon name="AlertTriangle" aria-hidden="true" className="size-3 shrink-0" />
-      Couldn’t refresh · showing last update
+      <Icon
+        name="AlertTriangle"
+        aria-hidden="true"
+        className="size-3 shrink-0"
+      />
+      {usageAllowanceMessages.refreshFailed}
     </p>
   );
 }
@@ -371,7 +381,16 @@ function UsageNote({ children }: { children: string }) {
 
 async function signInMacCodex(): Promise<void> {
   const call = async (method: "GET" | "POST") => {
-    const response = await fetch("/api/v1/cloudroom/mac/codex-login", method === "POST" ? { method, headers: { "content-type": "application/json" }, body: "{}" } : {});
+    const response = await fetch(
+      "/api/v1/cloudroom/mac/codex-login",
+      method === "POST"
+        ? {
+            method,
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          }
+        : {},
+    );
     if (!response.ok) throw new Error("Codex sign-in could not start.");
     return (await response.json()) as { state: string; message?: string };
   };
@@ -380,7 +399,8 @@ async function signInMacCodex(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     status = await call("GET");
   }
-  if (status.state === "error") throw new Error(status.message ?? "Codex sign-in failed.");
+  if (status.state === "error")
+    throw new Error(status.message ?? "Codex sign-in failed.");
 }
 
 function CodexSignIn({ onSignedIn }: { onSignedIn: () => void }) {
@@ -389,24 +409,48 @@ function CodexSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const signIn = () => {
     setState("waiting");
     signInMacCodex().then(
-      () => { setState("idle"); onSignedIn(); },
-      (cause: unknown) => { setState("error"); setError(cause instanceof Error ? cause.message : String(cause)); },
+      () => {
+        setState("idle");
+        onSignedIn();
+      },
+      (cause: unknown) => {
+        setState("error");
+        setError(cause instanceof Error ? cause.message : String(cause));
+      },
     );
   };
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <UsageNote>{state === "waiting" ? "finish in your browser" : "session expired"}</UsageNote>
-        <Button type="button" size="sm" className="h-6 px-2.5 text-xs" disabled={state === "waiting"} onClick={signIn}>
+        <UsageNote>
+          {state === "waiting" ? "finish in your browser" : "session expired"}
+        </UsageNote>
+        <Button
+          type="button"
+          size="sm"
+          className="h-6 px-2.5 text-xs"
+          disabled={state === "waiting"}
+          onClick={signIn}
+        >
           {state === "waiting" ? "Waiting…" : "Sign in"}
         </Button>
       </div>
-      {state === "error" ? <p role="alert" className="text-destructive">{error}</p> : null}
+      {state === "error" ? (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
 
-function ProviderUsageBody({ provider, onCodexSignedIn }: { provider: UsageProvider; onCodexSignedIn?: () => void }) {
+function ProviderUsageBody({
+  provider,
+  onCodexSignedIn,
+}: {
+  provider: UsageProvider;
+  onCodexSignedIn?: () => void;
+}) {
   const usage = provider.usage;
   if (usage === null) return <UsageNote>Usage not reported.</UsageNote>;
   switch (usage.status) {
@@ -599,15 +643,26 @@ function TimeInCloudroom() {
     let timer: number | null = null;
     const load = async () => {
       if (document.visibilityState !== "visible") return;
-      const time = (await (await fetch("/api/v1/cloudroom/time-in-app?only=today")).json()) as { today?: unknown };
+      const time = (await (
+        await fetch("/api/v1/cloudroom/time-in-app?only=today")
+      ).json()) as { today?: unknown };
       if (live) setMinutes(typeof time.today === "number" ? time.today : null);
     };
     // The plugin list is checked once, when the panel opens; then only today's number, once a minute.
     void (async () => {
-      const list = (await (await fetch("/api/v1/plugins")).json()) as { plugins?: { id: string; enabled: boolean }[] };
-      if (!live || !list.plugins?.some((plugin) => plugin.id === "time-in-cloudroom" && plugin.enabled)) return;
+      const list = (await (await fetch("/api/v1/plugins")).json()) as {
+        plugins?: { id: string; enabled: boolean }[];
+      };
+      if (
+        !live ||
+        !list.plugins?.some(
+          (plugin) => plugin.id === "time-in-cloudroom" && plugin.enabled,
+        )
+      )
+        return;
       await load();
-      if (live) timer = window.setInterval(() => void load().catch(() => {}), 60_000);
+      if (live)
+        timer = window.setInterval(() => void load().catch(() => {}), 60_000);
     })().catch(() => {});
     return () => {
       live = false;
@@ -622,7 +677,9 @@ function TimeInCloudroom() {
       className="flex shrink-0 items-center gap-1 tabular-nums"
     >
       <Icon name="Clock" aria-hidden="true" className="size-3 shrink-0" />
-      {minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`}
+      {minutes < 60
+        ? `${minutes}m`
+        : `${Math.floor(minutes / 60)}h ${minutes % 60}m`}
     </section>
   );
 }

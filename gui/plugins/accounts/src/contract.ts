@@ -8,6 +8,7 @@ export const LOCAL = "local";
 export const ACCOUNTS_CHANGED = "accounts-changed";
 
 export const usageWindowSchema = z.object({
+  kind: z.enum(["five-hour", "weekly", "custom"]).default("custom"),
   label: z.string(),
   usedPercent: z.number(),
   resetsAt: z.number().nullable(),

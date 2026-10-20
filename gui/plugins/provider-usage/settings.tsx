@@ -148,9 +148,11 @@ export function UsageSettingsContent({
 }
 
 let requestedMachineId: string | null = null;
+const requestListeners = new Set<(machineId: string | null) => void>();
 
 export function requestUsageDetailsMachine(machineId: string | null): void {
-  requestedMachineId = machineId;
+  if (requestListeners.size === 0) requestedMachineId = machineId;
+  for (const listener of requestListeners) listener(machineId);
 }
 
 export function UsageSettings() {
@@ -161,6 +163,10 @@ export function UsageSettings() {
   );
   useEffect(() => {
     requestedMachineId = null;
+    requestListeners.add(setSelectedId);
+    return () => {
+      requestListeners.delete(setSelectedId);
+    };
   }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

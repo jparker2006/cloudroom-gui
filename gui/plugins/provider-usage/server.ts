@@ -21,6 +21,7 @@ import {
   type UsageResource as Resource,
   ACCOUNTS_LIST_METHOD,
   accountViewsSchema,
+  type AccountViews,
 } from "./usage-source-contract.js";
 
 interface SourceResult {
@@ -167,6 +168,7 @@ function resourceProvider(
 }
 
 export default function providerUsagePlugin(bb: BbPluginApi): void {
+  const accountLists = new Map<string, AccountViews>();
   const mergeAccounts = async (
     machines: UsageMachine[],
     providers: Provider[],
@@ -186,11 +188,19 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
             outputSchema: accountViewsSchema,
             signal: AbortSignal.timeout(10_000),
           })
-          .catch(() => []);
+          .catch(() => undefined);
+        const listKey = JSON.stringify([source.pluginId, providerId]);
         const parsed = accountViewsSchema.safeParse(raw);
-        const accounts = (parsed.success ? parsed.data : []).filter(
-          (account) => !account.needsSignIn,
-        );
+        if (parsed.success) accountLists.set(listKey, parsed.data);
+        const accounts = (
+          parsed.success ? parsed.data : (accountLists.get(listKey) ?? [])
+        )
+          .filter((account) => !account.needsSignIn)
+          .map((account) =>
+            parsed.success
+              ? account
+              : { ...account, error: "Accounts could not be listed." },
+          );
         if (!accounts.some((account) => account.id !== "local")) continue;
         const metadata = providers.find(
           (provider) => provider.id === providerId,
@@ -217,6 +227,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                 : account.limitedUntil
                   ? [
                       {
+                        kind: "custom" as const,
                         label: "Limit hit",
                         usedPercent: null,
                         resetsAt: account.limitedUntil,
@@ -241,7 +252,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                         planLabel: account.plan,
                         windows: windows.map((window) => ({
                           id: null,
-                          kind: "custom" as const,
+                          kind: window.kind,
                           label: window.label,
                           usedPercent: window.usedPercent,
                           resetsAt: isoTime(window.resetsAt),

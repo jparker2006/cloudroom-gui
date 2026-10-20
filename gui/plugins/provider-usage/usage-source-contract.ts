@@ -145,6 +145,7 @@ export const accountViewsSchema = z.array(
     observedAt: z.number().nullish(),
     windows: z.array(
       z.object({
+        kind: usageWindowKindSchema.catch("custom"),
         label: z.string(),
         usedPercent: z.number(),
         resetsAt: z.number().nullable(),
@@ -152,3 +153,4 @@ export const accountViewsSchema = z.array(
     ),
   }),
 );
+export type AccountViews = z.infer<typeof accountViewsSchema>;

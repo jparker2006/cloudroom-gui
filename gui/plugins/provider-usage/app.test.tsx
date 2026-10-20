@@ -606,7 +606,7 @@ it("shows remaining-first windows with measurement freshness, over-limit, unavai
   expect(slot.getByText("72% left")).toBeTruthy();
   expect(slot.getByText("updated 4 min ago")).toBeTruthy();
   expect(slot.getByText("updated 2 hr ago")).toBeTruthy();
-  expect(slot.getByText("Couldn’t refresh · showing last update")).toBeTruthy();
+  expect(slot.getByText("Couldn’t refresh")).toBeTruthy();
   expect(slot.getByText("0% left")).toBeTruthy();
   expect(slot.getByText("Over limit · 125% used")).toBeTruthy();
   expect(slot.getByText("Last update unavailable")).toBeTruthy();

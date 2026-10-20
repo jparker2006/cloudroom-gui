@@ -581,7 +581,14 @@ it("gives merged accounts their own observedAt and never invents a percentage fo
           plan: null,
           inUse: false,
           observedAt: 2_000,
-          windows: [{ label: "Weekly", usedPercent: 120, resetsAt: null }],
+          windows: [
+            {
+              kind: "five-hour",
+              label: "Weekly",
+              usedPercent: 120,
+              resetsAt: null,
+            },
+          ],
         },
         {
           id: "failing",
@@ -617,7 +624,7 @@ it("gives merged accounts their own observedAt and never invents a percentage fo
     {
       accountId: "measured",
       observedAt: 2_000,
-      usage: { windows: [{ usedPercent: 120 }] },
+      usage: { windows: [{ kind: "five-hour", usedPercent: 120 }] },
     },
     {
       accountId: "failing",
@@ -664,4 +671,48 @@ it("preserves window kind and identity through aggregation for pacing", async ()
     snapshot.machines.find((machine) => machine.id === "source:pool")!
       .providers[0]!.usage,
   ).toMatchObject({ windows: [{ id: "week", kind: "weekly" }] });
+});
+
+it("keeps the last account list and flags it when accounts.list fails", async () => {
+  let failing = false;
+  const host = freshnessHost(async ({ method }) => {
+    if (method === usageListMethod) return { resources: [] };
+    if (method === "accounts.list") {
+      if (failing) throw new Error("accounts down");
+      return [
+        {
+          id: "saved",
+          email: "saved@example.com",
+          plan: null,
+          inUse: true,
+          observedAt: 4_000,
+          windows: [{ label: "Weekly", usedPercent: 50, resetsAt: null }],
+        },
+      ];
+    }
+    throw new Error("unexpected");
+  }, true);
+  const read = async () =>
+    (
+      (await host.harness.behavior.callRpc("getUsage", {
+        force: false,
+        machineIds: ["host"],
+        providerId: null,
+        maxAgeMs: 60_000,
+      })) as UsageSnapshot
+    ).machines.find((machine) => machine.id === "host")!;
+  expect((await read()).providers[0]).toMatchObject({
+    accountId: "saved",
+    observedAt: 4_000,
+  });
+  expect((await read()).providers[0]!.refreshFailed).toBeUndefined();
+  failing = true;
+  const failed = await read();
+  expect(failed.providers[0]).toMatchObject({
+    accountId: "saved",
+    observedAt: 4_000,
+    refreshFailed: true,
+    usage: { windows: [{ usedPercent: 50 }] },
+  });
+  expect(failed.error).toBe("Some usage could not be refreshed.");
 });

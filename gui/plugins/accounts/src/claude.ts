@@ -185,15 +185,16 @@ export async function claudeUsage(secret: Secret): Promise<UsageWindow[]> {
     throw new SignInAgainError("Claude rejected this login. Sign in again.");
   const windows = (
     [
-      ["Five-hour limit", "5h"],
-      ["Weekly limit", "7d"],
+      ["Five-hour limit", "5h", "five-hour"],
+      ["Weekly limit", "7d", "weekly"],
     ] as const
-  ).flatMap(([label, key]) => {
+  ).flatMap(([label, key, kind]) => {
     const used = response.headers.get(`${LIMITS}-${key}-utilization`);
     if (used === null || used.trim() === "" || !Number.isFinite(Number(used)))
       return [];
     return [
       {
+        kind,
         label,
         usedPercent: Number(used) * 100,
         resetsAt: readReset(response.headers.get(`${LIMITS}-${key}-reset`)),

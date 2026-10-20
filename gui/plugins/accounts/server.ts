@@ -327,6 +327,10 @@ export default async function plugin(bb: BbPluginApi) {
       },
       ...list.accounts.map((account) => ({
         ...account,
+        windows: account.windows.map((window) => ({
+          ...window,
+          kind: "custom" as const,
+        })),
         observedAt: null,
         limitedUntil: limitedUntil("codex", account.id),
         needsSignIn: false,

@@ -177,3 +177,30 @@ it("applies the reset rule at its exact boundaries", () => {
     usageAllowance({ usedPercent: 40, resetsAt: "not a date" }, now - 1, now),
   ).toMatchObject({ kind: "reported", remainingPercent: 60 });
 });
+
+it("keeps the inclusive ±2 band despite floating-point error", () => {
+  expect(paceOf(0.07, 5)).toMatchObject({ status: "on-pace" });
+  expect(paceOf(0.29, 31)).toMatchObject({ status: "on-pace" });
+  expect(paceOf(0.29, 31.01)).toMatchObject({ status: "deficit" });
+  expect(paceOf(0.07, 4.99)).toMatchObject({ status: "reserve" });
+  expect(
+    paceText({
+      kind: "estimate",
+      status: "deficit",
+      points: 2.04,
+      observedAt: now,
+    }),
+  ).toBe("Deficit by 2.0 percentage points");
+});
+
+it.each([-1, 1.5, 9e15, Number.NaN])(
+  "treats invalid measurement time %s as unavailable",
+  (observedAt) => {
+    const { window } = sample(0.5, 50);
+    expect(usagePace(window, observedAt, now)).toEqual({
+      kind: "unavailable",
+      reason: usagePaceMessages.noObservation,
+    });
+    expect(freshnessText({ observedAt }, now)).toBe("Last update unavailable");
+  },
+);

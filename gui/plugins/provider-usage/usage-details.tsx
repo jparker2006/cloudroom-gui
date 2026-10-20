@@ -35,13 +35,27 @@ export const usageAllowanceMessages = {
   resetSinceUpdate: "Reset since last update",
   resetUnknown: "Reset time not reported.",
   updateUnavailable: "Last update unavailable",
+  refreshFailed: "Couldn’t refresh",
 } as const;
+
+const MAX_DATE_MS = 8.64e15;
+const COMPARISON_TOLERANCE = 1e-9;
+
+export function measurementTime(observedAt: number | null): number | null {
+  return observedAt !== null &&
+    Number.isInteger(observedAt) &&
+    observedAt >= 0 &&
+    observedAt <= MAX_DATE_MS
+    ? observedAt
+    : null;
+}
 
 export function usageAllowance(
   window: Pick<UsageWindow, "usedPercent" | "resetsAt">,
-  observedAt: number | null,
+  measuredAt: number | null,
   now: number,
 ): UsageAllowance {
+  const observedAt = measurementTime(measuredAt);
   const resetAt =
     window.resetsAt === null ? Number.NaN : Date.parse(window.resetsAt);
   if (
@@ -91,15 +105,15 @@ export const usagePaceMessages = {
 
 export function usagePace(
   window: Pick<UsageWindow, "kind" | "usedPercent" | "resetsAt">,
-  observedAt: number | null,
+  measuredAt: number | null,
   now: number,
 ): UsagePace {
+  const observedAt = measurementTime(measuredAt);
   const unavailable = (reason: string): UsagePace => ({
     kind: "unavailable",
     reason,
   });
-  if (observedAt === null || !Number.isFinite(observedAt))
-    return unavailable(usagePaceMessages.noObservation);
+  if (observedAt === null) return unavailable(usagePaceMessages.noObservation);
   const duration = VERIFIED_WINDOW_MS[window.kind];
   if (duration === undefined) return unavailable(usagePaceMessages.noDuration);
   const resetAt =
@@ -118,9 +132,9 @@ export function usagePace(
   return {
     kind: "estimate",
     status:
-      difference > ON_PACE_POINTS
+      difference > ON_PACE_POINTS + COMPARISON_TOLERANCE
         ? "deficit"
-        : difference < -ON_PACE_POINTS
+        : difference < -ON_PACE_POINTS - COMPARISON_TOLERANCE
           ? "reserve"
           : "on-pace",
     points: Math.abs(difference),
@@ -128,16 +142,19 @@ export function usagePace(
   };
 }
 
+export function formatPacePoints(points: number): string {
+  return points >= 10 ? String(Math.round(points)) : points.toFixed(1);
+}
+
 export function paceText(
   pace: Extract<UsagePace, { kind: "estimate" }>,
 ): string {
-  const points = Math.round(pace.points * 10) / 10;
-  const unit = points === 1 ? "percentage point" : "percentage points";
+  const points = formatPacePoints(pace.points);
   switch (pace.status) {
     case "deficit":
-      return `Deficit by ${points} ${unit}`;
+      return `Deficit by ${points} percentage points`;
     case "reserve":
-      return `Reserve by ${points} ${unit}`;
+      return `Reserve by ${points} percentage points`;
     case "on-pace":
       return "On pace";
   }
@@ -176,14 +193,24 @@ export function formatObservedTime(observedAt: number): string {
   });
 }
 
+export function formatObservedClock(observedAt: number, now: number): string {
+  return new Date(observedAt).toDateString() === new Date(now).toDateString()
+    ? new Date(observedAt).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : formatObservedTime(observedAt);
+}
+
 export function freshnessText(
   provider: Pick<UsageProvider, "observedAt" | "refreshFailed">,
   now: number,
 ): string {
+  const observedAt = measurementTime(provider.observedAt);
   const base =
-    provider.observedAt === null
+    observedAt === null
       ? usageAllowanceMessages.updateUnavailable
-      : `Updated ${formatObservedAge(provider.observedAt, now)}`;
+      : `Updated ${formatObservedAge(observedAt, now)}`;
   return provider.refreshFailed ? `${base} · Couldn’t refresh` : base;
 }
 
@@ -202,6 +229,7 @@ function UsageFreshness({
   provider: UsageProvider;
   now: number;
 }) {
+  const observedAt = measurementTime(provider.observedAt);
   return (
     <p
       className={cn(
@@ -209,13 +237,13 @@ function UsageFreshness({
         provider.refreshFailed && "text-warning-text",
       )}
     >
-      {provider.observedAt === null ? (
+      {observedAt === null ? (
         usageAllowanceMessages.updateUnavailable
       ) : (
         <>
-          Last updated {formatObservedAge(provider.observedAt, now)} ·{" "}
-          <time dateTime={new Date(provider.observedAt).toISOString()}>
-            {formatObservedTime(provider.observedAt)}
+          Last updated {formatObservedAge(observedAt, now)} ·{" "}
+          <time dateTime={new Date(observedAt).toISOString()}>
+            {formatObservedTime(observedAt)}
           </time>
         </>
       )}
@@ -241,7 +269,11 @@ function UsagePaceLine({ pace }: { pace: UsagePace }) {
       >
         {paceText(pace)}
       </span>
-      {` · As of ${formatObservedTime(pace.observedAt)}. `}
+      {" · As of "}
+      <time dateTime={new Date(pace.observedAt).toISOString()}>
+        {formatObservedTime(pace.observedAt)}
+      </time>
+      {". "}
       {usagePaceMessages.basis}.
     </p>
   );
@@ -303,9 +335,9 @@ function UsageWindowRow({
           {reset ?? usageAllowanceMessages.resetUnknown}
         </p>
       )}
-      {allowance.kind === "reported" ? (
+      {allowance.kind === "not-reported" ? null : (
         <UsagePaceLine pace={usagePace(window, observedAt, now)} />
-      ) : null}
+      )}
     </div>
   );
 }
