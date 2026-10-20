@@ -958,6 +958,15 @@ function discardNewThreadDraftNow(
   storageKey: string,
   confirmedDraft?: PromptDraftState,
 ): "discarded" | "changed" | "failed" | "nothing-to-discard" {
+  const heldDraft = promptDraftCache.get(storageKey)?.draft;
+  if (
+    (pendingPromptDraftStorageKeys.has(storageKey) || unsavedPromptDraftKeys.has(storageKey)) &&
+    !newThreadDraftNotices.has(storageKey) &&
+    heldDraft &&
+    !isPromptDraftEmpty(heldDraft)
+  ) {
+    return "changed";
+  }
   const rawValue = readStoredPromptDraftValue(storageKey);
   if (rawValue === null) return "nothing-to-discard";
   const record = readNewThreadRecord(rawValue);
@@ -1176,8 +1185,15 @@ function collectNewThreadDraftsInMemory(
             arePromptDraftStatesEqual(earlier.draft, row.draft!),
         )
       : -1;
-    if (same === -1) unique.push(row);
-    else if (isNewThreadProjectDraftKey(row.key) && !isNewThreadProjectDraftKey(unique[same]!.key)) {
+    if (same === -1) {
+      unique.push(row);
+      continue;
+    }
+    const preferOwnKey = row.kind !== "leftover";
+    if (
+      isNewThreadProjectDraftKey(row.key) === preferOwnKey &&
+      isNewThreadProjectDraftKey(unique[same]!.key) !== preferOwnKey
+    ) {
       unique[same] = row;
     }
   }

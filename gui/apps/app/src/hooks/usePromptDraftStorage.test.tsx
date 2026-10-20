@@ -2241,3 +2241,58 @@ describe("leftover copy failure", () => {
     expect(result.current.notice).toBeNull();
   });
 });
+
+describe("discarding leftovers next to unsaved typing", () => {
+  it("discards the separate leftover copy and keeps the unsaved new draft", async () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({
+        text: "",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+        rev: "a5a5a5a5a5a5a5a5",
+        moved: true,
+      }),
+    );
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === alphaKey()) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => result.current.setDraft({ text: "new typing", mentions: [], attachments: [] }));
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+    const leftover = listedNotShown([alphaId()]).find((row) => row.kind === "leftover");
+
+    expect(leftover?.key.startsWith("bb.promptbox.leftover-new-thread-")).toBe(true);
+    await act(async () => {
+      await discardNewThreadDraft(leftover!.key);
+    });
+    expect(result.current.text).toBe("new typing");
+  });
+
+  it("refuses to discard a draft that has unsaved typing in memory", async () => {
+    const heldId = `${alphaId()}held`;
+    const held = getPromptDraftAccessor({ kind: "new-thread", projectId: heldId });
+    held.setDraft({ text: "saved", mentions: [], attachments: [] });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      held.setDraft({ text: "saved, then more", mentions: [], attachments: [] });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(await discardNewThreadDraft(held.storageKey)).toBe("changed");
+    expect(held.getCurrent().text).toBe("saved, then more");
+  });
+});
