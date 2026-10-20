@@ -206,6 +206,12 @@ function writeRecoveryCopyOnly(storageKey: string): void {
 }
 
 function persistPromptDraftCacheNow(storageKey: string): void {
+  const wasUnsaved = unsavedPromptDraftKeys.has(storageKey);
+  persistPromptDraftCacheNowQuietly(storageKey);
+  if (unsavedPromptDraftKeys.has(storageKey) !== wasUnsaved) emitPromptDraftChange(storageKey);
+}
+
+function persistPromptDraftCacheNowQuietly(storageKey: string): void {
 
   clearPromptDraftPersistTimer(storageKey);
   pendingPromptDraftStorageKeys.delete(storageKey);
@@ -918,9 +924,19 @@ export function listNewThreadDraftsNotShown(
       ),
     );
     const base = readStoredBase(readStoredPromptDraftValue(key));
-    if (record.rev !== storedRev && base !== storedRev) {
+    if (record.rev === storedRev) continue;
+    if (base !== storedRev) {
       rows.push({ kind: "conflict", key, projectId: recoveryProject, draft: record.draft });
+    } else if (!known.has(recoveryProject)) {
+      rows.push({ kind: "unlisted-project", key, projectId: recoveryProject, draft: record.draft });
     }
+  }
+  for (const storageKey of unsavedPromptDraftKeys) {
+    const draft = promptDraftCache.get(storageKey)?.draft;
+    if (!isNewThreadProjectDraftKey(storageKey) || !draft || isPromptDraftEmpty(draft)) continue;
+    const projectId = decodeURIComponent(newThreadProjectSegment(storageKey));
+    if (known.has(projectId) || rows.some((row) => row.key === storageKey)) continue;
+    rows.push({ kind: "unlisted-project", key: storageKey, projectId, draft });
   }
   return rows;
 }

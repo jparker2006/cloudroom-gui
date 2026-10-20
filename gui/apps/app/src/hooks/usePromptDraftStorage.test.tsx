@@ -397,6 +397,13 @@ function alphaId(): string {
 function alphaKey(): string {
   return `bb.promptbox.contents-new-thread-${alphaId()}-3`;
 }
+function isOtherTestsProject(projectId: string | null): boolean {
+  const match = projectId === null ? null : /^proj_alpha(\d+)/.exec(projectId);
+  return match !== null && Number(match[1]) !== alphaCounter;
+}
+function listedNotShown(known: string[]) {
+  return listNewThreadDraftsNotShown(known).filter((row) => !isOtherTestsProject(row.projectId));
+}
 
 describe("project-scoped new-thread drafts", () => {
   it("keeps each project's draft separate and leaves the legacy draft untouched", () => {
@@ -945,7 +952,7 @@ describe("listing saved drafts the composer doesn't show", () => {
       JSON.stringify({ text: "lost race", attachments: [], rev: "efefefefefefefef", base: "0000000000000000" }),
     );
 
-    const rows = listNewThreadDraftsNotShown([alphaId()]);
+    const rows = listedNotShown([alphaId()]);
 
     expect(rows.map(({ kind, projectId }) => [kind, projectId]).sort()).toEqual(
       [
@@ -1189,7 +1196,7 @@ describe("review fixes: terminal writes", () => {
       result.current.clearIfCurrentMatches(result.current.getCurrent());
     });
 
-    expect(listNewThreadDraftsNotShown([alphaId()])).toEqual([]);
+    expect(listedNotShown([alphaId()])).toEqual([]);
   });
 
   it("reports a send clear as failed when the sent marker can't be saved", () => {
@@ -1225,7 +1232,7 @@ describe("review fixes: terminal writes", () => {
     moveNewThreadDraft(source.storageKey, alphaId());
     discardNewThreadDraft(discarded.storageKey);
 
-    expect(listNewThreadDraftsNotShown([alphaId(), `${alphaId()}src`, `${alphaId()}gone`])).toEqual([]);
+    expect(listedNotShown([alphaId(), `${alphaId()}src`, `${alphaId()}gone`])).toEqual([]);
   });
 });
 
@@ -1276,7 +1283,7 @@ describe("review fixes: failed saves", () => {
     alpha.setDraft({ text: "one, two, three", mentions: [], attachments: [] });
 
     expect(storedRecord(alphaKey()).text).toBe("one, two, three");
-    expect(listNewThreadDraftsNotShown([alphaId()])).toEqual([]);
+    expect(listedNotShown([alphaId()])).toEqual([]);
   });
 
   it("brings back text whose save failed after a reload", async () => {
@@ -1331,7 +1338,7 @@ describe("review fixes: smaller gaps", () => {
 
     alpha.setDraft({ text: "mine, edited", mentions: [], attachments: [] });
 
-    expect(listNewThreadDraftsNotShown([alphaId()]).map((row) => row.draft?.text)).toEqual([
+    expect(listedNotShown([alphaId()]).map((row) => row.draft?.text)).toEqual([
       "no revision",
     ]);
   });
@@ -1365,7 +1372,7 @@ describe("review fixes: smaller gaps", () => {
     moveNewThreadDraft(LEGACY_KEY, alphaId());
     window.localStorage.setItem(LEGACY_KEY, storedDraft("hello"));
 
-    expect(listNewThreadDraftsNotShown([alphaId()])).toEqual([
+    expect(listedNotShown([alphaId()])).toEqual([
       expect.objectContaining({ kind: "legacy", alreadyMoved: true }),
     ]);
   });
@@ -1409,7 +1416,7 @@ describe("re-review fixes", () => {
     expect(storedRecord(alphaKey()).text).toBeUndefined();
     expect(result.current.text).toBe("");
     expect(result.current.notice).toBeNull();
-    expect(listNewThreadDraftsNotShown([])).toEqual([]);
+    expect(listedNotShown([])).toEqual([]);
   });
 
   it("clears a notice once the draft saves normally again", () => {
@@ -1593,3 +1600,54 @@ describe("Sol review fixes: move", () => {
   });
 });
 
+
+describe("Sol review fixes: status and listing", () => {
+  it("shows unsaved as soon as a delayed save fails", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setTextAndMentions("typed", []));
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => vi.advanceTimersByTime(250));
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(result.current.isUnsaved).toBe(true);
+  });
+
+  it("lists first-time text saved only as a recovery copy for a project that isn't listed", () => {
+    window.localStorage.setItem(
+      "bb.promptbox.recovery-new-thread-proj_unlisted-d4d4d4d4d4d4d4d4-3",
+      JSON.stringify({ text: "typed once, then closed", attachments: [], rev: "e5e5e5e5e5e5e5e5" }),
+    );
+
+    expect(listedNotShown([alphaId()])).toEqual([
+      expect.objectContaining({ kind: "unlisted-project", projectId: "proj_unlisted" }),
+    ]);
+  });
+
+  it("lists a draft this window couldn't save for a project that isn't listed", () => {
+    const unlisted = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}x` });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      unlisted.setDraft({ text: "only in memory", mentions: [], attachments: [] });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(listedNotShown([alphaId()])).toEqual([
+      expect.objectContaining({ kind: "unlisted-project", projectId: `${alphaId()}x` }),
+    ]);
+  });
+});
