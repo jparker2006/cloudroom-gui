@@ -79,9 +79,9 @@ Run through Turbo:
 
 ```sh
 pnpm exec turbo run build:onboarding-preview typecheck:onboarding-preview --filter=@cloudroom/app --concurrency=2
-pnpm exec turbo run test --filter=@cloudroom/app --concurrency=2 -- src/onboarding-preview/fixtures.test.ts
+pnpm exec turbo run test --filter=@cloudroom/app --concurrency=2 -- src/dev/onboarding-preview/fixtures.test.ts
 ```
 
-At this checkpoint the prototype build, scoped typecheck, and all 16 fixture tests pass. Required broader checks were attempted: the app typecheck fails on the unchanged `Automations.stories.tsx:630` missing `onNewUrl`; the combined build/typecheck command stops there. Config tests pass (113). Scripts tests pass 128 and fail 5: published-snapshot CI workflow helper paths are missing, and the provider-literal baseline is out of date. Do not treat this branch as production/PR ready. No merge, deployment, or PR publication is authorized.
+At this checkpoint the prototype build, scoped typecheck, all 16 fixture tests, and 44 browser assertions pass. Browser checks exercise A at desktop size and B at mobile size, including leaving/reopening, approval decisions, cancellation, safe retry, no-project recovery, expired auth, disabled sending, and same-origin resources. Required broader checks were attempted: the app typecheck fails on the unchanged `Automations.stories.tsx:630` missing `onNewUrl`; the combined build/typecheck command stops there. Config tests pass (113). Scripts tests pass 128 and fail 5: published-snapshot CI workflow helper paths are missing, and the provider-literal baseline is out of date. A direct scan of the base snapshot and final source gives identical provider-literal maps (299 references each). The preview lives under the existing `src/dev` fixture namespace without changing the guardrail. Do not treat this branch as production/PR ready. No merge, deployment, or PR publication is authorized.
 
 Desktop/mobile screenshots and browser interaction evidence are separate review artifacts, not shipped app assets. An independent Codex review must identify the exact final commit. Choose A or B before production integration starts.
