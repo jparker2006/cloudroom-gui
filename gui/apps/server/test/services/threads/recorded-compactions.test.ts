@@ -554,4 +554,35 @@ describe("recorded compactions", () => {
       "A compaction notice arrived after an error in the same turn, so it isn't counted.",
     );
   });
+
+  it("never counts a late notice for a compaction whose turn already failed or was interrupted", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    compactionItem(db, thread, "item/started", "t1", "c1");
+    append(db, thread, "turn/completed", "t1", {
+      status: "failed",
+      error: { message: "Compaction failed" },
+    });
+    marker(db, thread, "t1", "c1");
+    compactionItem(db, thread, "item/started", "t2", "c2");
+    append(db, thread, "turn/completed", "t2", { status: "interrupted" });
+    marker(db, thread, "t2");
+
+    const list = build(db, thread);
+    expect(list.completedCount).toBe(0);
+    expect(compactions(list).map((entry) => [entry.id, entry.status])).toEqual([
+      ["c2", "unconfirmed"],
+      ["c1", "unconfirmed"],
+    ]);
+    expect(list.gaps).toContain("conflicting-notices");
+  });
+
+  it("leaves a compaction open past a normally completed turn so its notice still counts", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    compactionItem(db, thread, "item/started", "t1", "c1");
+    append(db, thread, "turn/completed", "t1", { status: "completed" });
+    marker(db, thread, "t1", "c1");
+    expect(build(db, thread).completedCount).toBe(1);
+  });
 });

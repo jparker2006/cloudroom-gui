@@ -3261,6 +3261,10 @@ export function listRecordedCompactionEventRows(
           ),
           eq(events.type, "provider/error"),
           and(
+            eq(events.type, "turn/completed"),
+            sql`json_extract(${events.data}, '$.status') != 'completed'`,
+          ),
+          and(
             eq(events.type, "provider/warning"),
             sql`json_extract(${events.data}, '$.category') = 'compaction-skipped'`,
           ),

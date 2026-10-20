@@ -203,6 +203,19 @@ export function buildRecordedCompactions(
       compactionForItem(row, row.itemId).ended = true;
       continue;
     }
+    if (row.type === "turn/completed") {
+      for (const compaction of compactions) {
+        if (
+          compaction.turnId === row.turnId &&
+          !compaction.ended &&
+          !compaction.confirmed
+        ) {
+          compaction.ended = true;
+          compaction.failed = true;
+        }
+      }
+      continue;
+    }
     if (row.type === "provider/error" || row.type === "provider/warning") {
       const open = [...compactions]
         .reverse()
