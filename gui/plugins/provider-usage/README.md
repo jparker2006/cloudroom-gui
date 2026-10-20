@@ -23,9 +23,14 @@ windows say why pace is unavailable. The read-only detail content
 surfaces. "View usage details" in the sidebar card opens that page on the same
 source.
 
-Known limits: the provider bridge contract caps local Claude Code, Codex, ACP
-and cloud Claude usage at 100%, so their over-limit amounts are not visible and
-pace deficits near the cap are understated. Codex accounts kept by the website
+Local Claude Code, Codex, ACP and cloud Claude usage arrives through the
+provider bridge contract, whose `usedPercent` is rounded and capped at 100.
+Current producers also send the raw `reportedUsedPercent`, which the source
+plugins prefer, so over-limit amounts and pace stay exact. A value from an older
+producer without that field is marked capped: 100 reads "At or over limit", and
+pace is unavailable because the exact value is unknown.
+
+Known limits: Codex accounts kept by the website
 report no measurement time, window type or length: they show their reported
 usage with "Last update unavailable", get no pace, and become unavailable once
 their reported reset passes.

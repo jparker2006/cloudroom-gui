@@ -749,3 +749,44 @@ it("aggregates raw over-limit and zero source usage without capping or dropping"
   });
   expect(providers[1]!.usage).toMatchObject({ windows: [{ usedPercent: 0 }] });
 });
+
+it("carries the legacy capped marker from a source into aggregation", async () => {
+  const host = freshnessHost(async ({ method, input }) => {
+    if (method === usageListMethod)
+      return {
+        label: "Pool",
+        resources: ["legacy", "raw"].map((id) => ({
+          id,
+          providerId: "claude-code",
+          label: id,
+          scope: { kind: "shared" },
+        })),
+      };
+    const value = measurement(input.resourceId!, 1_000, 100);
+    return {
+      ...value,
+      usage: {
+        ...value.usage,
+        windows: value.usage.windows.map((window) => ({
+          ...window,
+          usedPercentCapped: input.resourceId === "legacy",
+        })),
+      },
+    };
+  });
+  const snapshot = (await host.harness.behavior.callRpc("getUsage", {
+    force: false,
+    machineIds: ["source:pool"],
+    providerId: null,
+    maxAgeMs: 60_000,
+  })) as UsageSnapshot;
+  const [legacy, raw] = snapshot.machines.find(
+    (machine) => machine.id === "source:pool",
+  )!.providers;
+  expect(legacy!.usage).toMatchObject({
+    windows: [{ usedPercent: 100, usedPercentCapped: true }],
+  });
+  expect(
+    raw!.usage?.status === "ok" ? raw!.usage.windows[0] : undefined,
+  ).not.toHaveProperty("usedPercentCapped");
+});

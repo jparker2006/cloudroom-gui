@@ -82,6 +82,9 @@ function normalizedUsage(
           kind: window.kind,
           label: window.label,
           usedPercent: window.usedPercent,
+          ...(window.usedPercentCapped
+            ? { usedPercentCapped: true as const }
+            : {}),
           resetsAt: window.resetsAt || null,
           cost: window.cost ?? null,
         })),

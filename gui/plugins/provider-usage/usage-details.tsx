@@ -26,6 +26,7 @@ export type UsageAllowance =
       usedPercent: number;
       remainingPercent: number;
       overLimit: boolean;
+      atOrOverLimit: boolean;
     }
   | { kind: "not-reported" }
   | { kind: "reset-passed"; afterMeasurement: boolean };
@@ -52,7 +53,7 @@ export function measurementTime(observedAt: number | null): number | null {
 }
 
 export function usageAllowance(
-  window: Pick<UsageWindow, "usedPercent" | "resetsAt">,
+  window: Pick<UsageWindow, "usedPercent" | "resetsAt" | "usedPercentCapped">,
   measuredAt: number | null,
   now: number,
 ): UsageAllowance {
@@ -73,6 +74,7 @@ export function usageAllowance(
     usedPercent: used,
     remainingPercent: Math.max(0, 100 - used),
     overLimit: used > 100,
+    atOrOverLimit: window.usedPercentCapped === true && used >= 100,
   };
 }
 
@@ -102,10 +104,14 @@ export const usagePaceMessages = {
   resetSinceUpdate: "Reset since last update",
   mismatch: "Reset time doesn’t match the window length",
   early: "Too early in the window",
+  capped: "Exact usage not reported by this provider version",
 } as const;
 
 export function usagePace(
-  window: Pick<UsageWindow, "kind" | "usedPercent" | "resetsAt">,
+  window: Pick<
+    UsageWindow,
+    "kind" | "usedPercent" | "resetsAt" | "usedPercentCapped"
+  >,
   measuredAt: number | null,
   now: number,
 ): UsagePace {
@@ -125,6 +131,7 @@ export function usagePace(
   const used = window.usedPercent;
   if (used === null || !Number.isFinite(used) || used < 0)
     return unavailable(usagePaceMessages.noUsage);
+  if (window.usedPercentCapped) return unavailable(usagePaceMessages.capped);
   const elapsed = (observedAt - (resetAt - duration)) / duration;
   if (elapsed < 0) return unavailable(usagePaceMessages.mismatch);
   if (elapsed < MIN_ELAPSED_FRACTION)
@@ -165,10 +172,20 @@ export function formatPercent(percent: number): string {
   return `${Math.round(percent)}%`;
 }
 
+export function limitPrefix(
+  allowance: Extract<UsageAllowance, { kind: "reported" }>,
+): string {
+  return allowance.overLimit
+    ? "Over limit · "
+    : allowance.atOrOverLimit
+      ? "At or over limit · "
+      : "";
+}
+
 export function allowanceText(allowance: UsageAllowance): string {
   switch (allowance.kind) {
     case "reported":
-      return `${allowance.overLimit ? "Over limit · " : ""}${formatPercent(allowance.remainingPercent)} left, ${formatPercent(allowance.usedPercent)} used`;
+      return `${limitPrefix(allowance)}${formatPercent(allowance.remainingPercent)} left, ${formatPercent(allowance.usedPercent)} used`;
     case "not-reported":
       return usageAllowanceMessages.notReported;
     case "reset-passed":
@@ -303,12 +320,12 @@ function UsageWindowRow({
               <span
                 className={cn(
                   "font-medium",
-                  allowance.overLimit
+                  allowance.overLimit || allowance.atOrOverLimit
                     ? "text-destructive-text"
                     : "text-foreground",
                 )}
               >
-                {allowance.overLimit ? "Over limit · " : ""}
+                {limitPrefix(allowance)}
                 {formatPercent(allowance.remainingPercent)} remaining
               </span>
               {" · "}

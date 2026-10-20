@@ -449,6 +449,12 @@ function resetIso(value: string | null | undefined): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function reportedUsage(value: unknown): { reportedUsedPercent?: number } {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? { reportedUsedPercent: value }
+    : {};
+}
+
 function usageWindow(
   value: z.infer<typeof claudeUsageWindowSchema> | null | undefined,
   label: string,
@@ -459,6 +465,7 @@ function usageWindow(
     label,
     kind,
     usedPercent: clampPercent(value.utilization),
+    ...reportedUsage(value.utilization),
     resetsAt: resetIso(value.resets_at),
   };
 }
@@ -488,6 +495,7 @@ function scopedWindows(
       model: label.toLowerCase(),
       label,
       usedPercent: clampPercent(limit.percent),
+      ...reportedUsage(limit.percent),
       resetsAt: resetIso(limit.resets_at),
     });
   }

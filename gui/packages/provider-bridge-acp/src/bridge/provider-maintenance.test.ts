@@ -28,7 +28,7 @@ describe("ACP provider maintenance", () => {
       __testing.normalizeUsage(
         {
           billingCycleEnd: "1767225600000",
-          planUsage: { totalPercentUsed: 72.2 },
+          planUsage: { totalPercentUsed: 112.5 },
           spendLimitUsage: {
             overallUsed: "1250",
             overallLimit: "5000",
@@ -44,12 +44,14 @@ describe("ACP provider maintenance", () => {
       windows: [
         {
           label: "Plan usage",
-          usedPercent: 72,
+          usedPercent: 100,
+          reportedUsedPercent: 112.5,
           resetsAt: "2026-01-01T00:00:00.000Z",
         },
         {
           label: "On-demand spend",
           usedPercent: 25,
+          reportedUsedPercent: 25,
           resetsAt: "2026-01-01T00:00:00.000Z",
           cost: { usedUsdCents: 1250, limitUsdCents: 5000 },
         },

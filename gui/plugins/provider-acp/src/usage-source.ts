@@ -84,6 +84,8 @@ export function registerUsageSource(bb: BbPluginApi) {
               ? {
                   windows: usage.windows.map((window, index) => ({
                     ...window,
+                    usedPercent: window.reportedUsedPercent ?? window.usedPercent,
+                    usedPercentCapped: window.reportedUsedPercent === undefined,
                     ...windowMetadataSchema.parse(window),
                     id: `${index}:${window.label}`,
                     cost: window.cost ?? null,

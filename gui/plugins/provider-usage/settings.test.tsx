@@ -385,20 +385,23 @@ it("ignores a usage-details request that expired before the page opened", async 
   const start = Date.now();
   const clock = vi.spyOn(Date, "now").mockReturnValue(start);
   requestUsageDetailsMachine("source:second");
-  clock.mockReturnValue(start + 11_000);
+  clock.mockReturnValue(start + 61_000);
   const result = {
     machines: [
       { ...machine("source:first", [account("one")]), displayName: "First" },
       { ...machine("source:second", [account("two")]), displayName: "Second" },
     ],
   };
-  const slot = renderSlot(
-    app.settingsSections[0]!,
-    {},
-    { rpc: { getUsage: () => result } },
-  );
-  expect(
-    (await slot.findByRole("button", { name: "Usage source" })).textContent,
-  ).toContain("First");
-  clock.mockRestore();
+  try {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { rpc: { getUsage: () => result } },
+    );
+    expect(
+      (await slot.findByRole("button", { name: "Usage source" })).textContent,
+    ).toContain("First");
+  } finally {
+    clock.mockRestore();
+  }
 });

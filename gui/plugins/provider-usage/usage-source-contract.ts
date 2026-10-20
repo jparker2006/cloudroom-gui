@@ -24,6 +24,12 @@ const usageWindowSchema = z.object({
     .number()
     .nonnegative()
     .describe("Percentage consumed; may exceed 100 for overage."),
+  usedPercentCapped: z
+    .boolean()
+    .default(false)
+    .describe(
+      "True when usedPercent came from an older producer that rounds and caps at 100, so 100 means at or over the limit.",
+    ),
   resetsAt: z
     .string()
     .nullable()

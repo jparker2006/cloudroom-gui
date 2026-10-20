@@ -43,6 +43,7 @@ import {
   allowanceText,
   formatObservedAge,
   formatPercent,
+  limitPrefix,
   formatObservedClock,
   formatObservedTime,
   formatPacePoints,
@@ -305,9 +306,11 @@ function UsageWindow({
           </time>
         </span>
       ) : null}
-      {allowance.kind === "reported" && allowance.overLimit ? (
+      {allowance.kind === "reported" &&
+      (allowance.overLimit || allowance.atOrOverLimit) ? (
         <span className="block pl-3.5 text-destructive-text">
-          Over limit · {formatPercent(allowance.usedPercent)} used
+          {limitPrefix(allowance)}
+          {formatPercent(allowance.usedPercent)} used
         </span>
       ) : null}
       {showReset ? (

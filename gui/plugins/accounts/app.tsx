@@ -89,7 +89,7 @@ function AccountTile({
   onSignInAgain?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [, rerenderAtReset] = useState(0);
+  const [resetTick, rerenderAtReset] = useState(0);
   const nextReset = nextResetAt(account.windows, Date.now());
   useEffect(() => {
     if (nextReset === null) return;
@@ -98,7 +98,7 @@ function AccountTile({
       Math.min(nextReset - Date.now() + 1, 2 ** 31 - 1),
     );
     return () => window.clearTimeout(timer);
-  }, [nextReset]);
+  }, [nextReset, resetTick]);
   const local = account.id === LOCAL;
   const fallback =
     account.email ?? (local ? "This Mac" : `Account ${index + 1}`);

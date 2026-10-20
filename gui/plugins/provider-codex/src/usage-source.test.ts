@@ -212,7 +212,7 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
   }
 });
 
-it("passes usage above 100% and zero from system.usageLimits through unchanged", async () => {
+it("prefers raw reported usage and marks a legacy capped value as capped", async () => {
   const { bb, harness } = createFakePluginHost({
     sdk: {
       hosts: {
@@ -235,10 +235,23 @@ it("passes usage above 100% and zero from system.usageLimits through unchanged",
               {
                 label: "5h",
                 kind: "five-hour",
-                usedPercent: 130,
+                usedPercent: 100,
+                reportedUsedPercent: 130,
                 resetsAt: null,
               },
-              { label: "7d", kind: "weekly", usedPercent: 0, resetsAt: null },
+              {
+                label: "7d",
+                kind: "weekly",
+                usedPercent: 0,
+                reportedUsedPercent: 0,
+                resetsAt: null,
+              },
+              {
+                label: "Legacy",
+                kind: "custom",
+                usedPercent: 100,
+                resetsAt: null,
+              },
             ],
           },
         }),
@@ -254,7 +267,11 @@ it("passes usage above 100% and zero from system.usageLimits through unchanged",
       }),
     );
     expect(value.usage).toMatchObject({
-      windows: [{ usedPercent: 130 }, { usedPercent: 0 }],
+      windows: [
+        { usedPercent: 130, usedPercentCapped: false },
+        { usedPercent: 0, usedPercentCapped: false },
+        { usedPercent: 100, usedPercentCapped: true },
+      ],
     });
   } finally {
     await harness.lifecycle.dispose();

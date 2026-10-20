@@ -341,6 +341,12 @@ const cursorPlanResponseSchema = z
   })
   .passthrough();
 
+function reportedUsage(value: unknown): { reportedUsedPercent?: number } {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? { reportedUsedPercent: value }
+    : {};
+}
+
 function normalizeUsage(
   rawUsage: unknown,
   rawPlan: unknown,
@@ -365,6 +371,7 @@ function normalizeUsage(
     windows.push({
       label: "Plan usage",
       usedPercent: clampPercent(usage.data.planUsage.totalPercentUsed),
+      ...reportedUsage(usage.data.planUsage.totalPercentUsed),
       resetsAt,
     });
   }
@@ -381,6 +388,7 @@ function normalizeUsage(
     windows.push({
       label: "On-demand spend",
       usedPercent: clampPercent((pair.used / pair.limit) * 100),
+      ...reportedUsage((pair.used / pair.limit) * 100),
       resetsAt,
       cost: { usedUsdCents: pair.used, limitUsdCents: pair.limit },
     });

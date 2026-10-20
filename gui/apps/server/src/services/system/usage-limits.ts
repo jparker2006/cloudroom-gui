@@ -158,6 +158,7 @@ export async function cloudClaudeUsage(
           label,
           kind,
           usedPercent: Math.min(100, Math.max(0, used * 100)),
+          ...(used >= 0 ? { reportedUsedPercent: used * 100 } : {}),
           resetsAt: resetIso(response.headers.get(`${LIMITS}-${key}-reset`)),
         },
       ];

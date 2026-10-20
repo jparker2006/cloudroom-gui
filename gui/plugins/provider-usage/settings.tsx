@@ -147,7 +147,7 @@ export function UsageSettingsContent({
   );
 }
 
-const REQUEST_TTL_MS = 10_000;
+const REQUEST_TTL_MS = 60_000;
 let requested: { machineId: string | null; at: number } | null = null;
 const requestListeners = new Set<(machineId: string | null) => void>();
 

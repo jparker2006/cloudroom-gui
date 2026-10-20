@@ -25,6 +25,7 @@ it.each([
     usedPercent: used,
     remainingPercent: remaining,
     overLimit: over,
+    atOrOverLimit: false,
   });
 });
 
@@ -221,6 +222,7 @@ it("keeps raw over-limit usage through allowance and pacing instead of a capped 
     usedPercent: 100,
     remainingPercent: 0,
     overLimit: false,
+    atOrOverLimit: false,
   });
   expect(
     usageAllowance({ usedPercent: 130, resetsAt: null }, now, now),
@@ -229,6 +231,7 @@ it("keeps raw over-limit usage through allowance and pacing instead of a capped 
     usedPercent: 130,
     remainingPercent: 0,
     overLimit: true,
+    atOrOverLimit: false,
   });
   expect(paceOf(0.5, 100)).toMatchObject({ status: "deficit", points: 50 });
   expect(paceOf(0.5, 130)).toMatchObject({ status: "deficit", points: 80 });
@@ -240,6 +243,7 @@ it("treats real zero usage as reported and missing usage as unavailable", () => 
     usedPercent: 0,
     remainingPercent: 100,
     overLimit: false,
+    atOrOverLimit: false,
   });
   expect(
     usageAllowance({ usedPercent: null, resetsAt: null }, now, now),
@@ -248,5 +252,44 @@ it("treats real zero usage as reported and missing usage as unavailable", () => 
   expect(paceOf(0.5, null)).toEqual({
     kind: "unavailable",
     reason: usagePaceMessages.noUsage,
+  });
+});
+
+it("does not claim over-limit or exact pacing from a legacy capped value", () => {
+  const capped = {
+    usedPercent: 100,
+    resetsAt: null,
+    usedPercentCapped: true as const,
+  };
+  const allowance = usageAllowance(capped, now, now);
+  expect(allowance).toEqual({
+    kind: "reported",
+    usedPercent: 100,
+    remainingPercent: 0,
+    overLimit: false,
+    atOrOverLimit: true,
+  });
+  expect(allowanceText(allowance)).toBe(
+    "At or over limit · 0% left, 100% used",
+  );
+  const { window } = sample(0.5, 60);
+  expect(usagePace({ ...window, usedPercentCapped: true }, now, now)).toEqual({
+    kind: "unavailable",
+    reason: usagePaceMessages.capped,
+  });
+  expect(
+    usageAllowance({ usedPercent: 100, resetsAt: null }, now, now),
+  ).toMatchObject({
+    overLimit: false,
+    atOrOverLimit: false,
+  });
+  expect(
+    allowanceText(
+      usageAllowance({ usedPercent: 100, resetsAt: null }, now, now),
+    ),
+  ).toBe("0% left, 100% used");
+  expect(paceOf(0.5, 100)).toMatchObject({
+    kind: "estimate",
+    status: "deficit",
   });
 });
