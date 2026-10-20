@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSuggestions,
+  classifyGhFailure,
+  parsePullUrl,
+  summarizeChecks,
   matchesQuery,
   parseQuery,
   parseSubPath,
@@ -122,5 +125,79 @@ describe("github panel query engine", () => {
     expect(
       buildSuggestions("author:ali", vocab, "issue", "octocat")[0]?.icon,
     ).toEqual({ kind: "avatar", login: "alice" });
+  });
+});
+
+describe("session pull request truth helpers", () => {
+  it("never summarizes unknown, absent, or neutral-only checks as passing", () => {
+    expect(summarizeChecks(null)).toEqual({ state: "unknown" });
+    expect(summarizeChecks([])).toEqual({ state: "none" });
+    expect(summarizeChecks([{ status: "neutral" }]).state).toBe("neutral");
+    expect(
+      summarizeChecks([{ status: "success" }, { status: "unknown" }]).state,
+    ).toBe("unknown_results");
+    expect(
+      summarizeChecks([{ status: "success" }, { status: "pending" }]).state,
+    ).toBe("pending");
+    expect(
+      summarizeChecks([{ status: "pending" }, { status: "failure" }]).state,
+    ).toBe("failing");
+    expect(
+      summarizeChecks([{ status: "success" }, { status: "neutral" }]),
+    ).toEqual({
+      state: "passing",
+      total: 2,
+      passed: 1,
+      failed: 0,
+      pending: 0,
+      unknown: 0,
+    });
+  });
+
+  it("separates authentication from unavailable and other lookup failures", () => {
+    expect(
+      classifyGhFailure("gh pr view failed: please run: gh auth login"),
+    ).toBe("auth");
+    expect(classifyGhFailure("HTTP 401: Bad credentials")).toBe("auth");
+    expect(classifyGhFailure("HTTP 502 Bad Gateway")).toBe("unavailable");
+    expect(classifyGhFailure("connect ETIMEDOUT 140.82.112.3:443")).toBe(
+      "unavailable",
+    );
+    expect(classifyGhFailure("unexpected token in JSON")).toBe("lookup");
+    expect(
+      classifyGhFailure(
+        "HTTP 403: Resource protected by organization SAML enforcement",
+      ),
+    ).toBe("auth");
+    expect(
+      classifyGhFailure("HTTP 403: Resource not accessible by integration"),
+    ).toBe("auth");
+    expect(classifyGhFailure("HTTP 403: API rate limit exceeded")).toBe(
+      "unavailable",
+    );
+    expect(classifyGhFailure("Host is not connected")).toBe("unavailable");
+    expect(classifyGhFailure("Host is suspended")).toBe("unavailable");
+    expect(classifyGhFailure("error connecting to api.github.com")).toBe(
+      "unavailable",
+    );
+    expect(
+      classifyGhFailure("GraphQL: Could not resolve to a PullRequest"),
+    ).toBe("lookup");
+    expect(classifyGhFailure("workspace offline", "unavailable")).toBe(
+      "unavailable",
+    );
+  });
+
+  it("accepts only canonical GitHub pull request URLs", () => {
+    expect(parsePullUrl("https://github.com/acme/widgets/pull/42")).toEqual({
+      repo: "acme/widgets",
+      number: 42,
+    });
+    expect(
+      parsePullUrl("https://github.com/acme/widgets/issues/42"),
+    ).toBeNull();
+    expect(
+      parsePullUrl("https://evil.example/github.com/acme/widgets/pull/42"),
+    ).toBeNull();
   });
 });

@@ -22,6 +22,7 @@ function assertGithubFrontendInference(
       pull: {
         repo: string;
         number: number;
+        id: string;
         title: string;
         state: string;
         author: string;
@@ -41,9 +42,9 @@ function assertGithubFrontendInference(
         reviewRequests: string[];
         checks: Array<{
           name: string;
-          status: "success" | "failure" | "pending" | "neutral";
+          status: "success" | "failure" | "pending" | "neutral" | "unknown";
           url: string;
-        }>;
+        }> | null;
         comments: Array<{ author: string; body: string; createdAt: string }>;
         reviews: Array<{
           author: string;
@@ -69,6 +70,7 @@ function assertGithubFrontendInference(
           patch: string | null;
         }>;
       };
+      fetchedAt: string;
     }>
   >();
 
