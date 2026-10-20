@@ -399,6 +399,60 @@ describe("PR #8 review (5534880): a cache patch is not a successful refresh", ()
     expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/);
   });
 
+  it("keeps the sidebar warning while a retry is still pending, and after a patch plus retry", async () => {
+    const { queryClient } = renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      FAMILY,
+    );
+    await queryClient
+      .fetchQuery({
+        queryKey: sidebarNavigationQueryKey(),
+        queryFn: () => Promise.reject(new Error("sidebar refresh failed")),
+        staleTime: 0,
+      })
+      .catch(() => {});
+    await waitFor(() => expect(chipName()).toMatch(/showing last known/));
+    await patchUnrelatedStatus(queryClient, "thr_b1");
+    await act(async () => {
+      void queryClient
+        .fetchQuery({
+          queryKey: sidebarNavigationQueryKey(),
+          queryFn: () => new Promise(() => {}),
+          staleTime: 0,
+        })
+        .catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(queryClient.getQueryState(sidebarNavigationQueryKey())?.fetchStatus).toBe("fetching");
+    expect(chipName()).toMatch(/couldn’t refresh, showing last known/);
+    expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/);
+  });
+
+  it("keeps the fallback warning while a retry is still pending", async () => {
+    vi.mocked(sdk.threads.list).mockResolvedValueOnce([FAMILY[1]!, FAMILY[2]!]);
+    const { queryClient } = renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      null,
+    );
+    await waitFor(() => expect(screen.getByText("Builder")).toBeTruthy());
+    vi.mocked(sdk.threads.list).mockRejectedValueOnce(new Error("offline"));
+    await queryClient.refetchQueries().catch(() => {});
+    await waitFor(() => expect(chipName()).toMatch(/showing last known/));
+    vi.mocked(sdk.threads.list).mockReturnValue(new Promise(() => {}));
+    await act(async () => {
+      void queryClient.refetchQueries().catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(chipName()).toMatch(/couldn’t refresh, showing last known/);
+    expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/);
+  });
+
   it("keeps the fallback refresh-failure warning after an unrelated realtime status patch", async () => {
     vi.mocked(sdk.threads.list).mockResolvedValueOnce([FAMILY[1]!, FAMILY[2]!]);
     const { queryClient } = renderWith(
