@@ -445,3 +445,43 @@ describe("new-thread draft revisions", () => {
     expect(alpha.getCurrent().text).toBe("second");
   });
 });
+
+describe("new-thread drafts edited in two windows", () => {
+  it("keeps the other window's unseen draft as a conflict copy before saving", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+    const otherWindowRecord = JSON.stringify({
+      text: "theirs",
+      attachments: [],
+      rev: "aaaaaaaaaaaaaaaa",
+      base: storedRecord(ALPHA_KEY).rev,
+    });
+    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+
+    alpha.setDraft({ text: "mine, edited", mentions: [], attachments: [] });
+
+    expect(
+      window.localStorage.getItem(
+        "bb.promptbox.conflict-new-thread-proj_alpha-aaaaaaaaaaaaaaaa-3",
+      ),
+    ).toBe(otherWindowRecord);
+    expect(storedRecord(ALPHA_KEY).text).toBe("mine, edited");
+    expect(storedRecord(ALPHA_KEY).base).toBe("aaaaaaaaaaaaaaaa");
+  });
+
+  it("adopts the other window's draft without a copy when the content is the same", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+    window.localStorage.setItem(
+      ALPHA_KEY,
+      JSON.stringify({ text: "same", attachments: [], rev: "bbbbbbbbbbbbbbbb" }),
+    );
+
+    alpha.setDraft({ text: "same", mentions: [], attachments: [] });
+
+    expect(storedRecord(ALPHA_KEY).rev).toBe("bbbbbbbbbbbbbbbb");
+    expect(
+      Object.keys(window.localStorage).filter((key) => key.includes("conflict")),
+    ).toEqual([]);
+  });
+});

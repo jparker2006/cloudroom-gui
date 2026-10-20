@@ -133,6 +133,13 @@ function persistPromptDraftCache(storageKey: string): void {
     return;
   }
 
+  if (
+    isNewThreadProjectDraftKey(storageKey) &&
+    !reconcileWithStoredNewThreadDraft(storageKey, cachedEntry)
+  ) {
+    return;
+  }
+
   const plainSerialized = serializePromptDraftStorage(cachedEntry.draft);
   const serialized =
     plainSerialized !== null && isNewThreadProjectDraftKey(storageKey)
@@ -153,6 +160,41 @@ function persistPromptDraftCache(storageKey: string): void {
       error,
     );
   }
+}
+
+function newThreadConflictKey(storageKey: string, rev: string): string {
+  const projectSegment = storageKey.slice(
+    NEW_THREAD_DRAFT_KEY_PREFIX.length,
+    -`-${PROMPT_DRAFT_STORAGE_VERSION}`.length,
+  );
+  return `bb.promptbox.conflict-new-thread-${projectSegment}-${rev}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+function reconcileWithStoredNewThreadDraft(
+  storageKey: string,
+  cachedEntry: PromptDraftCacheEntry,
+): boolean {
+  const rawValue = readStoredPromptDraftValue(storageKey);
+  const storedRev = readStoredRev(rawValue);
+  if (rawValue === null || !storedRev || storedRev === newThreadDraftRevs.get(storageKey)) {
+    return true;
+  }
+
+  const storedDraft = parsePromptDraftStorage(rawValue);
+  if (arePromptDraftStatesEqual(storedDraft, cachedEntry.draft)) {
+    newThreadDraftRevs.set(storageKey, storedRev);
+    cachedEntry.rawValue = rawValue;
+    return false;
+  }
+
+  if (!isPromptDraftEmpty(storedDraft)) {
+    const conflictKey = newThreadConflictKey(storageKey, storedRev);
+    if (readStoredPromptDraftValue(conflictKey) === null) {
+      window.localStorage.setItem(conflictKey, rawValue);
+    }
+  }
+  newThreadDraftRevs.set(storageKey, storedRev);
+  return true;
 }
 
 function readStoredPromptDraftValue(storageKey: string): string | null {
