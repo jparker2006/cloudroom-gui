@@ -68,6 +68,7 @@ type Usage = {
   error: string | null;
   signInAgain: boolean;
   at: number;
+  observedAt: number | null;
 };
 
 function blockedUntil(
@@ -209,6 +210,7 @@ export default async function plugin(bb: BbPluginApi) {
         error: null,
         signInAgain: false,
         at: Date.now(),
+        observedAt: Date.now(),
       });
     } catch (error) {
       usage.set(account.id, {
@@ -216,6 +218,7 @@ export default async function plugin(bb: BbPluginApi) {
         error: error instanceof Error ? error.message : String(error),
         signInAgain: error instanceof SignInAgainError,
         at: Date.now(),
+        observedAt: previous?.observedAt ?? null,
       });
     }
     if ((usage.get(account.id)?.error ?? null) !== before) await changed();
@@ -273,12 +276,8 @@ export default async function plugin(bb: BbPluginApi) {
         inUse: id === using,
         limitedUntil: limitedUntil("claude-code", id),
         error: measured?.error ?? null,
-        // Accounts not in use aren't checked, so a window past its reset shows empty.
-        windows: (measured?.windows ?? []).map((window) =>
-          window.resetsAt !== null && window.resetsAt <= Date.now()
-            ? { ...window, usedPercent: 0, resetsAt: null }
-            : window,
-        ),
+        observedAt: measured?.observedAt ?? null,
+        windows: measured?.windows ?? [],
         needsSignIn: false,
         limitedLogin: account !== undefined && !account.profile,
       };
@@ -294,6 +293,7 @@ export default async function plugin(bb: BbPluginApi) {
         inUse: false,
         limitedUntil: null,
         error: null,
+        observedAt: null,
         windows: [],
         needsSignIn: true,
         limitedLogin: false,
@@ -320,12 +320,14 @@ export default async function plugin(bb: BbPluginApi) {
         inUse: !selected,
         limitedUntil: limitedUntil("codex", LOCAL),
         error: null,
+        observedAt: null,
         windows: [],
         needsSignIn: false,
         limitedLogin: false,
       },
       ...list.accounts.map((account) => ({
         ...account,
+        observedAt: null,
         limitedUntil: limitedUntil("codex", account.id),
         needsSignIn: false,
         limitedLogin: false,

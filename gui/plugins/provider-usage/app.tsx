@@ -40,6 +40,14 @@ import {
   type UsageWindow as UsageWindowValue,
 } from "./usage-schema.js";
 import {
+  allowanceText,
+  formatObservedAge,
+  formatPercent,
+  freshnessText,
+  usageAllowance,
+  usageAllowanceMessages,
+} from "./usage-details.js";
+import {
   emptyUsageMessage,
   hasReportedUsage,
   offlineUsageMessage,
@@ -173,10 +181,13 @@ function usageTextColorClass(usedPercent: number): string {
 }
 
 function UsageBlocks({ usedPercent }: { usedPercent: number }) {
-  const lit = Math.max(
-    1,
-    Math.round((Math.min(100, usedPercent) / 100) * USAGE_BLOCKS),
-  );
+  const lit =
+    usedPercent > 0
+      ? Math.max(
+          1,
+          Math.round((Math.min(100, usedPercent) / 100) * USAGE_BLOCKS),
+        )
+      : 0;
   return (
     <span aria-hidden="true" className="flex shrink-0 gap-[1.5px]">
       {Array.from({ length: USAGE_BLOCKS }, (_, index) => (
@@ -195,16 +206,24 @@ function UsageBlocks({ usedPercent }: { usedPercent: number }) {
 function UsageWindow({
   window,
   last,
+  account,
 }: {
   window: UsageWindowValue;
   last: boolean;
+  account: UsageProvider;
 }) {
   const [showReset, setShowReset] = useState(false);
+  const now = Date.now();
+  const allowance = usageAllowance(window, account.observedAt, now);
   const reset = formatUsageReset(window.resetsAt);
-  const countdown = formatResetCountdown(window.resetsAt);
-  const value =
+  const resetText = reset ?? usageAllowanceMessages.resetUnknown;
+  const countdown =
+    allowance.kind === "reset-since-update"
+      ? null
+      : formatResetCountdown(window.resetsAt);
+  const cost =
     window.cost === null
-      ? Math.round(window.usedPercent) + "% used"
+      ? null
       : formatUsdCents(window.cost.usedUsdCents, true) +
         " / " +
         formatUsdCents(window.cost.limitUsdCents, false);
@@ -214,12 +233,13 @@ function UsageWindow({
     .replace(/^Daily limit$/u, "1d")
     .replace(/^Plan usage$/u, "plan")
     .replace(/^On-demand spend$/u, "spend");
+  const description = `${window.label}: ${allowanceText(allowance)}${cost === null ? "" : `, ${cost}`}.${allowance.kind === "reset-since-update" ? "" : ` ${reset ?? "Reset time not reported"}.`} ${freshnessText(account, now)}.`;
   return (
     <button
       type="button"
       className="block w-full rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-      title={`${window.label} · ${reset ?? "Reset time not reported"}`}
-      aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}`}
+      title={description}
+      aria-label={description}
       aria-expanded={showReset}
       onClick={() => setShowReset((shown) => !shown)}
     >
@@ -230,29 +250,82 @@ function UsageWindow({
         <span className="w-11 shrink-0 truncate lowercase text-muted-foreground">
           {label}
         </span>
-        <UsageBlocks usedPercent={window.usedPercent} />
-        <span
-          className={cn(
-            "w-[30px] shrink-0 text-right tabular-nums",
-            usageTextColorClass(window.usedPercent),
-          )}
-        >
-          {Math.round(window.usedPercent)}%
-        </span>
+        {allowance.kind === "reported" ? (
+          <>
+            <UsageBlocks usedPercent={allowance.usedPercent} />
+            <span
+              className={cn(
+                "shrink-0 text-right tabular-nums",
+                usageTextColorClass(allowance.usedPercent),
+              )}
+            >
+              {formatPercent(allowance.remainingPercent)} left
+            </span>
+          </>
+        ) : (
+          <span className="min-w-0 truncate text-muted-foreground">
+            {allowance.kind === "not-reported"
+              ? "usage not reported"
+              : "reset since last update"}
+          </span>
+        )}
         <span
           aria-hidden="true"
-          className="min-w-0 truncate tabular-nums text-subtle-foreground"
+          className="ml-auto min-w-0 truncate tabular-nums text-subtle-foreground"
         >
           {countdown ?? "—"}
         </span>
       </span>
+      {allowance.kind === "reported" && allowance.overLimit ? (
+        <span className="block pl-3.5 text-destructive-text">
+          Over limit · {formatPercent(allowance.usedPercent)} used
+        </span>
+      ) : null}
       {showReset ? (
         <span className="block whitespace-normal pl-3.5 text-subtle-foreground">
-          {reset ?? "Reset time not reported."}
-          {window.cost === null ? "" : ` · ${value}`}
+          <span>
+            {allowance.kind === "reset-since-update"
+              ? `${usageAllowanceMessages.resetSinceUpdate}.`
+              : resetText}
+          </span>
+          {allowance.kind === "reported"
+            ? ` · ${formatPercent(allowance.usedPercent)} used`
+            : null}
+          {cost === null ? null : ` · ${cost}`}
         </span>
       ) : null}
     </button>
+  );
+}
+
+function shownAccounts(accounts: UsageProvider[]): UsageProvider[] {
+  return accounts.some((account) => account.accountId)
+    ? [accounts.find((account) => account.inUse) ?? accounts[0]!]
+    : accounts;
+}
+
+function AccountFreshness({ account }: { account: UsageProvider }) {
+  if (account.usage?.status !== "ok") return null;
+  return (
+    <span
+      className={cn(
+        "ml-auto flex shrink-0 items-center gap-1 font-normal text-subtle-foreground",
+        account.refreshFailed && "text-warning-text",
+      )}
+    >
+      {account.refreshFailed ? (
+        <span role="img" aria-label="Refresh failed" title="Refresh failed">
+          <Icon
+            name="AlertTriangle"
+            aria-hidden="true"
+            className="size-3 shrink-0"
+          />
+        </span>
+      ) : null}
+      {account.observedAt === null
+        ? usageAllowanceMessages.updateUnavailable
+        : `updated ${formatObservedAge(account.observedAt, Date.now())}`}
+    </span>
   );
 }
 
@@ -319,6 +392,7 @@ function ProviderUsageBody({ provider, onCodexSignedIn }: { provider: UsageProvi
               key={window.label}
               window={window}
               last={index === usage.windows.length - 1}
+              account={provider}
             />
           ))}
         </div>
@@ -530,10 +604,12 @@ export function ProviderUsageStatusContent({
   snapshot,
   threadMachineId,
   refreshEnabled = true,
+  onViewDetails,
 }: ExperimentalSidebarFooterDisclosureProps & {
   snapshot: UsageStoreSnapshot;
   threadMachineId: string | null;
   refreshEnabled?: boolean;
+  onViewDetails?: () => void;
 }) {
   const [, refreshCountdowns] = useState(0);
   useEffect(() => {
@@ -669,74 +745,89 @@ export function ProviderUsageStatusContent({
         )}
         {providers.map((provider) => (
           <section key={provider.id} aria-label={provider.displayName}>
-            <h2 className="flex min-w-0 items-center gap-2 font-normal">
-              <ProviderIcon
-                providerKind="agent"
-                provider={provider}
-                fallback="Bot"
-                className="size-3 shrink-0"
-              />
-              <span className="shrink-0 lowercase text-primary-text">
-                {provider.displayName}
-              </span>
-              <AccountChip
-                accounts={provider.accounts}
-                refresh={() =>
-                  void refreshUsage({
-                    force: false,
-                    machineIds:
-                      activeMachineId === null ? null : [activeMachineId],
-                    maxAgeMs: CARD_MAX_AGE_MS,
-                  })
-                }
-              />
-            </h2>
-            {(provider.accounts.some((account) => account.accountId)
-              ? [
-                  provider.accounts.find((account) => account.inUse) ??
-                    provider.accounts[0]!,
-                ]
-              : provider.accounts
-            ).map((account) => (
-                  <div key={account.id}>
-                    {account.accountLabel === null ||
-                    provider.accounts.length === 1 ||
-                    account.accountId ? null : (
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="flex min-w-0 flex-1 items-center gap-2 font-normal">
+                <ProviderIcon
+                  providerKind="agent"
+                  provider={provider}
+                  fallback="Bot"
+                  className="size-3 shrink-0"
+                />
+                <span className="shrink-0 lowercase text-primary-text">
+                  {provider.displayName}
+                </span>
+                <AccountChip
+                  accounts={provider.accounts}
+                  refresh={() =>
+                    void refreshUsage({
+                      force: false,
+                      machineIds:
+                        activeMachineId === null ? null : [activeMachineId],
+                      maxAgeMs: CARD_MAX_AGE_MS,
+                    })
+                  }
+                />
+              </h2>
+              {shownAccounts(provider.accounts).length === 1 ? (
+                <AccountFreshness
+                  account={shownAccounts(provider.accounts)[0]!}
+                />
+              ) : null}
+            </div>
+            {shownAccounts(provider.accounts).map((account, _, shown) => (
+              <div key={account.id}>
+                {shown.length === 1 ? null : (
+                  <div className="flex min-w-0 items-center gap-2">
+                    {account.accountLabel === null ? null : (
                       <h3
                         title={account.accountLabel}
-                        className="truncate text-subtle-foreground"
+                        className="min-w-0 truncate text-subtle-foreground"
                       >
                         {account.accountLabel}
                       </h3>
                     )}
-                    {account.usage === null && snapshot.isRefreshing ? (
-                      <UsageNote>{usageFeedbackMessages.loading}</UsageNote>
-                    ) : account.usage === null &&
-                      (activeMachine?.error != null ||
-                        snapshot.error !== null) ? (
-                      <UsageNote>{usageFeedbackMessages.unavailable}</UsageNote>
-                    ) : (
-                      <ProviderUsageBody
-                        provider={account}
-                        onCodexSignedIn={
-                          activeMachine?.id.startsWith("source:") ||
-                          (account.accountId && account.accountId !== "local")
-                            ? undefined
-                            : () =>
-                                void refreshUsage({
-                                  force: true,
-                                  machineIds:
-                                    activeMachineId === null ? null : [activeMachineId],
-                                  maxAgeMs: 0,
-                                })
-                        }
-                      />
-                    )}
+                    <AccountFreshness account={account} />
                   </div>
-                ))}
+                )}
+                {account.usage === null && snapshot.isRefreshing ? (
+                  <UsageNote>{usageFeedbackMessages.loading}</UsageNote>
+                ) : account.usage === null &&
+                  (activeMachine?.error != null || snapshot.error !== null) ? (
+                  <UsageNote>{usageFeedbackMessages.unavailable}</UsageNote>
+                ) : (
+                  <ProviderUsageBody
+                    provider={account}
+                    onCodexSignedIn={
+                      activeMachine?.id.startsWith("source:") ||
+                      (account.accountId && account.accountId !== "local")
+                        ? undefined
+                        : () =>
+                            void refreshUsage({
+                              force: true,
+                              machineIds:
+                                activeMachineId === null
+                                  ? null
+                                  : [activeMachineId],
+                              maxAgeMs: 0,
+                            })
+                    }
+                  />
+                )}
+              </div>
+            ))}
           </section>
         ))}
       </div>
+      {onViewDetails === undefined ? null : (
+        <button
+          type="button"
+          className="mx-1.5 flex min-h-8 shrink-0 items-center justify-between gap-2 border-t border-sidebar-border px-1.5 text-left font-mono text-[10.5px] text-muted-foreground hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring pointer-coarse:min-h-11"
+          onClick={onViewDetails}
+        >
+          View usage details
+          <Icon name="ChevronRight" aria-hidden="true" className="size-3" />
+        </button>
+      )}
     </div>
   );
 }

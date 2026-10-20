@@ -28,7 +28,8 @@ type ScenarioName =
   | "offline"
   | "authentication"
   | "missingProvider"
-  | "failedRefresh";
+  | "failedRefresh"
+  | "freshness";
 
 function futureIso(hours: number): string {
   return new Date(Date.now() + hours * 60 * 60_000).toISOString();
@@ -53,6 +54,7 @@ function provider(
     },
     signInHint: "Sign in to this account in the provider’s settings.",
     expiredHint: "Sign in again in the provider’s settings.",
+    observedAt: null,
     usage,
   };
 }
@@ -135,7 +137,89 @@ const healthyMachine = machine("host-m4", "Michael-M4", [
   provider("local-codex", "codex", measured("local@example.com", 17, "Pro")),
 ]);
 
+const minutesAgo = (minutes: number) => Date.now() - minutes * 60_000;
+
 const scenarios: Record<Exclude<ScenarioName, "loading">, UsageSnapshot> = {
+  freshness: {
+    machines: [
+      machine(
+        "source:account-pool",
+        "Account Pooler",
+        [
+          {
+            ...provider("alex", "codex", {
+              status: "ok",
+              accountEmail: "alex@example.com",
+              planLabel: "Pro",
+              windows: [
+                {
+                  label: "Five-hour limit",
+                  usedPercent: 28,
+                  resetsAt: futureIso(1.2),
+                  cost: null,
+                },
+                {
+                  label: "Weekly limit",
+                  usedPercent: 61,
+                  resetsAt: futureIso(83),
+                  cost: null,
+                },
+              ],
+            }),
+            observedAt: minutesAgo(3),
+          },
+          {
+            ...provider("sam", "codex", {
+              status: "ok",
+              accountEmail: "sam@example.com",
+              planLabel: "Team",
+              windows: [
+                {
+                  label: "Weekly limit",
+                  usedPercent: 86,
+                  resetsAt: null,
+                  cost: null,
+                },
+              ],
+            }),
+            observedAt: minutesAgo(125),
+            refreshFailed: true,
+          },
+          provider("team", "claude-code", {
+            status: "ok",
+            accountEmail: "team@example.com",
+            planLabel: "Max (20x)",
+            windows: [
+              {
+                label: "Weekly limit",
+                usedPercent: 112,
+                resetsAt: futureIso(18),
+                cost: null,
+              },
+            ],
+          }),
+          {
+            ...provider("ops", "claude-code", {
+              status: "ok",
+              accountEmail: "ops@example.com",
+              planLabel: "Max",
+              windows: [
+                {
+                  label: "Weekly limit",
+                  usedPercent: 74,
+                  resetsAt: futureIso(-1),
+                  cost: null,
+                },
+              ],
+            }),
+            observedAt: minutesAgo(300),
+          },
+          { ...provider("new", "claude-code", null) },
+        ],
+        { error: "Some usage could not be refreshed." },
+      ),
+    ],
+  },
   local: {
     machines: [
       machine("host-mbp", "macbook pro", [
@@ -218,6 +302,7 @@ function FooterPreview({ scenario }: { scenario: ScenarioName }) {
         snapshot={storySnapshot(scenario)}
         threadMachineId={null}
         refreshEnabled={false}
+        onViewDetails={() => {}}
       />
     </div>
   );
@@ -233,9 +318,12 @@ const descriptions: Record<ScenarioName, string> = {
   missingProvider: "The selected machine does not have the provider installed.",
   failedRefresh:
     "The latest refresh failed while cached measurements remain visible.",
+  freshness:
+    "Remaining allowance, measurement age, over-limit, reset since last update, and unavailable usage.",
 };
 
 const storyRows: readonly { label: string; scenario: ScenarioName }[] = [
+  { label: "freshness", scenario: "freshness" },
   { label: "local machine", scenario: "local" },
   { label: "healthy", scenario: "healthy" },
   { label: "empty account pool", scenario: "emptyPool" },
@@ -255,6 +343,15 @@ export function Settings() {
         </StoryRow>
       ))}
     </StoryCard>
+  );
+}
+
+export function FreshnessMobile() {
+  return (
+    <div className="w-[358px] space-y-6 bg-background p-4">
+      <FooterPreview scenario="freshness" />
+      <SettingsPreview scenario="freshness" />
+    </div>
   );
 }
 

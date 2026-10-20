@@ -8,7 +8,7 @@ const costSchema = z.strictObject({
 
 export const usageWindowSchema = z.strictObject({
   label: nonemptyStringSchema,
-  usedPercent: z.number(),
+  usedPercent: z.nullable(z.number()),
   resetsAt: z.nullable(nonemptyStringSchema),
   cost: z.nullable(costSchema),
 });
@@ -45,6 +45,8 @@ export const usageProviderSchema = z.strictObject({
   signInHint: nonemptyStringSchema,
   expiredHint: nonemptyStringSchema,
   usage: z.nullable(providerUsageSchema),
+  observedAt: z.nullable(z.number()),
+  refreshFailed: z.optional(z.boolean()),
   accountId: z.optional(nonemptyStringSchema),
   inUse: z.optional(z.boolean()),
 });

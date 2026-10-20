@@ -188,23 +188,27 @@ function AccountTile({
         </button>
       ) : null}
       <div className="mt-auto space-y-1.5 pt-4">
-        {account.windows.slice(0, 2).map((window) => (
-          <div
-            key={window.label}
-            className="flex items-center gap-2 text-xs tabular-nums text-subtle-foreground"
-          >
-            <span className="w-5">{windowLabel(window.label)}</span>
-            <span className="h-[3px] flex-1 bg-border">
-              <span
-                className="block h-full bg-muted-foreground"
-                style={{ width: `${Math.min(100, window.usedPercent)}%` }}
-              />
-            </span>
-            <span className="w-8 text-right">
-              {Math.round(window.usedPercent)}%
-            </span>
-          </div>
-        ))}
+        {account.windows.slice(0, 2).map((window) => {
+          const usedPercent =
+            window.resetsAt !== null && window.resetsAt <= Date.now()
+              ? 0
+              : window.usedPercent;
+          return (
+            <div
+              key={window.label}
+              className="flex items-center gap-2 text-xs tabular-nums text-subtle-foreground"
+            >
+              <span className="w-5">{windowLabel(window.label)}</span>
+              <span className="h-[3px] flex-1 bg-border">
+                <span
+                  className="block h-full bg-muted-foreground"
+                  style={{ width: `${Math.min(100, usedPercent)}%` }}
+                />
+              </span>
+              <span className="w-8 text-right">{Math.round(usedPercent)}%</span>
+            </div>
+          );
+        })}
         {account.inUse ? null : (
           <Button
             variant="outline"

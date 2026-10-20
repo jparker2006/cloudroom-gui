@@ -118,6 +118,7 @@ function normalizedProvider(
         provider.displayName +
         " session expired. Sign in again, then reload usage.",
     usage: normalizedUsage(usage),
+    observedAt: null,
   };
 }
 
@@ -148,6 +149,7 @@ function resourceProvider(
         }
       : {}),
     id: `${pluginId}:${resource.id}`,
+    observedAt: measurement?.observedAt ?? null,
     accountLabel:
       resource.scope.kind === "shared"
         ? (measurement?.usage.accountEmail ?? resource.label)
@@ -194,12 +196,12 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
             local ??
             (metadata ? normalizedProvider(metadata, undefined) : null);
           if (base === null) continue;
+          const { refreshFailed: _, ...shared } = base;
           const entries = accounts.flatMap((account): UsageProvider[] => {
             if (account.id === "local")
               return local
                 ? [{ ...local, accountId: "local", inUse: account.inUse }]
                 : [];
-            // Accounts that report no usage still show when they hit a limit.
             const windows =
               account.windows.length > 0
                 ? account.windows
@@ -207,18 +209,19 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                   ? [
                       {
                         label: "Limit hit",
-                        usedPercent: 100,
+                        usedPercent: null,
                         resetsAt: account.limitedUntil,
                       },
                     ]
                   : [];
             return [
               {
-                ...base,
+                ...shared,
                 id: `accounts:${account.id}`,
                 accountLabel: account.name ?? account.email,
                 accountId: account.id,
                 inUse: account.inUse,
+                observedAt: account.observedAt ?? null,
                 usage:
                   windows.length === 0
                     ? null
@@ -446,9 +449,15 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       for (const { source, resource } of visible) {
         const key = keyOf(source.pluginId, resource.id);
         const cached = measurements.get(key);
-        machine.providers.push(
-          resourceProvider(resource, cached?.value, source.pluginId, providers),
-        );
+        machine.providers.push({
+          ...resourceProvider(
+            resource,
+            cached?.value,
+            source.pluginId,
+            providers,
+          ),
+          ...(failures.has(key) ? { refreshFailed: true } : {}),
+        });
         if (source.error !== null || failures.has(key))
           machine.error = "Some usage could not be refreshed.";
       }
