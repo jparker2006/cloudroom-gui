@@ -1352,6 +1352,56 @@ export default async function plugin(bb: BbPluginApi) {
     return { repo, number, id: view.id };
   }
 
+  async function mergeByIdentity(
+    list: PullCandidate[],
+  ): Promise<PullCandidate[]> {
+    const needsId = list.filter((candidate) => candidate.id === null);
+    const otherIds = list.some((candidate) => candidate.id !== null);
+    if (needsId.length > 0 && otherIds && list.length > 1) {
+      for (const candidate of needsId) {
+        try {
+          const raw = await gh(
+            [
+              "pr",
+              "view",
+              String(candidate.number),
+              "-R",
+              candidate.repo,
+              "--json",
+              "id",
+            ],
+            15_000,
+          );
+          const id = (JSON.parse(raw) as { id?: unknown }).id;
+          if (typeof id === "string" && id.length > 0) candidate.id = id;
+        } catch (error) {
+          bb.log.warn(
+            `could not confirm ${candidate.repo}#${candidate.number}: ${errorMessage(error)}`,
+          );
+        }
+      }
+    }
+    const merged: PullCandidate[] = [];
+    for (const candidate of list) {
+      const same =
+        candidate.id === null
+          ? undefined
+          : merged.find((entry) => entry.id === candidate.id);
+      if (same === undefined) {
+        merged.push(candidate);
+        continue;
+      }
+      if (candidate.sources.includes("workspace")) {
+        same.repo = candidate.repo;
+        same.number = candidate.number;
+      }
+      for (const source of candidate.sources) {
+        if (!same.sources.includes(source)) same.sources.push(source);
+      }
+    }
+    return merged;
+  }
+
   async function lookupPullAssociation(
     threadId: string,
   ): Promise<PullAssociation> {
@@ -1454,7 +1504,7 @@ export default async function plugin(bb: BbPluginApi) {
       failures.push(failureFrom("review", error));
     }
 
-    const candidateList = [...candidates.values()];
+    const candidateList = await mergeByIdentity([...candidates.values()]);
     return {
       threadId,
       environmentId,

@@ -633,6 +633,79 @@ describe("session PR panel round-3 corrections", () => {
     signIn.lifecycle.unmount();
   });
 
+  it("explains save failures as access versus sign-in on the plugin machine", async () => {
+    for (const [message, expected] of [
+      [
+        "HTTP 403: Resource protected by organization SAML enforcement",
+        "GitHub access needed",
+      ],
+      ["gh: not logged in to any GitHub hosts", "GitHub sign-in needed"],
+    ] as const) {
+      const slot = render({
+        pullForThread: () => association("thr-1", { kind: "none" }),
+        listItems: () => ({
+          items: [
+            {
+              repo: "acme/widgets",
+              number: 43,
+              kind: "pr",
+              title: "Pull 43",
+              state: "OPEN",
+              author: "octocat",
+              labels: [],
+              assignees: [],
+              url: "https://github.com/acme/widgets/pull/43",
+              body: "",
+              updatedAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        }),
+        setPullForThread: () => {
+          throw new Error(message);
+        },
+      });
+      await settle();
+      await act(async () =>
+        slot.getByRole("button", { name: "Choose a PR…" }).click(),
+      );
+      await settle();
+      await act(async () => slot.getByText("acme/widgets#43").click());
+      await settle();
+
+      const alert = slot.getByRole("alert").textContent ?? "";
+      expect(alert).toContain(expected);
+      expect(alert).toContain("the machine running the Cloudroom server");
+      expect(slot.container.textContent).toContain(
+        "Choose this session’s pull request",
+      );
+      slot.lifecycle.unmount();
+      document.body.innerHTML = "";
+    }
+  });
+
+  it("keeps detail and explains access on a SAML refresh failure", async () => {
+    const slot = render({
+      pullForThread: () => candidate(42, ["workspace"]),
+      cachedPull: () => ({
+        cached: {
+          pull: pull(42, { title: "Cached title" }),
+          fetchedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+        },
+      }),
+      getPull: () => {
+        throw new Error(
+          "HTTP 403: Resource protected by organization SAML enforcement",
+        );
+      },
+    });
+    await settle();
+
+    expect(slot.container.textContent).toContain("Cached title");
+    expect(slot.container.textContent).toContain("GitHub access needed");
+    expect(slot.container.textContent).not.toContain("GitHub sign-in needed");
+    slot.lifecycle.unmount();
+  });
+
   it("does not say passing when a check was skipped", async () => {
     const slot = render({
       pullForThread: () => candidate(42, ["workspace"]),

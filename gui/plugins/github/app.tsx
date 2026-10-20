@@ -1767,10 +1767,20 @@ interface PullDetailState {
   refresh: () => void;
 }
 
+const PLUGIN_MACHINE =
+  "the machine running the Cloudroom server (where the GitHub plugin runs)";
+
 function describeGhError(message: string): string {
   const reason = classifyGhFailure(message);
-  if (reason === "auth") return `GitHub sign-in needed. ${message}`;
-  if (reason === "unavailable") return `GitHub is unavailable. ${message}`;
+  if (reason === "auth" && isPermissionFailure(message)) {
+    return `GitHub access needed: gh is signed in on ${PLUGIN_MACHINE}, but that account can’t read this repository. Ask for access or authorize it for the organization’s single sign-on (for example gh auth refresh -h github.com), then try again. Details: ${message}`;
+  }
+  if (reason === "auth") {
+    return `GitHub sign-in needed: gh isn’t signed in on ${PLUGIN_MACHINE}. Run gh auth login there, then try again. Details: ${message}`;
+  }
+  if (reason === "unavailable") {
+    return `GitHub is unavailable right now. Details: ${message}`;
+  }
   return message;
 }
 
@@ -2420,7 +2430,7 @@ function FailureNotice({
   const machine =
     where === "workspace"
       ? "the machine that hosts this thread’s workspace"
-      : "the machine running the Cloudroom server (where the GitHub plugin runs)";
+      : PLUGIN_MACHINE;
   if (reason === "auth" && isPermissionFailure(message)) {
     return (
       <Notice tone="error">

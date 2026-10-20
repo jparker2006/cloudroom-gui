@@ -359,6 +359,89 @@ describe("review link identity", () => {
     });
   });
 
+  it("merges a renamed workspace PR with an old-name review link for the same id", async () => {
+    const world = newWorld();
+    world.environments.thr_a = "env-a";
+    world.workspace["env-a"] = {
+      outcome: "available",
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/acme/renamed/pull/42",
+      },
+    };
+    writeFileSync(
+      join(binDir, "gh"),
+      `#!/usr/bin/env bash
+case "$*" in
+  "--version") echo "gh version 2.96.0 (fake)";;
+  "auth status --hostname github.com --active") echo "authenticated";;
+  "pr view 42 -R acme/renamed --json id") printf '%s\\n' '{"id":"PR_node_42"}';;
+  *) printf '%s\\n' '[]';;
+esac
+`,
+    );
+    chmodSync(join(binDir, "gh"), 0o755);
+    const host = await loadPlugin(world);
+    await host.bb.storage.kv.set("link:pr:acme/widgets#42", [
+      {
+        kind: "pr",
+        repo: "acme/widgets",
+        number: 42,
+        threadId: "thr_a",
+        createdAt: "2026-10-01T00:00:00Z",
+        pullId: "PR_node_42",
+      },
+    ]);
+
+    await expect(
+      host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
+    ).resolves.toMatchObject({
+      candidates: [
+        {
+          repo: "acme/renamed",
+          number: 42,
+          id: "PR_node_42",
+          sources: ["workspace", "review"],
+        },
+      ],
+      resolution: { kind: "candidate", repo: "acme/renamed", id: "PR_node_42" },
+    });
+  });
+
+  it("keeps renamed matches separate when their identity can't be confirmed", async () => {
+    const world = newWorld();
+    world.environments.thr_a = "env-a";
+    world.workspace["env-a"] = {
+      outcome: "available",
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/acme/renamed/pull/42",
+      },
+    };
+    writeGh({}, ["42"]);
+    const host = await loadPlugin(world);
+    await host.bb.storage.kv.set("link:pr:acme/widgets#42", [
+      {
+        kind: "pr",
+        repo: "acme/widgets",
+        number: 42,
+        threadId: "thr_a",
+        createdAt: "2026-10-01T00:00:00Z",
+        pullId: "PR_node_42",
+      },
+    ]);
+
+    await expect(
+      host.harness.callRpc("pullForThread", { threadId: "thr_a" }),
+    ).resolves.toMatchObject({
+      candidates: [
+        { repo: "acme/renamed", id: null },
+        { repo: "acme/widgets", id: "PR_node_42" },
+      ],
+      resolution: { kind: "ambiguous" },
+    });
+  });
+
   it("does not auto-show a legacy review link without an id", async () => {
     const world = newWorld();
     world.environments.thr_a = null;
