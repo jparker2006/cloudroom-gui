@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@cloudroom/domain";
@@ -14,6 +14,7 @@ import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { fetchWithAppSurface } from "@/lib/app-surface";
 import { hasAnyThreadMetadata } from "@/components/secondary-panel/ThreadMetadataContent";
+import { updateCachedThreadListStatusState } from "@/hooks/cache-owners/query-cache";
 import { ThreadSubagentChip, ThreadSubagentsRow } from "./ThreadSubagents";
 
 const connection = vi.hoisted(() => ({ state: "connected" }));
@@ -351,6 +352,69 @@ describe("verification round (075d686)", () => {
     fireEvent.click(card);
     const controls = card.getAttribute("aria-controls");
     expect(controls && document.getElementById(controls)).toBeTruthy();
+  });
+});
+
+describe("PR #8 review (5534880): a cache patch is not a successful refresh", () => {
+  async function patchUnrelatedStatus(
+    queryClient: ReturnType<typeof createQueryClientTestHarness>["queryClient"],
+    threadId: string,
+  ) {
+    const base = FAMILY.find((entry) => entry.id === threadId)!;
+    await act(async () => {
+      updateCachedThreadListStatusState(queryClient, threadId, {
+        status: "idle",
+        runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+        activity: base.activity,
+        latestAttentionAt: 5,
+        updatedAt: 5,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  function chipName() {
+    return screen.getByRole("button", { name: /Subagents:/ }).getAttribute("aria-label");
+  }
+
+  it("keeps the sidebar refresh-failure warning after an unrelated realtime status patch", async () => {
+    const { queryClient } = renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      FAMILY,
+    );
+    await queryClient
+      .fetchQuery({
+        queryKey: sidebarNavigationQueryKey(),
+        queryFn: () => Promise.reject(new Error("sidebar refresh failed")),
+        staleTime: 0,
+      })
+      .catch(() => {});
+    await waitFor(() => expect(chipName()).toMatch(/showing last known/));
+    await patchUnrelatedStatus(queryClient, "thr_b1");
+    expect(queryClient.getQueryState(sidebarNavigationQueryKey())?.status).toBe("success");
+    expect(chipName()).toMatch(/couldn’t refresh, showing last known/);
+    expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/);
+  });
+
+  it("keeps the fallback refresh-failure warning after an unrelated realtime status patch", async () => {
+    vi.mocked(sdk.threads.list).mockResolvedValueOnce([FAMILY[1]!, FAMILY[2]!]);
+    const { queryClient } = renderWith(
+      <>
+        <ThreadSubagentChip threadId={ROOT} isOpen={false} onToggle={() => {}} />
+        <ThreadSubagentsRow threadId={ROOT} />
+      </>,
+      null,
+    );
+    await waitFor(() => expect(screen.getByText("Builder")).toBeTruthy());
+    vi.mocked(sdk.threads.list).mockRejectedValue(new Error("offline"));
+    await queryClient.refetchQueries().catch(() => {});
+    await waitFor(() => expect(chipName()).toMatch(/showing last known/));
+    await patchUnrelatedStatus(queryClient, "thr_a");
+    expect(chipName()).toMatch(/couldn’t refresh, showing last known/);
+    expect(document.body.textContent).toMatch(/Couldn’t refresh · showing last known/);
   });
 });
 

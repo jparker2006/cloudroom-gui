@@ -380,6 +380,7 @@ interface UseChildThreadsArgs {
 
 interface UseChildThreadsResult {
   data: ThreadListResponse | undefined;
+  hasRefreshFailure: boolean;
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
@@ -423,6 +424,7 @@ export function useChildThreads({
   if (derivedChildren !== undefined) {
     return {
       data: derivedChildren,
+      hasRefreshFailure: false,
       isError: false,
       isFetching: false,
       isLoading: false,
@@ -431,6 +433,7 @@ export function useChildThreads({
   const waitingForBootstrap = enabled && isBootstrapPending;
   return {
     data: fallbackQuery.data,
+    hasRefreshFailure: fallbackQuery.failureCount > 0,
     isError: fallbackQuery.isError,
     isFetching: fallbackQuery.isFetching || waitingForBootstrap,
     isLoading: fallbackQuery.isLoading || waitingForBootstrap,
