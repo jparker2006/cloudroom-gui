@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const UI_PREFERENCE_STRING_MAX_LENGTH = 1_024;
-const UI_PREFERENCE_LIST_MAX_LENGTH = 10_000;
+export const UI_PREFERENCE_LIST_MAX_LENGTH = 10_000;
 const THREAD_NAMING_RULES_MAX_LENGTH = 4_000;
 export const DEFAULT_THREAD_NAMING_RULES = `Name the thread after the main thing the user wants to do. All lowercase, just 3-6 clear, unique, descriptive words. in plain english.
 

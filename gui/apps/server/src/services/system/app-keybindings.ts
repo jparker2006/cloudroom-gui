@@ -198,6 +198,17 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       none: ["modalOpen", "browserFocus"],
     },
   ),
+  unassignedBinding("sidebar.collapseAllSubthreads", mainWithoutModal),
+  binding(
+    "sidebar.collapseAllSubthreads",
+    "c",
+    { mod: true, alt: true },
+    {
+      all: ["mainSurface", "macPlatform"],
+      desktopOnly: true,
+      none: ["modalOpen"],
+    },
+  ),
   ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
   unassignedBinding("pane.focus.previous", splitWithoutModal),
   unassignedBinding("pane.focus.next", splitWithoutModal),
