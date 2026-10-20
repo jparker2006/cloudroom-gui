@@ -24,6 +24,10 @@ const states: { label: string; hint: string; evidence: ThreadConnectionEvidence 
   { label: "browser offline", hint: "navigator.onLine is false", evidence: { ...base, browserOffline: true, disconnectedAt: DISCONNECTED_AT } },
   { label: "status unreadable", hint: "cloud status read failed", evidence: { ...base, cloud: { statusReadError: new TypeError("Failed to fetch"), reconnecting: false } } },
   { label: "cloud reconnecting", hint: "server says reconnecting", evidence: { ...base, cloud: { statusReadError: null, reconnecting: true } } },
+  { label: "failed start", hint: "confirmed failedStart; Retry start is explicit", evidence: { ...base, cloud: { statusReadError: null, reconnecting: false, failedStart: true, startError: "Sandbox setup failed: npm install exited with code 1." } } },
+  { label: "provider authorization", hint: "cloud authRequired (Codex/Cursor)", evidence: { ...base, cloud: { statusReadError: null, reconnecting: false, providerAuth: "Codex" } } },
+  { label: "host reconnecting", hint: "runtime host-reconnecting within grace", evidence: { ...base, host: { reconnecting: true, graceExpiresAt: new Date(2026, 9, 20, 14, 16).getTime() } } },
+  { label: "can't reach Mac", hint: "phone relay tunnel-offline probe", evidence: { ...base, relayMacUnreachable: true } },
   { label: "recovered", hint: "shown for 4 s", evidence: { ...base, recovered: true } },
 ];
 

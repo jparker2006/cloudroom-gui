@@ -213,10 +213,12 @@ export interface ThreadCloudStatusEvidence {
 
 export function ThreadConnectionStatus({
   cloud,
+  host,
   onlyThreadStates = false,
   detailsExtra,
 }: {
   cloud: ThreadCloudStatusEvidence | null;
+  host?: { reconnecting: boolean; graceExpiresAt: number | null };
   onlyThreadStates?: boolean;
   detailsExtra?: ReactNode;
 }) {
@@ -229,6 +231,7 @@ export function ThreadConnectionStatus({
     browserOffline,
     disconnectedAt: wsManager.getDisconnectedAt(),
     relayMacUnreachable: isMacUnreachableThroughRelay(),
+    host,
     cloud: cloud && {
       statusReadError: cloud.statusReadError,
       reconnecting: cloud.reconnecting,
@@ -315,7 +318,10 @@ export function ThreadConnectionStatusBanner({
         className={cn("size-3.5 shrink-0", TONE_ICON_CLASS[view.tone], view.spin && "animate-spin motion-reduce:animate-none")}
         aria-hidden="true"
       />
-      <span className="min-w-0 truncate text-foreground">{view.status}</span>
+      <span className="min-w-0 truncate text-foreground">
+        {view.status}
+        {view.meta ? <span className="text-muted-foreground"> · {view.meta}</span> : null}
+      </span>
     </>
   );
   return (

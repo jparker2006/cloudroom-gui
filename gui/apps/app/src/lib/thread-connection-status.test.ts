@@ -176,6 +176,19 @@ describe("getThreadConnectionStatus: selected direction-1 states", () => {
     expect(getThreadConnectionStatus(connected)).toBeNull();
   });
 
+  it("waits for the thread's host only from the runtime's host-reconnecting state, with its grace deadline and no action", () => {
+    const deadline = new Date(2026, 9, 20, 14, 16).getTime();
+    const status = getThreadConnectionStatus({ ...connected, host: { reconnecting: true, graceExpiresAt: deadline } });
+    expect(status).toMatchObject({ kind: "host-reconnecting", status: "Waiting for this computer to reconnect", actions: [] });
+    expect(status?.meta).toMatch(/^until 2:16\s?PM$/);
+    expect(JSON.stringify(status)).not.toMatch(/offline|powered off|lost|failed/i);
+    expect(getThreadConnectionStatus({ ...connected, host: { reconnecting: true, graceExpiresAt: null } })?.meta).toBeUndefined();
+    expect(getThreadConnectionStatus({ ...connected, host: { reconnecting: false, graceExpiresAt: null } })).toBeNull();
+    expect(
+      getThreadConnectionStatus({ ...connected, socket: "reconnecting", graceElapsed: true, host: { reconnecting: true, graceExpiresAt: deadline } })?.kind,
+    ).toBe("not-connected");
+  });
+
   it("keeps connection trouble ahead of confirmed thread states, and a failed start ahead of cloud reconnecting", () => {
     const failed = { ...cloudOk, failedStart: true, startError: "x", reconnecting: true };
     expect(getThreadConnectionStatus({ ...connected, socket: "reconnecting", graceElapsed: true, cloud: failed })?.kind).toBe("not-connected");

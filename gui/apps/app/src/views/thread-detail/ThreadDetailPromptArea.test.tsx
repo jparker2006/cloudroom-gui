@@ -1254,6 +1254,25 @@ describe("ThreadDetailPromptArea", () => {
       retryStart.mockRestore();
     });
 
+    it("shows the runtime's host-reconnecting state in the status row until its grace deadline, with no action", () => {
+      const deadline = new Date(2026, 9, 20, 14, 16).getTime();
+      renderPromptArea({
+        thread: makeThread({ status: "active", runtime: { displayStatus: "host-reconnecting", hostReconnectGraceExpiresAt: deadline } }),
+      });
+      const row = screen.getByRole("region", { name: "Connection status" });
+      expect(within(row).getByText("Waiting for this computer to reconnect")).toBeTruthy();
+      expect(row.textContent).toMatch(/until 2:16\s?PM/);
+      expect(within(row).queryAllByRole("button")).toHaveLength(0);
+      expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("leaves waiting-for-host to its existing timeline notice", () => {
+      renderPromptArea({
+        thread: makeThread({ status: "active", runtime: { displayStatus: "waiting-for-host", hostReconnectGraceExpiresAt: null } }),
+      });
+      expect(screen.queryByRole("region", { name: "Connection status" })).toBeNull();
+    });
+
     it("shows Codex authorization in the status row with the existing Connect action, not a separate card", () => {
       testQueryClient.setQueryDefaults(cloudKey, { staleTime: Infinity });
       testQueryClient.setQueryData(cloudKey, { ...baseStatus, authRequired: true });

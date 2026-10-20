@@ -15,6 +15,7 @@ export interface ThreadConnectionEvidence {
   disconnectedAt: number | null;
   recovered: boolean;
   relayMacUnreachable?: boolean;
+  host?: { reconnecting: boolean; graceExpiresAt: number | null };
   cloud: {
     statusReadError: Error | null;
     reconnecting: boolean;
@@ -34,11 +35,13 @@ export interface ThreadConnectionStatusView {
     | "failed-start"
     | "provider-auth"
     | "relay-unreachable"
+    | "host-reconnecting"
     | "recovered";
   icon: IconName;
   spin: boolean;
   tone: "neutral" | "attention" | "problem" | "ok";
   status: string;
+  meta?: string;
   details: { label: string; text: string }[];
   actions: ThreadConnectionAction[];
   announce: "none" | "polite" | "alert";
@@ -173,6 +176,20 @@ export function getThreadConnectionStatus(
       status: "Cloud session reconnecting…",
       details: [],
       actions: ["refresh-status"],
+      announce: "polite",
+    };
+  }
+  if (evidence.host?.reconnecting) {
+    const deadline = evidence.host.graceExpiresAt;
+    return {
+      kind: "host-reconnecting",
+      icon: "Laptop",
+      spin: false,
+      tone: "neutral",
+      status: "Waiting for this computer to reconnect",
+      ...(deadline === null ? {} : { meta: `until ${formatClockTime(deadline)}` }),
+      details: [],
+      actions: [],
       announce: "polite",
     };
   }
