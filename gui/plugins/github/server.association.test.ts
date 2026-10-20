@@ -957,6 +957,8 @@ esac
             status: "COMPLETED",
             conclusion: "FAILURE",
             startedAt: "2026-10-01T00:00:00Z",
+            detailsUrl:
+              "https://github.com/acme/widgets/actions/runs/500/job/1",
           },
           {
             name: "test",
@@ -964,6 +966,8 @@ esac
             status: "COMPLETED",
             conclusion: "SUCCESS",
             startedAt: "2026-10-01T01:00:00Z",
+            detailsUrl:
+              "https://github.com/acme/widgets/actions/runs/500/job/2",
           },
           {
             name: "old",
@@ -1166,6 +1170,66 @@ esac
     expect(
       pull.checks?.filter((check) => check.status === "failure"),
     ).toHaveLength(2);
+  });
+
+  it("keeps same-named jobs from distinct workflow runs apart", async () => {
+    writeGh({
+      42: pullView(42, {
+        statusCheckRollup: [
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "CI",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T12:00:00Z",
+            detailsUrl:
+              "https://github.com/acme/widgets/actions/runs/111/job/1",
+          },
+          {
+            __typename: "CheckRun",
+            name: "build",
+            workflowName: "CI",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T12:01:00Z",
+            detailsUrl:
+              "https://github.com/acme/widgets/actions/runs/222/job/2",
+          },
+          {
+            __typename: "CheckRun",
+            name: "lint",
+            workflowName: "CI",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T12:00:00Z",
+            detailsUrl:
+              "https://github.com/acme/widgets/actions/runs/111/job/3",
+          },
+          {
+            __typename: "CheckRun",
+            name: "lint",
+            workflowName: "CI",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T12:05:00Z",
+            detailsUrl:
+              "https://github.com/acme/widgets/actions/runs/111/job/4",
+          },
+        ],
+      }),
+    });
+    const { harness } = await loadPlugin(newWorld());
+
+    const { pull } = (await harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    })) as FetchedPull;
+    expect(pull.checks?.map((check) => [check.name, check.status])).toEqual([
+      ["CI / build", "failure"],
+      ["CI / build", "success"],
+      ["CI / lint", "success"],
+    ]);
   });
 
   it("refuses detail that GitHub reports for a different number", async () => {

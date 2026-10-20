@@ -378,6 +378,13 @@ function checkHost(url: unknown): string | null {
   }
 }
 
+function workflowRunId(url: unknown): string | null {
+  const match = String(url ?? "").match(
+    /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)(?:[/?#]|$)/,
+  );
+  return match === null ? null : match[1];
+}
+
 export function latestCheckRuns<
   T extends {
     __typename?: unknown;
@@ -395,12 +402,17 @@ export function latestCheckRuns<
       (entry.context === undefined ? "CheckRun" : "StatusContext");
     const workflow = String(entry.workflowName ?? "");
     const host = checkHost(entry.detailsUrl);
+    const run = workflowRunId(entry.detailsUrl);
     const source =
-      kind !== "CheckRun" || workflow !== ""
-        ? ["workflow", workflow]
-        : host === null
-          ? null
-          : ["host", host];
+      kind !== "CheckRun"
+        ? ["status"]
+        : workflow !== ""
+          ? run === null
+            ? null
+            : ["workflow", workflow, run]
+          : host === null
+            ? null
+            : ["host", host];
     const name = JSON.stringify(
       source === null
         ? [kind, index]
