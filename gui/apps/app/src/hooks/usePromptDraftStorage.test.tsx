@@ -1233,3 +1233,51 @@ describe("review fixes: unreadable change from another window", () => {
     expect(result.current.notice).toBe("unreadable");
   });
 });
+
+describe("review fixes: smaller gaps", () => {
+  it("keeps a stored draft that has no revision as a conflict copy before saving over it", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+    window.localStorage.setItem(alphaKey(), storedDraft("no revision"));
+
+    alpha.setDraft({ text: "mine, edited", mentions: [], attachments: [] });
+
+    expect(listNewThreadDraftsNotShown([alphaId()]).map((row) => row.draft?.text)).toEqual([
+      "no revision",
+    ]);
+  });
+
+  it("still reports the target as unsaved after a move into it fails", () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => result.current.setDraft({ text: "unsaved target", mentions: [], attachments: [] }));
+      act(() => {
+        moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId());
+      });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(result.current.text).toBe("unsaved target");
+    expect(result.current.isUnsaved).toBe(true);
+  });
+
+  it("recognizes moved text that a pre-upgrade window writes back", () => {
+    const LEGACY_KEY = "bb.promptbox.contents-draft-3";
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("hello"));
+    moveNewThreadDraft(LEGACY_KEY, alphaId());
+    window.localStorage.setItem(LEGACY_KEY, storedDraft("hello"));
+
+    expect(listNewThreadDraftsNotShown([alphaId()])).toEqual([
+      expect.objectContaining({ kind: "legacy", alreadyMoved: true }),
+    ]);
+  });
+});

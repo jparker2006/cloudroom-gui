@@ -306,7 +306,23 @@ function reconcileWithStoredNewThreadDraft(
   }
   const storedRev = record.rev;
   if (storedRev) removeRecoveryCopiesWithRev(storageKey, storedRev);
-  if (!storedRev || storedRev === newThreadDraftRevs.get(storageKey)) {
+  if (!storedRev) {
+    if (
+      record.kind === "draft" &&
+      !isPromptDraftEmpty(record.draft) &&
+      !arePromptDraftStatesEqual(record.draft, cachedEntry.draft)
+    ) {
+      const conflictKey = newThreadConflictKey(storageKey, createDraftRev());
+      try {
+        window.localStorage.setItem(conflictKey, rawValue);
+      } catch (error) {
+        console.warn(`[prompt-draft] could not keep the stored draft for ${storageKey}`, error);
+        return holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
+      }
+    }
+    return true;
+  }
+  if (storedRev === newThreadDraftRevs.get(storageKey)) {
     return true;
   }
   if (record.kind === "sent") {
@@ -640,6 +656,7 @@ export function moveNewThreadDraft(
   );
   const leftovers = source.draft.attachments.filter((attachment) => !carried.includes(attachment));
   const previousTarget = readPromptDraft(targetKey);
+  const targetWasUnsaved = unsavedPromptDraftKeys.has(targetKey);
   writePromptDraft(
     targetKey,
     appendPromptDraft(previousTarget, { ...source.draft, attachments: carried }),
@@ -649,7 +666,7 @@ export function moveNewThreadDraft(
       rawValue: readStoredPromptDraftValue(targetKey),
       draft: previousTarget,
     });
-    unsavedPromptDraftKeys.delete(targetKey);
+    if (!targetWasUnsaved) unsavedPromptDraftKeys.delete(targetKey);
     emitPromptDraftChange(targetKey);
     return { status: "failed" };
   }
@@ -662,6 +679,7 @@ export function moveNewThreadDraft(
   if (!writeTerminalRecord(sourceKey, sourceValue)) {
     return { status: "source-not-updated" };
   }
+  if (sourceKey === LEGACY_NEW_THREAD_DRAFT_KEY) rememberMovedLegacyText(source.draft.text);
   promptDraftCache.delete(sourceKey);
   emitPromptDraftChange(sourceKey);
   return { status: "moved", leftoverAttachments: leftovers.map((attachment) => attachment.name) };
@@ -725,9 +743,38 @@ export interface NewThreadDraftNotShown {
   key: string;
   projectId: string | null;
   draft?: PromptDraftState;
+  alreadyMoved?: boolean;
 }
 
 const LEGACY_NEW_THREAD_DRAFT_KEY = `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+const LEGACY_MOVED_TEXT_KEY = "bb.promptbox.legacy-moved-3";
+
+function textHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function movedLegacyTextHashes(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(readStoredPromptDraftValue(LEGACY_MOVED_TEXT_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberMovedLegacyText(text: string): void {
+  const hashes = new Set(movedLegacyTextHashes());
+  hashes.add(textHash(text));
+  try {
+    window.localStorage.setItem(LEGACY_MOVED_TEXT_KEY, JSON.stringify([...hashes]));
+  } catch (error) {
+    console.warn("[prompt-draft] could not remember moved legacy text", error);
+  }
+}
 
 function parseNewThreadSideKey(key: string, prefix: string): string | null {
   const match = new RegExp(`^${prefix.replaceAll(".", "\\.")}([^-]+)-[0-9a-f]{16}-3$`).exec(key);
@@ -744,7 +791,13 @@ export function listNewThreadDraftsNotShown(
   if (legacy.kind === "unreadable") {
     rows.push({ kind: "unreadable", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null });
   } else if (legacy.kind === "draft" && !isPromptDraftEmpty(legacy.draft)) {
-    rows.push({ kind: "legacy", key: LEGACY_NEW_THREAD_DRAFT_KEY, projectId: null, draft: legacy.draft });
+    rows.push({
+      kind: "legacy",
+      key: LEGACY_NEW_THREAD_DRAFT_KEY,
+      projectId: null,
+      draft: legacy.draft,
+      ...(movedLegacyTextHashes().includes(textHash(legacy.draft.text)) ? { alreadyMoved: true } : {}),
+    });
   }
 
   for (let index = 0; index < window.localStorage.length; index += 1) {
