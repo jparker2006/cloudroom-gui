@@ -730,10 +730,19 @@ export function discardNewThreadDraft(
   ) {
     return "failed";
   }
-  if (!writeTerminalRecord(storageKey, JSON.stringify({ rev: createDraftRev(), discarded: true }))) {
+  const tombstone = JSON.stringify({ rev: createDraftRev(), discarded: true });
+  if (!writeTerminalRecord(storageKey, tombstone)) {
     return "failed";
   }
-  promptDraftCache.delete(storageKey);
+  const heldEntry = promptDraftCache.get(storageKey);
+  if (unsavedPromptDraftKeys.has(storageKey) && heldEntry && !isPromptDraftEmpty(heldEntry.draft)) {
+    newThreadDraftRevs.set(storageKey, String(readStoredRev(tombstone)));
+    unsavedPromptDraftKeys.delete(storageKey);
+    newThreadDraftNotices.delete(storageKey);
+    persistPromptDraftCache(storageKey);
+  } else {
+    promptDraftCache.delete(storageKey);
+  }
   emitPromptDraftChange(storageKey);
   return "discarded";
 }

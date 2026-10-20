@@ -1281,3 +1281,23 @@ describe("review fixes: smaller gaps", () => {
     ]);
   });
 });
+
+describe("review fixes: resolving an unreadable visible draft", () => {
+  it("saves this window's text once the unreadable record is discarded", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "mine", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), "{bad");
+    act(() => result.current.setDraft({ text: "mine, edited", mentions: [], attachments: [] }));
+
+    act(() => {
+      discardNewThreadDraft(alphaKey());
+    });
+
+    expect(result.current.text).toBe("mine, edited");
+    expect(result.current.notice).toBeNull();
+    expect(result.current.isUnsaved).toBe(false);
+    expect(storedRecord(alphaKey()).text).toBe("mine, edited");
+  });
+});
