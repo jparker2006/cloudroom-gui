@@ -986,6 +986,7 @@ export function ThreadDetailPromptArea({
     supportsServiceTier,
   ]);
 
+  const recordRecentProject = useRecordRecentProject();
   const sendCloudDraft = useCallback(async (steer: boolean) => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
@@ -1003,11 +1004,12 @@ export function ThreadDetailPromptArea({
     try {
       await sendMessage.mutateAsync({ ...request, requestId: await cloudroomRequestId(thread.id, request) });
       clearCloudroomRequestId(thread.id);
+      recordRecentProject(thread.projectId);
     } catch (error) {
       promptDraft.restoreIfEmpty(submittedDraft);
       showMutationErrorToast({ error, fallbackMessage: "Cloud message was not confirmed", lifecycleOperation: "send_message" });
     }
-  }, [cloudFastSupported, cloudReasoning, cloudState.data, currentPromptDraft, currentPromptDraftInput, movingToLocal, promptDraft, sendMessage, serviceTier, thread.id, thread.status]);
+  }, [cloudFastSupported, cloudReasoning, cloudState.data, currentPromptDraft, currentPromptDraftInput, movingToLocal, promptDraft, recordRecentProject, sendMessage, serviceTier, thread.id, thread.projectId, thread.status]);
 
   const handleSend = useCallback(async () => {
     if (isExecutionUpdatePending) return;
@@ -1037,6 +1039,7 @@ export function ThreadDetailPromptArea({
         });
         if (request) {
           await createQueuedMessage.mutateAsync(request);
+          recordRecentProject(thread.projectId);
         }
       } else {
         const request = buildAutoFollowUpRequest({
@@ -1046,6 +1049,7 @@ export function ThreadDetailPromptArea({
         });
         if (request) {
           await sendMessage.mutateAsync(request);
+          recordRecentProject(thread.projectId);
         }
       }
     } catch (nextError) {
@@ -1068,9 +1072,11 @@ export function ThreadDetailPromptArea({
     followUpExecutionSelection,
     isDefaultExecutionOptionsLoading,
     promptDraft,
+    recordRecentProject,
     sendMessage,
     setBottomAttachmentError,
     thread.id,
+    thread.projectId,
     runtimeDisplayStatus,
   ]);
   const handleHardQueue = useCallback(async () => {
@@ -1086,6 +1092,7 @@ export function ThreadDetailPromptArea({
     setBottomAttachmentError(null);
     try {
       await createQueuedMessage.mutateAsync({ ...request, hardQueue: true });
+      recordRecentProject(thread.projectId);
     } catch (nextError) {
       promptDraft.restoreIfEmpty(submittedDraft);
       showMutationErrorToast({
@@ -1101,8 +1108,10 @@ export function ThreadDetailPromptArea({
     followUpExecutionSelection,
     isExecutionUpdatePending,
     promptDraft,
+    recordRecentProject,
     setBottomAttachmentError,
     thread.id,
+    thread.projectId,
   ]);
   const submitProgrammatically = useCallback(
     async (
@@ -1194,6 +1203,7 @@ export function ThreadDetailPromptArea({
         async () => {
           try {
             await sendMessage.mutateAsync(shortcutRequest.request);
+            recordRecentProject(thread.projectId);
           } catch (nextError) {
             promptDraft.restoreIfEmpty(submittedDraft);
             showMutationErrorToast({
@@ -1230,11 +1240,13 @@ export function ThreadDetailPromptArea({
     isCloud,
     promptDraft,
     queuedMessagesRef,
+    recordRecentProject,
     sendCloudDraft,
     sendMessage,
     sendQueuedMessageById,
     setBottomAttachmentError,
     thread.id,
+    thread.projectId,
   ]);
 
   const handleSendQueuedMessage = useCallback(
@@ -1295,28 +1307,18 @@ export function ThreadDetailPromptArea({
     },
     [canTeleport, canTeleportLocal, promptDraft.clearIfCurrentMatches, startTeleport, startTeleportLocal],
   );
-  const recordRecentProjectHook = useRecordRecentProject();
-  const recordRecentProject = useCallback(
-    (projectId: string) => {
-      if (hasPromptDraftInput) recordRecentProjectHook(projectId);
-    },
-    [hasPromptDraftInput, recordRecentProjectHook],
-  );
   const handleBottomComposerSubmit = useCallback(() => {
-    recordRecentProject(thread.projectId);
     if (runCopyCommand(currentPromptDraft) || runTeleportCommand(currentPromptDraft)) return;
     void handleSend();
-  }, [currentPromptDraft, handleSend, recordRecentProject, runCopyCommand, runTeleportCommand, thread.projectId]);
+  }, [currentPromptDraft, handleSend, runCopyCommand, runTeleportCommand]);
   const handleBottomComposerModifierSubmit = useCallback(() => {
-    recordRecentProject(thread.projectId);
     if (runCopyCommand(currentPromptDraft) || runTeleportCommand(currentPromptDraft)) return;
     void handleModifierSubmit();
-  }, [currentPromptDraft, handleModifierSubmit, recordRecentProject, runCopyCommand, runTeleportCommand, thread.projectId]);
+  }, [currentPromptDraft, handleModifierSubmit, runCopyCommand, runTeleportCommand]);
   const handleBottomComposerHardQueueSubmit = useCallback(() => {
-    recordRecentProject(thread.projectId);
     if (runCopyCommand(currentPromptDraft) || runTeleportCommand(currentPromptDraft)) return;
     void handleHardQueue();
-  }, [currentPromptDraft, handleHardQueue, recordRecentProject, runCopyCommand, runTeleportCommand, thread.projectId]);
+  }, [currentPromptDraft, handleHardQueue, runCopyCommand, runTeleportCommand]);
   const handleInlineComposerSubmit = useCallback(() => {
     void handleSaveInlineQueuedMessage();
   }, [handleSaveInlineQueuedMessage]);

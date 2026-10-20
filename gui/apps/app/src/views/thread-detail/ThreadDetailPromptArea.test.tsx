@@ -1044,11 +1044,23 @@ describe("ThreadDetailPromptArea", () => {
       };
     });
 
-    it("records the thread's project when Jake sends a follow-up", () => {
+    it("records the thread's project once Jake's follow-up is sent", async () => {
       mocks.promptDraft.text = "Ship the picker";
       renderPromptArea({ thread: makeThread({ projectId: "proj_worked" }) });
       fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
-      expect(recordedIds()).toEqual(["proj_worked"]);
+      await waitFor(() => expect(recordedIds()).toEqual(["proj_worked"]));
+    });
+
+    it("does not record a follow-up that fails to send", async () => {
+      mocks.sendMessageMutateAsync.mockRejectedValueOnce(new Error("offline"));
+      mocks.promptDraft.text = "Ship the picker";
+      renderPromptArea({ thread: makeThread({ projectId: "proj_failed" }) });
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+      await waitFor(() =>
+        expect(mocks.sendMessageMutateAsync).toHaveBeenCalled(),
+      );
+      await act(async () => {});
+      expect(recordedIds()).toEqual([]);
     });
 
     it("ignores empty submits and plugin-driven sends", async () => {

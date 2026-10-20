@@ -539,6 +539,10 @@ function ThreadRowComponent({
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const { renameThread } = useThreadActions();
   const recordRecentProject = useRecordRecentProject();
+  const recordProjectOpen = useCallback(
+    () => recordRecentProject(projectId),
+    [projectId, recordRecentProject],
+  );
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
@@ -594,6 +598,7 @@ function ThreadRowComponent({
       projectId,
       threadId: thread.id,
       title: labelTitle,
+      onOpen: recordProjectOpen,
     });
   const splitAvailable = onSplitDragPointerDown !== undefined;
   const parentOptions = options.kind === "parent" ? options : null;
@@ -751,7 +756,6 @@ function ThreadRowComponent({
           setConversationCollapsed(false);
           if (splitAvailable && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
-            recordRecentProject(projectId);
             openInSplit();
             return;
           }

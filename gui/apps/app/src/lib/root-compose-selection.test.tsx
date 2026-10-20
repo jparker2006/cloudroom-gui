@@ -55,6 +55,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("recent projects", () => {
@@ -188,7 +189,8 @@ describe("recent projects", () => {
     expect(result.current.ids).toEqual(["proj_ok", "proj_second"]);
     act(() => result.current.record("proj_new"));
     expect(Object.keys(stored())).toEqual([SCOPE]);
-    expect(({} as Record<string, unknown>).id).toBeUndefined();
+    expect(result.current.ids).not.toContain("proj_polluted");
+    expect(JSON.stringify(stored())).not.toContain("proj_polluted");
   });
 
   it("caps stored history so deleted projects can be skipped without losing five", () => {
@@ -200,5 +202,36 @@ describe("recent projects", () => {
     });
     expect(result.current.ids).toHaveLength(20);
     expect(result.current.ids[0]).toBe("proj_29");
+  });
+
+  it("keeps the ten most recently used servers", () => {
+    window.localStorage.setItem(
+      RECENT_PROJECTS_STORAGE_KEY,
+      JSON.stringify(
+        Object.fromEntries(
+          Array.from({ length: 12 }, (_, index) => [
+            `server-old${index}`,
+            [{ id: `proj_${index}`, usedAt: index }],
+          ]),
+        ),
+      ),
+    );
+    const { result } = setup();
+    act(() => result.current.record("proj_now"));
+    const scopes = Object.keys(stored());
+    expect(scopes).toHaveLength(10);
+    expect(scopes[0]).toBe(SCOPE);
+    expect(scopes).toContain("server-old11");
+    expect(scopes).not.toContain("server-old0");
+  });
+
+  it("keeps working for the session when local storage rejects writes", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Full", "QuotaExceededError");
+    });
+    const { result } = setup();
+    act(() => result.current.record("proj_a"));
+    expect(result.current.ids).toEqual(["proj_a"]);
+    expect(window.localStorage.getItem(RECENT_PROJECTS_STORAGE_KEY)).toBeNull();
   });
 });

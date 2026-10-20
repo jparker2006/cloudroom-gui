@@ -8,6 +8,7 @@ import type { ThreadListEntry } from "@cloudroom/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@cloudroom/shared-ui/tooltip";
 import { makeThreadListEntry } from "@cloudroom/test-helpers/domain-fixtures";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import { RECENT_PROJECTS_STORAGE_KEY } from "@/lib/root-compose-selection";
@@ -30,24 +31,26 @@ function renderRow(
             getThreadRoutePath({ projectId, threadId: "thr_row" }),
           ]}
         >
-          <TooltipProvider>
-            <ThreadActionsProvider>
-              <ThreadRow
-                projectId={projectId}
-                thread={makeThreadListEntry({
-                  id: "thr_row",
-                  projectId,
-                  title: "Picker work",
-                  titleFallback: "Picker work",
-                  ...thread,
-                })}
-                crossProjectId={null}
-                isActive={false}
-                hasComposerDraft={false}
-                options={{ kind: "default", depth: 0, isCompact: false }}
-              />
-            </ThreadActionsProvider>
-          </TooltipProvider>
+          <RouteNavigationProvider>
+            <TooltipProvider>
+              <ThreadActionsProvider>
+                <ThreadRow
+                  projectId={projectId}
+                  thread={makeThreadListEntry({
+                    id: "thr_row",
+                    projectId,
+                    title: "Picker work",
+                    titleFallback: "Picker work",
+                    ...thread,
+                  })}
+                  crossProjectId={null}
+                  isActive={false}
+                  hasComposerDraft={false}
+                  options={{ kind: "default", depth: 0, isCompact: false }}
+                />
+              </ThreadActionsProvider>
+            </TooltipProvider>
+          </RouteNavigationProvider>
         </MemoryRouter>
       </QueryClientProvider>
     </Provider>,
@@ -94,5 +97,13 @@ describe("ThreadRow recent projects", () => {
       status: "active",
     });
     expect(recordedIds()).toEqual([]);
+  });
+
+  it("records the project when Jake opens the thread in a split", () => {
+    renderRow("proj_split");
+    fireEvent.click(screen.getByRole("link", { name: /Picker work/ }), {
+      metaKey: true,
+    });
+    expect(recordedIds()).toEqual(["proj_split"]);
   });
 });

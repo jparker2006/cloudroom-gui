@@ -24,6 +24,7 @@ import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import { useRecordRecentProject } from "@/lib/root-compose-selection";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { CloudroomSignInButton } from "./CloudroomSignInButton";
@@ -68,6 +69,7 @@ export function AppSidebar({
   const { projectId: activeProjectId, threadId: activeThreadId } =
     useRouteState();
   const navigate = useNavigate();
+  const recordRecentProject = useRecordRecentProject();
   const newThreadSplit = usePaneContentSplitDrag({
     content: NEW_THREAD_PANE_CONTENT,
     enabled: true,
@@ -127,6 +129,7 @@ export function AppSidebar({
         return true;
       }
       if (!target.projectId) return false;
+      recordRecentProject(target.projectId);
       closeOnMobile();
       void navigate(
         getThreadRoutePath({
@@ -137,7 +140,7 @@ export function AppSidebar({
       revealSidebarThread(sidebarRef.current, target.threadId);
       return true;
     },
-    [closeOnMobile, navigate],
+    [closeOnMobile, navigate, recordRecentProject],
   );
 
   const activateThreadShortcut = useCallback(

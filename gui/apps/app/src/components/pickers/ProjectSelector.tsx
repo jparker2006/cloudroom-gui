@@ -94,6 +94,9 @@ export function ProjectSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [openRecentProjectIds, setOpenRecentProjectIds] =
     useState(recentProjectIds);
+  const [openProjectOrder, setOpenProjectOrder] = useState(() =>
+    projects.map((project) => project.id),
+  );
   const [highlightedValue, setHighlightedValue] = useState(NO_HIGHLIGHT_VALUE);
   const [repoFilter, setRepoFilter] = useState<RepoFilter>("all");
   const commandRef = useRef<HTMLDivElement>(null);
@@ -104,16 +107,22 @@ export function ProjectSelector({
   const showSearch =
     projects.length + (suggestions?.repos.length ?? 0) >
     PROJECT_SEARCH_MIN_OPTIONS;
+  const orderedProjects = useMemo(() => {
+    const rank = new Map(openProjectOrder.map((id, index) => [id, index]));
+    return [...projects].sort(
+      (a, b) => (rank.get(a.id) ?? rank.size) - (rank.get(b.id) ?? rank.size),
+    );
+  }, [openProjectOrder, projects]);
   const filteredProjects = useMemo(
     () =>
       showSearch
         ? searchPickerOptions({
-            options: projects,
+            options: orderedProjects,
             query: searchQuery,
             getLabel: (project) => project.name,
           })
-        : projects,
-    [projects, searchQuery, showSearch],
+        : orderedProjects,
+    [orderedProjects, searchQuery, showSearch],
   );
   const recentRows = useMemo(() => {
     if (searchQuery.trim() !== "") return [];
@@ -155,7 +164,10 @@ export function ProjectSelector({
     projects.length > 0 && (Boolean(createProjectAction) || allowNoProject);
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (nextOpen) setOpenRecentProjectIds(recentProjectIds);
+    if (nextOpen) {
+      setOpenRecentProjectIds(recentProjectIds);
+      setOpenProjectOrder(projects.map((project) => project.id));
+    }
     setHighlightedValue(NO_HIGHLIGHT_VALUE);
     if (!nextOpen) {
       setSearchQuery("");
@@ -280,9 +292,7 @@ export function ProjectSelector({
                         ? "Other projects"
                         : "In Cloudroom"}{" "}
                       <span className="font-normal opacity-70">
-                        {recentRows.length > 0
-                          ? listedProjects.length
-                          : projects.length}
+                        {listedProjects.length}
                       </span>
                     </>
                   ) : recentRows.length > 0 ? (

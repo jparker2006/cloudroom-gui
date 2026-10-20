@@ -9,12 +9,14 @@ interface UseThreadRowSplitDragArgs {
   projectId: string;
   threadId: string;
   title: string;
+  onOpen?: () => void;
 }
 
 export function useThreadRowSplitDrag({
   projectId,
   threadId,
   title,
+  onOpen,
 }: UseThreadRowSplitDragArgs): {
   onPointerDown: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
   openInSplit: () => void;
@@ -34,12 +36,14 @@ export function useThreadRowSplitDrag({
         navigate,
         content: { kind: "thread", projectId, threadId },
         label: title,
+        onNavigate: onOpen,
       });
     },
-    [navigate, projectId, store, threadId, title],
+    [navigate, onOpen, projectId, store, threadId, title],
   );
 
   const openInSplit = useCallback(() => {
+    onOpen?.();
     openThreadInSplit({
       store,
       navigate,
@@ -47,7 +51,7 @@ export function useThreadRowSplitDrag({
       threadId,
       isCompact,
     });
-  }, [isCompact, navigate, projectId, store, threadId]);
+  }, [isCompact, navigate, onOpen, projectId, store, threadId]);
 
   return {
     onPointerDown: !isCompact ? onPointerDown : undefined,

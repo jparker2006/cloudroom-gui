@@ -432,5 +432,83 @@ describe("ProjectSelector", () => {
         "Charlie Docs",
       ]);
     });
+
+    it("keeps the other projects in place when the list changes while open", () => {
+      const props = {
+        value: "proj_alpha",
+        onChange: () => {},
+        recentProjectIds: ["proj_alpha"],
+        modal: false,
+      };
+      const view = render(
+        <ProjectSelector {...props} projects={PROJECTS.slice(0, 4)} />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "Project: Alpha Web",
+      });
+      fireEvent.click(trigger);
+      expect(optionNames(groupByHeading("Other projects"))).toEqual([
+        "Bravo API",
+        "Charlie Docs",
+        "Delta Mobile",
+      ]);
+
+      view.rerender(
+        <ProjectSelector
+          {...props}
+          projects={[
+            PROJECTS[3],
+            PROJECTS[4],
+            PROJECTS[0],
+            { id: "proj_charlie", name: "Charlie Renamed" },
+          ]}
+        />,
+      );
+      expect(optionNames(groupByHeading("Other projects"))).toEqual([
+        "Charlie Renamed",
+        "Delta Mobile",
+        "Echo Infra",
+      ]);
+
+      fireEvent.click(trigger);
+      fireEvent.click(trigger);
+      expect(optionNames(groupByHeading("Other projects"))).toEqual([
+        "Delta Mobile",
+        "Echo Infra",
+        "Charlie Renamed",
+      ]);
+    });
+
+    it("counts only the matching projects while searching", () => {
+      render(
+        <ProjectSelector
+          projects={PROJECTS}
+          value="proj_alpha"
+          onChange={() => {}}
+          createProject={{
+            onCreate: () => {},
+            suggestions: {
+              repos: [],
+              githubConnected: true,
+              isLoading: false,
+              addingKey: null,
+              onAdd: () => Promise.resolve("proj_new"),
+            },
+          }}
+          recentProjectIds={["proj_alpha"]}
+          defaultOpen
+          modal={false}
+        />,
+      );
+      expect(groupByHeading("Other projects")?.textContent).toContain("5");
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "Search projects" }),
+        { target: { value: "bravo" } },
+      );
+      expect(
+        groupByHeading("In Cloudroom")?.querySelector("[cmdk-group-heading]")
+          ?.textContent,
+      ).toBe("In Cloudroom 1");
+    });
   });
 });

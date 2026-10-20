@@ -118,6 +118,7 @@ import {
 import {
   recentProjectsScope,
   useRecentProjectIds,
+  useRecordRecentProject,
 } from "@/lib/root-compose-selection";
 import { sdk } from "@/lib/sdk";
 import {
@@ -514,6 +515,7 @@ export function NewThreadComposer({
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
+  const recordRecentProject = useRecordRecentProject();
   const recentProjectIds = useRecentProjectIds(
     recentProjectsScope(systemConfigQuery.data?.dataDir),
   );
@@ -1681,9 +1683,10 @@ export function NewThreadComposer({
     async (blockedReason: string | null) => {
       try {
         await submitDraft(blockedReason, null);
+        recordRecentProject(projectId);
       } catch {}
     },
-    [submitDraft],
+    [projectId, recordRecentProject, submitDraft],
   );
   useEffect(() => {
     submitProgrammaticallyRef.current = async (
