@@ -4,6 +4,8 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { Host } from "@cloudroom/domain";
 import type { ProjectWithThreadsResponse } from "@cloudroom/server-contract";
 import { Button } from "@cloudroom/shared-ui/button";
+import { EmptyStateScene } from "@cloudroom/shared-ui/empty-state";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 import "@cloudroom/shared-ui/icon-extended";
 import { Icon } from "@cloudroom/shared-ui/icon";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
@@ -257,6 +259,7 @@ function HiddenProjectsSection() {
 
 export function ProjectsSettingsSection() {
   const sidebarNavigationQuery = useSidebarNavigation();
+  const hiddenProjectsQuery = useHiddenProjects();
   const hostsQuery = useHosts();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
@@ -337,11 +340,29 @@ export function ProjectsSettingsSection() {
           </p>
         ) : projects === undefined ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : projects.length === 0 ? (
+        ) : projects.length === 0 &&
+          (sidebarNavigationQuery.isPlaceholderData ||
+            sidebarNavigationQuery.isFetching ||
+            hiddenProjectsQuery.isPending ||
+            hiddenProjectsQuery.isFetching) ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : projects.length === 0 &&
+          (hiddenProjectsQuery.data?.length ?? 0) > 0 ? (
           <p className="text-sm text-subtle-foreground">
-            No projects yet. Add a project to start running threads in a
-            repository.
+            All projects are hidden.
           </p>
+        ) : projects.length === 0 && hiddenProjectsQuery.isError ? (
+          <p className="text-sm text-subtle-foreground">
+            No visible projects. Couldn't check for hidden projects.
+          </p>
+        ) : projects.length === 0 ? (
+          <EmptyStateScene
+            scene="projects"
+            logoSrc={roomLogoUrl}
+            size="hero"
+            title="No projects yet"
+            description="Add a project to start running threads in a repository."
+          />
         ) : (
           <SortableSettingsRowList
             ids={projectIds}

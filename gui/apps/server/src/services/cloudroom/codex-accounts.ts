@@ -106,7 +106,7 @@ export class CodexAccounts {
         return {
           id: account.id, name: account.name, email: account.email, plan: account.plan, inUse: account.id === state.selected,
           error: account.error ?? measured?.error ?? null,
-          windows: (measured?.windows ?? []).map(window => window.resetsAt !== null && window.resetsAt <= Date.now() ? { ...window, usedPercent: 0, resetsAt: null } : window),
+          windows: measured?.windows ?? [],
         };
       }),
     };
