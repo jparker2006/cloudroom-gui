@@ -1155,6 +1155,67 @@ it("shows Teleport the moment it starts, and never leaves a failed or interrupte
   }
 });
 
+it("refuses a same-request retry that adds attachments the stored prompt cannot confirm", async () => {
+  const harness = await createTestAppHarness();
+  const { host } = seedHostSession(harness.deps);
+  const { project } = seedProjectWithSource(harness.deps, { hostId: host.id, name: "A", path: "/tmp/project-a" });
+  const service = cloudroom(harness.deps);
+  const sid = "cr_retry_attachments";
+  const uploads: string[] = [];
+  const prompts: { request_id: string; text: string }[] = [];
+  const core = createServer(async (req, res) => {
+    const json = (body: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (req.url === "/v1/health") return json({});
+    if (req.url === "/v1/capabilities") return json({ version: 1, repository: "/code/test", stop: true, resume: true, launch_settings: true, direct_workspaces: true, command_guard: true, structured_prompt: true, attachments: true, harnesses: [{ id: "codex", model: "test-model" }] });
+    if (req.url === "/v1/ready") return json({ ready: true });
+    if (req.url?.includes("/stream?")) { res.writeHead(200, { "Content-Type": "text/event-stream" }); res.flushHeaders(); return; }
+    const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(chunk as Buffer);
+    const raw = Buffer.concat(chunks);
+    if (req.url?.includes("/attachments?")) {
+      const id = new URL(req.url, "http://fixture").searchParams.get("request_id");
+      uploads.push(String(id));
+      return json({ session_id: sid, receipt: { request_id: id, command: "attach", state: "completed", input: { id, path: `/code/test/.cloudroom/attachments/${id}/image.png` } }, saving: {} }, 202);
+    }
+    const body = raw.length ? JSON.parse(raw.toString("utf8")) : {};
+    if (req.url === "/v1/sessions") return json({ session_id: sid, receipt: { request_id: body.request_id, command: "start", state: "completed", input: {} }, saving: {} }, 202);
+    if (String(req.url).endsWith("/prompts")) prompts.push(body);
+    json({ session_id: sid, receipt: { request_id: body.request_id, command: "prompt", state: "accepted", input: body }, saving: {} }, 202);
+  });
+  core.listen(0, "127.0.0.1"); await once(core, "listening");
+  const address = core.address();
+  if (!address || typeof address === "string") throw new Error("fixture did not listen");
+  const request = (path: string, body?: unknown) => harness.app.request(`/api/v1${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  try {
+    await service.configure({ url: `http://127.0.0.1:${address.port}`, token: "x".repeat(40) });
+    const created = await request("/threads", { executionTarget: "cloud", requestId: "start", projectId: project.id, providerId: "codex", origin: "app", model: "test-model", reasoningLevel: "medium", environment: { type: "project-default" }, input: [{ type: "text", text: "start", mentions: [] }] });
+    expect(created.status).toBe(201);
+    const thread = await created.json();
+    await expect.poll(() => prompts.some((prompt) => prompt.text.includes("start")), { timeout: 5000 }).toBe(true);
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "new.png", { type: "image/png" }));
+    const { path } = (await (await harness.app.request(`/api/v1/projects/${project.id}/attachments`, { method: "POST", body: form })).json()) as { path: string };
+    harness.db.insert(cloudroomCommands).values([
+      { id: "retry-legacy", threadId: thread.id, command: "prompt", input: JSON.stringify({ text: "hello" }), state: "completed", createdAt: Date.now() },
+      { id: "retry-modern", threadId: thread.id, command: "prompt", input: JSON.stringify({ text: "hello2", content: [{ type: "text", text: "hello2", mentions: [] }], attachments: [] }), state: "completed", createdAt: Date.now() },
+    ]).run();
+    const before = { uploads: uploads.length, prompts: prompts.length };
+    const send = (requestId: string, text: string, withImage: boolean) => request(`/threads/${thread.id}/send`, { requestId, mode: "auto", input: [{ type: "text", text, mentions: [] }, ...(withImage ? [{ type: "localImage", path }] : [])] });
+
+    for (const [requestId, text] of [["retry-legacy", "hello"], ["retry-modern", "hello2"]] as const) {
+      const added = await send(requestId, text, true);
+      expect(added.status, requestId).toBe(409);
+      await expect(added.json()).resolves.toMatchObject({ code: "request_conflict" });
+      expect((await send(requestId, text, false)).status, requestId).toBe(200);
+    }
+    expect(uploads.length - before.uploads).toBe(0);
+    expect(prompts.length - before.prompts).toBe(0);
+    expect(command(harness.db, "retry-legacy")?.input).toBe(JSON.stringify({ text: "hello" }));
+  } finally {
+    core.close();
+    await harness.cleanup();
+  }
+});
+
 it("keeps Cloud image attachments resolvable after a project switch, and replays missing or escaping ones as warnings", async () => {
   const harness = await createTestAppHarness();
   const { host } = seedHostSession(harness.deps);
