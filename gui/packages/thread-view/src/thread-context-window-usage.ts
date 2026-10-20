@@ -104,3 +104,15 @@ export function extractThreadContextWindowUsage(
     usedTokens,
   };
 }
+
+export function getThreadContextWindowUsageState(
+  events: readonly ThreadEventWithMeta[],
+): "reported" | "unknown" | null {
+  const hasSignal = events.some(
+    (event) => decodeContextWindowSignal(event) !== null,
+  );
+  if (!hasSignal) return null;
+  return extractThreadContextWindowUsage(events) === null
+    ? "unknown"
+    : "reported";
+}

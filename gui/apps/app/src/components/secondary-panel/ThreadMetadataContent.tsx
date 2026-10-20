@@ -58,6 +58,7 @@ import {
 } from "@/components/pickers/BranchPicker";
 import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
+import { ThreadSubagentsRow } from "@/components/thread/subagents/ThreadSubagents";
 import {
   selectWorkspaceAheadCommits,
   selectWorkspaceChangedFilesSections,
@@ -933,6 +934,7 @@ export function hasAnyThreadMetadata(
     | "pullRequest"
   >,
   hasForks: boolean,
+  hasSubagents = false,
 ): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
   const showWorkspaceStatus = shouldShowWorkspaceStatus({
@@ -956,7 +958,8 @@ export function hasAnyThreadMetadata(
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     thread.archivedAt != null ||
-    hasForks,
+    hasForks ||
+    hasSubagents,
   );
 }
 
@@ -1087,6 +1090,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       />
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
+      <ThreadSubagentsRow threadId={thread.id} />
       <ThreadCommitsRow
         workspaceStatus={workspaceStatus}
         onCommitClick={onCommitClick}

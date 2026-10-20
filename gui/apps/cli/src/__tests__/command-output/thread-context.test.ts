@@ -57,6 +57,53 @@ describe("room-cli thread context", () => {
     );
   });
 
+  it("prints unknown usage and recorded compactions without inventing zeros", async () => {
+    stubServerApi({
+      "v1.threads.:id.context.$get": vi.fn(async () => ({
+        usage: null,
+        usageState: "unknown",
+        compactions: {
+          revision: "r1",
+          coverage: "partial",
+          gaps: ["teleported"],
+          completedCount: 1,
+          inProgress: false,
+          truncated: false,
+          entries: [
+            { kind: "clear", id: "clear:3", at: Date.UTC(2026, 9, 20, 12) },
+            {
+              kind: "compaction",
+              id: "c2",
+              status: "unconfirmed",
+              startedAt: null,
+              completedAt: null,
+              turnId: "t2",
+              summary: null,
+            },
+            {
+              kind: "compaction",
+              id: "c1",
+              status: "completed",
+              startedAt: Date.UTC(2026, 9, 20, 10),
+              completedAt: Date.UTC(2026, 9, 20, 11),
+              turnId: "t1",
+              summary: null,
+            },
+          ],
+        },
+      })),
+    });
+    await runCommand(["thread", "context", "thread-1"], register);
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Context usage was not reported by the agent.",
+      "Recorded compactions: 1 (partial history: Part of this thread ran on another machine.)",
+      "Covers this whole thread. Only compactions the agent reported to Cloudroom are counted.",
+      "  2026-10-20T12:00:00.000Z context cleared (not a compaction)",
+      "  time unknown not confirmed · not counted",
+      "  2026-10-20T11:00:00.000Z compacted - Summary not provided.",
+    ]);
+  });
+
   it("returns explicit missing usage in JSON", async () => {
     stubServerApi({
       "v1.threads.:id.context.$get": vi.fn(async () => ({ usage: null })),

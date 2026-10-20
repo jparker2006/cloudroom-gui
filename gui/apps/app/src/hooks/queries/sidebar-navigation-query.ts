@@ -13,6 +13,7 @@ import {
 } from "@/hooks/useRealtimeSubscription";
 import type { QueryOptions } from "./query-helpers";
 import { sidebarNavigationQueryKey } from "./query-keys";
+import { useQueryRefreshFailure } from "./query-refresh-failure";
 import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
 import {
   readCachedSidebarBootstrap,
@@ -68,6 +69,7 @@ export function useProjectDisplayName(
 interface SidebarNavigationThreadSelection<T> {
   data: T | undefined;
   isBootstrapPending: boolean;
+  hasRefreshFailure: boolean;
 }
 
 export function useSidebarNavigationThreadSelection<T>(
@@ -86,8 +88,10 @@ export function useSidebarNavigationThreadSelection<T>(
     select: selectFromNavigation,
   });
   const data = result.data;
+  const hasRefreshFailure = useQueryRefreshFailure(sidebarNavigationQueryKey());
   return {
     data,
     isBootstrapPending: data === undefined && result.isFetching,
+    hasRefreshFailure,
   };
 }

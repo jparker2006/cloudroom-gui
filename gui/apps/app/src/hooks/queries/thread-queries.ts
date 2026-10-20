@@ -12,6 +12,7 @@ import { getMediaQuerySnapshot } from "@cloudroom/shared-ui/hooks/use-media-quer
 import type { PendingInteraction, ThreadListEntry } from "@cloudroom/domain";
 import type {
   PromptHistoryResponse,
+  RecordedCompactionsList,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
   ThreadPendingInteractionsResponse,
@@ -43,6 +44,7 @@ import {
   findSidebarNavigationThreadPlaceholder,
 } from "../cache-owners/query-cache";
 import { useSidebarNavigationThreadSelection } from "./sidebar-navigation-query";
+import { useQueryRefreshFailure } from "./query-refresh-failure";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -72,6 +74,7 @@ import {
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
+  threadRecordedCompactionsQueryKey,
   threadQueryKey,
   threadSearchQueryKey,
   threadStorageFilesQueryKey,
@@ -380,6 +383,7 @@ interface UseChildThreadsArgs {
 
 interface UseChildThreadsResult {
   data: ThreadListResponse | undefined;
+  hasRefreshFailure: boolean;
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
@@ -402,11 +406,12 @@ export function useChildThreads({
     useSidebarNavigationThreadSelection(selectChildren);
   const shouldFetch =
     enabled && sidebarChildren === undefined && !isBootstrapPending;
+  const fallbackQueryKey =
+    shouldFetch && parentThreadId
+      ? threadListQueryKey({ archived: false, parentThreadId })
+      : disabledThreadListQueryKey({ archived: false });
   const fallbackQuery = useQuery<ThreadListResponse>({
-    queryKey:
-      shouldFetch && parentThreadId
-        ? threadListQueryKey({ archived: false, parentThreadId })
-        : disabledThreadListQueryKey({ archived: false }),
+    queryKey: fallbackQueryKey,
     queryFn: ({ signal }) =>
       sdk.threads.list({
         archived: false,
@@ -419,10 +424,12 @@ export function useChildThreads({
     enabled: shouldFetch,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
+  const fallbackHasRefreshFailure = useQueryRefreshFailure(fallbackQueryKey, shouldFetch);
   const derivedChildren = enabled ? sidebarChildren : undefined;
   if (derivedChildren !== undefined) {
     return {
       data: derivedChildren,
+      hasRefreshFailure: false,
       isError: false,
       isFetching: false,
       isLoading: false,
@@ -431,6 +438,7 @@ export function useChildThreads({
   const waitingForBootstrap = enabled && isBootstrapPending;
   return {
     data: fallbackQuery.data,
+    hasRefreshFailure: fallbackHasRefreshFailure,
     isError: fallbackQuery.isError,
     isFetching: fallbackQuery.isFetching || waitingForBootstrap,
     isLoading: fallbackQuery.isLoading || waitingForBootstrap,
@@ -715,6 +723,33 @@ export function useThreadPromptHistory(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? PROMPT_HISTORY_STALE_TIME_MS,
+  });
+}
+
+export function useThreadRecordedCompactions(
+  threadId: string,
+  revision: string | null,
+  enabled: boolean,
+) {
+  const queryClient = useQueryClient();
+  return useQuery<RecordedCompactionsList | null>({
+    queryKey: threadRecordedCompactionsQueryKey(threadId, revision ?? ""),
+    queryFn: async ({ signal }) => {
+      const list =
+        (await sdk.threads.context({ threadId, signal })).compactions ?? null;
+      if (list !== null && list.revision !== revision) {
+        queryClient.setQueryData(
+          threadRecordedCompactionsQueryKey(threadId, list.revision),
+          list,
+        );
+      }
+      return list;
+    },
+    enabled: enabled && Boolean(threadId) && revision !== null,
+    staleTime: (query) =>
+      query.state.data === null || query.state.data?.revision === revision
+        ? Infinity
+        : 0,
   });
 }
 

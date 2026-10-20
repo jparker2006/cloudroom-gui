@@ -139,9 +139,26 @@ export interface FollowUpComposerProps {
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
 }
 
-type ContextWindowUsage = ComponentProps<
-  typeof ThreadContextWindowIndicator
->["usage"];
+type ContextWindowUsage = NonNullable<
+  ComponentProps<typeof ThreadContextWindowIndicator>["usage"]
+>;
+type RecordedCompactions = NonNullable<
+  ComponentProps<typeof ThreadContextWindowIndicator>["compactions"]
+>;
+
+export function shouldShowContextIndicator(args: {
+  contextWindowUsage: ContextWindowUsage | null;
+  contextUsageUnknown: boolean;
+  recordedCompactions: RecordedCompactions | null;
+}): boolean {
+  return (
+    args.contextWindowUsage !== null ||
+    args.contextUsageUnknown ||
+    (args.recordedCompactions !== null &&
+      (args.recordedCompactions.completedCount > 0 ||
+        args.recordedCompactions.inProgress))
+  );
+}
 
 export interface FollowUpPromptBoxProps {
   id?: string;
@@ -152,6 +169,9 @@ export interface FollowUpPromptBoxProps {
   environmentSummary: ReactNode | null;
   contextWindowUsage: ContextWindowUsage | null;
   contextWindowNote?: string | undefined;
+  contextThreadId?: string;
+  contextUsageUnknown?: boolean;
+  recordedCompactions?: RecordedCompactions | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
   executionReadOnly?: boolean;
@@ -224,6 +244,9 @@ function FollowUpPromptBoxWithComposer({
   environmentSummary,
   contextWindowUsage,
   contextWindowNote,
+  contextThreadId,
+  contextUsageUnknown = false,
+  recordedCompactions = null,
   execution,
   permission,
   executionReadOnly,
@@ -757,10 +780,16 @@ function FollowUpPromptBoxWithComposer({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {permissionControl}
-            {contextWindowUsage ? (
+            {shouldShowContextIndicator({
+              contextWindowUsage,
+              contextUsageUnknown,
+              recordedCompactions,
+            }) ? (
               <ThreadContextWindowIndicator
                 usage={contextWindowUsage}
                 note={contextWindowNote}
+                threadId={contextThreadId}
+                compactions={recordedCompactions}
               />
             ) : null}
           </div>

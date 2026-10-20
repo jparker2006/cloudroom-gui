@@ -174,6 +174,8 @@ interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
+  contextWindowUsageState?: ThreadTimelineResponse["contextWindowUsageState"];
+  recordedCompactions?: ThreadTimelineResponse["recordedCompactions"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   environmentGoneStatus: "destroyed" | null;
@@ -376,6 +378,8 @@ export function ThreadDetailPromptArea({
   activeBackgroundAgentCount,
   canUseGitUi,
   contextWindowUsage,
+  contextWindowUsageState,
+  recordedCompactions,
   environmentCheckout,
   environmentCompactLabel,
   environmentGoneStatus,
@@ -2189,6 +2193,9 @@ export function ThreadDetailPromptArea({
       focusEndKey={bottomFocusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
+      contextThreadId={thread.id}
+      contextUsageUnknown={contextWindowUsageState === "unknown"}
+      recordedCompactions={recordedCompactions ?? null}
       contextWindowNote={thread.providerId === "acp-cursor" ? "Cursor doesn't report token usage, so this is an estimate." : undefined}
       execution={isCloud ? {
         ...bottomExecutionConfig,
