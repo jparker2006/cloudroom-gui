@@ -412,12 +412,12 @@ function ApprovalWaitingState({
 function ApprovalHeadline({ view }: { view: ApprovalCardView }) {
   return (
     <div className="min-w-0">
-      <p
+      <h3
         className="whitespace-pre-wrap text-sm font-medium text-foreground [overflow-wrap:anywhere]"
         data-testid="approval-title"
       >
         {view.title}
-      </p>
+      </h3>
       <div className="mt-1.5 flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 text-xs font-medium text-foreground">
           {view.action}
@@ -437,6 +437,12 @@ function ApprovalHeadline({ view }: { view: ApprovalCardView }) {
           </span>
         ) : null}
       </div>
+      {view.targetHiddenLineCount > 0 ? (
+        <p className="mt-0.5 text-subtle-foreground">
+          +{view.targetHiddenLineCount} more{" "}
+          {view.targetHiddenLineCount === 1 ? "line" : "lines"} in details
+        </p>
+      ) : null}
       {view.toolUse?.detail ? (
         <MarkdownPreview
           content={view.toolUse.detail}
@@ -600,9 +606,9 @@ function PathRows({
       <dt className="text-subtle-foreground">{label}</dt>
       <dd className="min-w-0">
         <ul>
-          {shown.map((path) => (
+          {shown.map((path, index) => (
             <li
-              key={path}
+              key={`${index}:${path}`}
               className="font-mono text-foreground [overflow-wrap:anywhere]"
             >
               {path}
@@ -659,7 +665,9 @@ function ApprovalDetails({ view }: { view: ApprovalCardView }) {
       {view.toolUse ? <ToolUseAskCard ask={view.toolUse} /> : null}
       {view.tool !== null && view.toolUse === null ? (
         <DetailSection heading="Tool">
-          <p className="font-mono text-foreground">{view.tool}</p>
+          <p className="font-mono text-foreground [overflow-wrap:anywhere]">
+            {view.tool}
+          </p>
         </DetailSection>
       ) : null}
       {view.target !== null && view.command === null && view.tool === null ? (

@@ -43,6 +43,7 @@ export interface ApprovalCardView {
   action: string;
   target: string | null;
   targetIsCode: boolean;
+  targetHiddenLineCount: number;
   location: string | null;
   command: ApprovalCommandView | null;
   toolUse: PendingInteractionToolUseAsk | null;
@@ -111,9 +112,9 @@ function describeDecisionScope(
   };
 }
 
-function firstLine(value: string): string {
-  const [line = ""] = value.split("\n");
-  return line;
+function splitFirstLine(value: string): { line: string; hidden: number } {
+  const [line = "", ...rest] = value.trimEnd().split("\n");
+  return { line, hidden: rest.length };
 }
 
 function describeCommand(
@@ -128,7 +129,7 @@ function describeCommand(
     .filter((line) => line.startsWith("Action: "))
     .map((line) => line.slice("Action: ".length))
     .filter((action) => action !== raw && action !== formatted);
-  return { raw, formatted, cwd: subject.cwd, actions };
+  return { raw, formatted, cwd: subject.cwd || null, actions };
 }
 
 export function buildApprovalCardView(
@@ -148,17 +149,20 @@ export function buildApprovalCardView(
     requested: null,
     sessionGrant: null,
     location: null,
+    targetHiddenLineCount: 0,
   };
   switch (subject.kind) {
     case "command": {
       const command = describeCommand(interaction, subject);
+      const preview = splitFirstLine(command.formatted);
       return {
         ...base,
         title: payload.reason ?? "Do you want to run this command?",
         action: "Run command",
-        target: firstLine(command.formatted),
+        target: preview.line,
         targetIsCode: true,
-        location: subject.cwd,
+        targetHiddenLineCount: preview.hidden,
+        location: command.cwd,
         command,
         sessionGrant: toApprovalPermissionList(subject.sessionGrant),
       };
