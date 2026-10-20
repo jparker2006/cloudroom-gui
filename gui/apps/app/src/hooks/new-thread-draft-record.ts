@@ -4,7 +4,9 @@ import { parsePromptDraftStorage } from "@cloudroom/client-core";
 export type NewThreadDraftRecord =
   | { kind: "missing" }
   | { kind: "draft"; rev?: string; draft: PromptDraftState }
-  | { kind: "sent" | "moved" | "discarded"; rev: string }
+  | { kind: "sent"; rev: string }
+  | { kind: "moved"; rev: string }
+  | { kind: "discarded"; rev: string }
   | { kind: "unreadable" };
 
 const DRAFT_FIELDS = new Set(["text", "mentions", "attachments", "contexts", "rev", "base"]);
