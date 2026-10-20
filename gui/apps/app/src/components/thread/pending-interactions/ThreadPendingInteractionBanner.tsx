@@ -303,6 +303,16 @@ function ApprovalPendingInteractionBanner({
     onDecide: submission.submitDecision,
     subjectKind: subject.kind,
   };
+  const durationNote = [
+    payload.availableDecisions.includes("allow_once")
+      ? "Allow once applies to this request."
+      : null,
+    payload.availableDecisions.includes("allow_for_session")
+      ? "Allow for session applies for the rest of the session."
+      : null,
+  ]
+    .filter((sentence) => sentence !== null)
+    .join(" ");
 
   return (
     <PendingInteractionShell
@@ -325,14 +335,11 @@ function ApprovalPendingInteractionBanner({
           {layout === "summary" ? (
             <>
               <ApprovalScopeSummary view={view} />
-              <p className="mt-2 text-xs text-subtle-foreground">
-                {payload.availableDecisions.includes("allow_once")
-                  ? "Allow once applies to this request. "
-                  : ""}
-                {payload.availableDecisions.includes("allow_for_session")
-                  ? "Allow for session applies for the rest of the session."
-                  : ""}
-              </p>
+              {durationNote ? (
+                <p className="mt-2 text-xs text-subtle-foreground">
+                  {durationNote}
+                </p>
+              ) : null}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <ApprovalDecisionButtons
                   decisions={payload.availableDecisions}

@@ -24,6 +24,7 @@ import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/pl
 const mocks = vi.hoisted(() => ({
   resolveMutateAsync: vi.fn(async () => ({})),
   stopMutateAsync: vi.fn(async () => undefined),
+  error: null as Error | null,
 }));
 
 vi.mock(
@@ -44,7 +45,7 @@ vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
   useResolveThreadPendingInteraction: () => ({
     mutateAsync: mocks.resolveMutateAsync,
     isPending: false,
-    error: null,
+    error: mocks.error,
   }),
 }));
 
@@ -179,6 +180,7 @@ function isHidden(element: HTMLElement): boolean {
 
 afterEach(() => {
   cleanup();
+  mocks.error = null;
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
@@ -289,6 +291,16 @@ describe("ThreadPendingInteractionBanner request family", () => {
         resolution: expect.objectContaining({ decision: "deny" }),
       }),
     );
+  });
+
+  it("keeps a plan review error visible while the card is collapsed", () => {
+    mocks.error = new Error("plan service unavailable");
+    renderBanner(planReview);
+    expect(isHidden(screen.getByTestId("plan-review-request"))).toBe(true);
+    const error = screen.getByTestId("pending-interaction-error");
+    expect(error.textContent).toBe("plan service unavailable");
+    expect(error.className).not.toContain("sr-only");
+    expect(isHidden(error)).toBe(false);
   });
 
   it("renders a plugin request through the plugin's pendingInteraction slot, keyed by <pluginId>/<kind>", () => {

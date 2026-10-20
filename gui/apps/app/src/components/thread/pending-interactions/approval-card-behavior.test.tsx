@@ -287,6 +287,29 @@ describe("approval card behavior", () => {
     },
   );
 
+  it.each([
+    [["deny"], null],
+    [["allow_once", "deny"], "Allow once applies to this request."],
+    [
+      ["allow_for_session", "deny"],
+      "Allow for session applies for the rest of the session.",
+    ],
+  ] as const)(
+    "summary with %j explains only offered durations",
+    (decisions, note) => {
+      renderApproval(approval("file_change", decisions), "summary");
+      const paragraphs = [
+        ...screen.getByTestId("approval-summary").querySelectorAll("p"),
+      ].map((paragraph) => paragraph.textContent?.trim() ?? "");
+      expect(paragraphs).not.toContain("");
+      if (note === null) {
+        expect(paragraphs.join(" ")).not.toContain("applies");
+      } else {
+        expect(paragraphs).toContain(note);
+      }
+    },
+  );
+
   it("keeps details collapsed and returns focus to the disclosure when Escape is pressed", () => {
     renderApproval(approval("command"), "summary");
     const disclosure = screen.getByRole("button", { name: "Show details" });
