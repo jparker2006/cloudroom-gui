@@ -680,6 +680,8 @@ function moveNewThreadDraftNow(
 ): MoveNewThreadDraftResult {
   const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
   if (pendingPromptDraftStorageKeys.has(targetKey)) persistPromptDraftCacheNow(targetKey);
+  if (pendingPromptDraftStorageKeys.has(sourceKey)) persistPromptDraftCacheNow(sourceKey);
+  if (unsavedPromptDraftKeys.has(sourceKey)) return { status: "failed" };
 
   const sourceRaw = readStoredPromptDraftValue(sourceKey);
   const source = readNewThreadRecord(sourceRaw);
@@ -694,6 +696,8 @@ function moveNewThreadDraftNow(
   const leftovers = source.draft.attachments.filter((attachment) => !carried.includes(attachment));
   const previousTarget = readPromptDraft(targetKey);
   const targetWasUnsaved = unsavedPromptDraftKeys.has(targetKey);
+  const targetRecoveryKey = newThreadRecoveryKey(targetKey);
+  const previousTargetRecovery = readStoredPromptDraftValue(targetRecoveryKey);
   promptDraftCache.set(targetKey, {
     rawValue: null,
     draft: appendPromptDraft(previousTarget, { ...source.draft, attachments: carried }),
@@ -706,6 +710,12 @@ function moveNewThreadDraftNow(
       draft: previousTarget,
     });
     if (!targetWasUnsaved) unsavedPromptDraftKeys.delete(targetKey);
+    try {
+      if (previousTargetRecovery === null) window.localStorage.removeItem(targetRecoveryKey);
+      else window.localStorage.setItem(targetRecoveryKey, previousTargetRecovery);
+    } catch (error) {
+      console.warn(`[prompt-draft] could not restore the recovery copy of ${targetKey}`, error);
+    }
     emitPromptDraftChange(targetKey);
     return { status: "failed" };
   }

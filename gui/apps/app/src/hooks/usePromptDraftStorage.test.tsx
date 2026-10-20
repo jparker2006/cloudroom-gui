@@ -1521,3 +1521,75 @@ describe("Luna review fixes", () => {
     }
   });
 });
+
+describe("Sol review fixes: move", () => {
+  it("moves the source's unsaved typing too", async () => {
+    vi.useFakeTimers();
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}src` });
+    source.setDraft({ text: "A", mentions: [], attachments: [] });
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: `${alphaId()}src` }),
+    );
+    act(() => result.current.setTextAndMentions("A plus typing", []));
+
+    await moveNewThreadDraft(source.storageKey, alphaId());
+
+    expect(
+      getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() }).getCurrent().text,
+    ).toBe("A plus typing");
+  });
+
+  it("leaves no recovery copy of the appended text when the target save fails", async () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    target.setDraft({ text: "target", mentions: [], attachments: [] });
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === alphaKey()) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId())).toEqual({
+        status: "failed",
+      });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    const recoveryTexts = Object.keys(window.localStorage)
+      .filter((key) => key.startsWith(`bb.promptbox.recovery-new-thread-${alphaId()}-`))
+      .map((key) => JSON.parse(window.localStorage.getItem(key) ?? "null").text);
+    expect(recoveryTexts.some((text) => String(text).includes("legacy"))).toBe(false);
+  });
+
+  it("refuses to move when the source's unsaved typing can't be saved", async () => {
+    vi.useFakeTimers();
+    const sourceId = `${alphaId()}src`;
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: sourceId });
+    source.setDraft({ text: "A", mentions: [], attachments: [] });
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: sourceId }));
+    act(() => result.current.setTextAndMentions("A plus typing", []));
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === source.storageKey) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await moveNewThreadDraft(source.storageKey, alphaId())).toEqual({ status: "failed" });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(result.current.text).toBe("A plus typing");
+    expect(getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() }).getCurrent().text).toBe("");
+  });
+});
+
