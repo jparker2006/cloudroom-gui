@@ -66,9 +66,9 @@ export const RECORDED_COMPACTION_GAP_TEXT: Record<
   forked: "Records copied from the source thread may be incomplete.",
   "imported-history": "Imported history may be missing compaction records.",
   "provider-unverified":
-    "Only compactions the agent reported to Cloudroom are counted.",
+    "Covers this whole thread. Only compactions the agent reported to Cloudroom are counted.",
   "repeated-notices":
-    "A turn had more than one compaction notice. Repeats can't be told apart, so only the first is counted.",
+    "A turn had more than one compaction notice. They can't be reliably told apart, so only the first is counted.",
   rewound: "Edited or rewound messages may have removed some history.",
   teleported: "Part of this thread ran on another machine.",
   "unhandled-compaction-event": "Some compaction events couldn't be placed.",

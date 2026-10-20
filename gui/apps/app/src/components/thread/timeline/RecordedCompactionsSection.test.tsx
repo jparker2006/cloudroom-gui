@@ -298,7 +298,7 @@ it("does not show a list whose revision disagrees with the summary", async () =>
   ).toMatchObject({ completedCount: 3 });
 });
 
-it("labels whole-thread scope only when no real history gap applies", () => {
+it("states whole-thread scope and the reported-only caveat without implying complete coverage", () => {
   const view = mount(
     <ThreadContextWindowCard
       usage={usage}
@@ -311,15 +311,11 @@ it("labels whole-thread scope only when no real history gap applies", () => {
       open={false}
     />,
   );
-  expect(screen.getByRole("heading").textContent).toBe(
-    "Recorded compactions · whole thread",
-  );
+  const caveat =
+    "Covers this whole thread. Only compactions the agent reported to Cloudroom are counted.";
+  expect(screen.getByRole("heading").textContent).toBe("Recorded compactions");
   expect(screen.getByText("2 recorded")).toBeTruthy();
-  expect(
-    screen.getByText(
-      "Only compactions the agent reported to Cloudroom are counted.",
-    ),
-  ).toBeTruthy();
+  expect(screen.getByText(caveat)).toBeTruthy();
   expect(screen.queryByRole("note")).toBeNull();
   view.rerender(
     <QueryClientProvider client={clients[0]!}>
@@ -337,8 +333,9 @@ it("labels whole-thread scope only when no real history gap applies", () => {
   );
   expect(screen.getByRole("heading").textContent).toBe("Recorded compactions");
   expect(screen.getByText("2 recorded · partial")).toBeTruthy();
+  expect(screen.getByText(caveat)).toBeTruthy();
   expect(screen.getByRole("note").textContent).toBe(
-    "Partial history. A turn had more than one compaction notice. Repeats can't be told apart, so only the first is counted.",
+    "Partial history. A turn had more than one compaction notice. They can't be reliably told apart, so only the first is counted.",
   );
 });
 
@@ -461,8 +458,30 @@ it("shows a neutral note instead of a partial-history warning before the agent r
   );
   expect(screen.getByText("None recorded")).toBeTruthy();
   expect(
-    screen.getByText("Compactions appear here once the agent reports one."),
+    screen.getByText(
+      "Covers this whole thread. Only compactions the agent reported to Cloudroom are counted.",
+    ),
   ).toBeTruthy();
   expect(screen.queryByRole("note")).toBeNull();
   expect(screen.queryByText(/0 recorded/)).toBeNull();
+});
+
+it("keeps keyboard focus in the card when Retry loads the list", async () => {
+  context
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce({ usage, compactions: list() });
+  mount(
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={summary}
+      threadId="thread-a"
+    />,
+  );
+  const retry = await screen.findByRole("button", { name: "Retry" });
+  retry.focus();
+  fireEvent.click(retry);
+  await screen.findByText("Kept the migration plan.");
+  expect(document.activeElement?.getAttribute("aria-label")).toBe(
+    "Recorded compactions, newest first",
+  );
 });

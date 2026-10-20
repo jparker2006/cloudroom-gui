@@ -97,8 +97,9 @@ describe("room-cli thread context", () => {
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Context usage was not reported by the agent.",
       "Recorded compactions: 1 (partial history: Part of this thread ran on another machine.)",
+      "Covers this whole thread. Only compactions the agent reported to Cloudroom are counted.",
       "  2026-10-20T12:00:00.000Z context cleared (not a compaction)",
-      "  time unknown not confirmed (not counted)",
+      "  time unknown not confirmed · not counted",
       "  2026-10-20T11:00:00.000Z compacted - Summary not provided.",
     ]);
   });

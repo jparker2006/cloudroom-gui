@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   RECORDED_COMPACTION_GAP_TEXT,
   type RecordedCompactionEntry,
@@ -157,6 +157,14 @@ export function RecordedCompactionsSection({
     listEnabled,
   );
   const listData = list.data ?? null;
+  const sectionRef = useRef<HTMLElement>(null);
+  const focusAfterRetry = useRef(false);
+  useEffect(() => {
+    if (!focusAfterRetry.current || list.isFetching) return;
+    focusAfterRetry.current = false;
+    const section = sectionRef.current;
+    (section?.querySelector<HTMLElement>("ol, button") ?? section)?.focus();
+  }, [list.isFetching, list.status]);
   const stale =
     listData !== null &&
     summary !== null &&
@@ -178,16 +186,15 @@ export function RecordedCompactionsSection({
 
   return (
     <section
+      ref={sectionRef}
+      tabIndex={-1}
       aria-labelledby={titleId}
       aria-describedby={countId}
-      className="mt-3 flex flex-col gap-1.5 border-t border-border-hairline pt-2"
+      className="mt-3 flex flex-col gap-1.5 border-t border-border-hairline pt-2 outline-none"
     >
       <div className="flex items-baseline justify-between gap-2 text-xs max-md:text-sm">
         <h3 id={titleId} className="font-medium text-muted-foreground">
           Recorded compactions
-          {summary !== null && gaps.length === 0 ? (
-            <span className="font-normal"> · whole thread</span>
-          ) : null}
         </h3>
         <span
           id={countId}
@@ -205,14 +212,15 @@ export function RecordedCompactionsSection({
         <Note title="Not available.">
           Update Cloudroom to see compactions for this thread.
         </Note>
-      ) : gaps.length > 0 ? (
-        <Note title="Partial history.">{gapText}</Note>
       ) : (
-        <p className="text-xs text-muted-foreground max-md:text-sm">
-          {summary.completedCount === 0 && !summary.inProgress
-            ? "Compactions appear here once the agent reports one."
-            : "Only compactions the agent reported to Cloudroom are counted."}
-        </p>
+        <>
+          <p className="text-xs text-muted-foreground max-md:text-sm">
+            {RECORDED_COMPACTION_GAP_TEXT["provider-unverified"]}
+          </p>
+          {gaps.length > 0 ? (
+            <Note title="Partial history.">{gapText}</Note>
+          ) : null}
+        </>
       )}
       <div role="status" aria-live="polite">
         {summary?.inProgress ? (
@@ -242,7 +250,10 @@ export function RecordedCompactionsSection({
             <button
               type="button"
               className="cursor-pointer rounded-xs underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
-              onClick={() => void list.refetch()}
+              onClick={() => {
+                focusAfterRetry.current = true;
+                void list.refetch();
+              }}
             >
               Retry
             </button>

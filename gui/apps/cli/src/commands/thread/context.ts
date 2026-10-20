@@ -62,8 +62,9 @@ export function registerContextCommand(
             return;
           }
           console.log(
-            `Recorded compactions${gaps.length === 0 ? " (whole thread)" : ""}: ${compactions.completedCount}${gaps.length > 0 ? ` (partial history: ${gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
+            `Recorded compactions: ${compactions.completedCount}${gaps.length > 0 ? ` (partial history: ${gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
           );
+          console.log(RECORDED_COMPACTION_GAP_TEXT["provider-unverified"]);
           for (const entry of compactions.entries) {
             if (entry.kind === "clear") {
               console.log(
@@ -77,7 +78,7 @@ export function registerContextCommand(
                 ? "compacted"
                 : entry.status === "in_progress"
                   ? "compacting (not counted yet)"
-                  : "not confirmed (not counted)";
+                  : "not confirmed · not counted";
             console.log(
               `  ${at === null ? "time unknown" : new Date(at).toISOString()} ${label}${entry.status === "completed" ? ` - ${entry.summary ?? "Summary not provided."}` : ""}`,
             );
