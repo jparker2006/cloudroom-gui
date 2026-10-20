@@ -2209,3 +2209,35 @@ describe("leftovers when a fresh draft replaces a moved record", () => {
     }
   });
 });
+
+describe("leftover copy failure", () => {
+  it("reports the draft as not saved, not unreadable, when its leftovers can't be kept", () => {
+    window.localStorage.setItem(
+      alphaKey(),
+      JSON.stringify({
+        text: "",
+        attachments: [{ type: "localImage", path: "old.png", name: "old.png", sizeBytes: 1 }],
+        rev: "a5a5a5a5a5a5a5a5",
+        moved: true,
+      }),
+    );
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }));
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key.startsWith("bb.promptbox.leftover-")) throw new DOMException("quota", "QuotaExceededError");
+        realSetItem.call(this, key, value);
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => result.current.setDraft({ text: "new typing", mentions: [], attachments: [] }));
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(result.current.isUnsaved).toBe(true);
+    expect(result.current.notice).toBeNull();
+  });
+});

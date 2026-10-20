@@ -369,7 +369,9 @@ function reconcileWithStoredNewThreadDraft(
         window.localStorage.setItem(leftoverKey, rawValue);
       } catch (error) {
         console.warn(`[prompt-draft] could not keep the leftovers of ${storageKey}`, error);
-        return holdInMemory(storageKey, cachedEntry, rawValue, "unreadable");
+        unsavedPromptDraftKeys.add(storageKey);
+        cachedEntry.rawValue = rawValue;
+        return false;
       }
     }
   }
