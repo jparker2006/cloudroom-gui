@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@cloudroom/domain";
 import {
+  appendPromptDraft,
   appendQuoteAndAttachmentsToDraft,
   appendQuoteToDraftText,
   emptyPromptDraftState,
@@ -407,5 +408,40 @@ describe("appendQuoteAndAttachmentsToDraft", () => {
     };
 
     expect(appendQuoteAndAttachmentsToDraft(base, "", [attachment])).toBe(base);
+  });
+});
+
+describe("appendPromptDraft", () => {
+  it("adds moved text after a blank line, shifts its mentions and keeps every attachment field", () => {
+    const target = {
+      text: "Beta notes",
+      mentions: [],
+      attachments: [{ type: "image" as const, path: "a.png", name: "a.png", sizeBytes: 1 }],
+    };
+    const source = {
+      text: "use /automation",
+      mentions: [{ start: 4, end: 15, resource: AUTOMATION_COMMAND_RESOURCE }],
+      attachments: [
+        { type: "image" as const, path: "a.png", name: "a.png", sizeBytes: 1 },
+        { type: "image" as const, path: "b.png", name: "b.png", sizeBytes: 2, copyToken: "tok" },
+      ],
+      contexts: [{ label: "msg 1", text: "context" }],
+    };
+
+    expect(appendPromptDraft(target, source)).toEqual({
+      text: "Beta notes\n\nuse /automation",
+      mentions: [{ start: 16, end: 27, resource: AUTOMATION_COMMAND_RESOURCE }],
+      attachments: [
+        { type: "image", path: "a.png", name: "a.png", sizeBytes: 1 },
+        { type: "image", path: "b.png", name: "b.png", sizeBytes: 2, copyToken: "tok" },
+      ],
+      contexts: [{ label: "msg 1", text: "context" }],
+    });
+  });
+
+  it("uses the source as is when the target is empty", () => {
+    const source = { text: "hello", mentions: [], attachments: [] };
+
+    expect(appendPromptDraft(emptyPromptDraftState(), source)).toEqual(source);
   });
 });

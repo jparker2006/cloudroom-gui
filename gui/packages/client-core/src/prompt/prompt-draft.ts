@@ -228,6 +228,32 @@ export function serializePromptDraftStorage(
   });
 }
 
+export function appendPromptDraft(
+  target: PromptDraftState,
+  source: PromptDraftState,
+): PromptDraftState {
+  const separator = target.text.length > 0 && source.text.length > 0 ? "\n\n" : "";
+  const offset = target.text.length + separator.length;
+  const targetPaths = new Set(target.attachments.map((attachment) => attachment.path));
+  const contexts = [...(target.contexts ?? []), ...(source.contexts ?? [])];
+  return {
+    text: `${target.text}${separator}${source.text}`,
+    mentions: [
+      ...target.mentions,
+      ...source.mentions.map((mention) => ({
+        ...mention,
+        start: mention.start + offset,
+        end: mention.end + offset,
+      })),
+    ],
+    attachments: [
+      ...target.attachments,
+      ...source.attachments.filter((attachment) => !targetPaths.has(attachment.path)),
+    ],
+    ...(contexts.length > 0 ? { contexts } : {}),
+  };
+}
+
 export function arePromptDraftStatesEqual(
   left: PromptDraftState,
   right: PromptDraftState,
