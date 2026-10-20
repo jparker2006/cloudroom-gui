@@ -135,7 +135,7 @@ type TrayInspect =
   | { kind: "image"; index: number }
   | { kind: "link"; href: string }
   | { kind: "file"; href: string }
-  | { kind: "notice"; message: string }
+  | { kind: "notice"; message: string; resourceSrc?: string | null }
   | null;
 
 interface TrayItem {
@@ -234,6 +234,7 @@ function buildTrayItems({
           ? {
               kind: "notice",
               message: `Couldn't load a preview of ${attachment.name}. It is still attached.`,
+              resourceSrc: thumbnailSrc,
             }
           : { kind: "image", index: lightboxItems.length }
         : fileInspect(attachment, ownerProjectId, typeLabel),
@@ -363,6 +364,7 @@ export function AttachmentPreview({
   const [notice, setNotice] = useState<{
     key: string;
     message: string;
+    resourceSrc?: string | null;
   } | null>(null);
   const [inspectedFileKey, setInspectedFileKey] = useState<string | null>(null);
   const { items, lightboxItems } = buildTrayItems({
@@ -378,7 +380,13 @@ export function AttachmentPreview({
       ? (lightboxItems[expandedImageIndex] ?? null)
       : null;
   const visibleNotice =
-    notice !== null && items.some((item) => item.key === notice.key)
+    notice !== null &&
+    items.some(
+      (item) =>
+        item.key === notice.key &&
+        item.inspect?.kind === "notice" &&
+        item.inspect.resourceSrc === notice.resourceSrc,
+    )
       ? notice
       : null;
   const pendingSummary = summarizePending(pending);
@@ -452,7 +460,11 @@ export function AttachmentPreview({
       setNotice(null);
       onExpandedImageIndexChange(item.inspect.index);
     } else if (item.inspect?.kind === "notice") {
-      setNotice({ key: item.key, message: item.inspect.message });
+      setNotice({
+        key: item.key,
+        message: item.inspect.message,
+        resourceSrc: item.inspect.resourceSrc,
+      });
     } else {
       setNotice(null);
     }

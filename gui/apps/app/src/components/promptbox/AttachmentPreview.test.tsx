@@ -466,6 +466,79 @@ describe("AttachmentPreview", () => {
     expect(onExpandedImageIndexChange).not.toHaveBeenCalled();
   });
 
+  it.each(["explicit owner", "current project"] as const)(
+    "hides the previous resource's failure notice after a project change (%s)",
+    (ownership) => {
+      const attachment = {
+        ...mixedAttachments[0]!,
+        path: "shared-shot.png",
+        name: "shared-shot.png",
+      };
+      const propsFor = (projectId: string) => ({
+        attachments: [
+          ownership === "explicit owner"
+            ? { ...attachment, projectId }
+            : { ...attachment },
+        ],
+        attachmentProjectId:
+          ownership === "explicit owner" ? "composer-project" : projectId,
+        expandedImageIndex: null,
+        onExpandedImageIndexChange: vi.fn(),
+      });
+      const { getByRole, getByText, queryByText, rerender } = render(
+        <AttachmentPreview {...propsFor("project-a")} />,
+      );
+      const message =
+        "Couldn't load a preview of shared-shot.png. It is still attached.";
+      fireEvent.error(getByRole("img", { name: "shared-shot.png" }));
+      fireEvent.click(getByRole("button", { name: /^shared-shot\.png,/ }));
+      expect(getByText(message).getAttribute("role")).toBe("status");
+
+      rerender(<AttachmentPreview {...propsFor("project-b")} />);
+      const nextImage = getByRole("img", { name: "shared-shot.png" });
+      expect(nextImage.getAttribute("src")).toBe(
+        "/api/v1/projects/project-b/attachments/content?path=shared-shot.png",
+      );
+      expect(queryByText(message)).toBeNull();
+
+      fireEvent.error(nextImage);
+      expect(queryByText(message)).toBeNull();
+      fireEvent.click(getByRole("button", { name: /^shared-shot\.png,/ }));
+      expect(getByText(message).getAttribute("role")).toBe("status");
+    },
+  );
+
+  it("retains the failure notice for the unchanged failed resource without retrying", () => {
+    const attachment = { ...mixedAttachments[0]!, projectId: "source-project" };
+    const onExpandedImageIndexChange = vi.fn();
+    const props = {
+      attachments: [attachment],
+      attachmentProjectId: "composer-project-a",
+      expandedImageIndex: null,
+      onExpandedImageIndexChange,
+    };
+    const { getByRole, getByText, queryByRole, rerender } = render(
+      <AttachmentPreview {...props} />,
+    );
+    const message = "Couldn't load a preview of shot.png. It is still attached.";
+    fireEvent.error(getByRole("img", { name: "shot.png" }));
+    fireEvent.click(getByRole("button", { name: /^shot\.png,/ }));
+    expect(getByText(message).getAttribute("role")).toBe("status");
+    for (let sizeBytes = 1; sizeBytes <= 3; sizeBytes += 1) {
+      rerender(
+        <AttachmentPreview
+          {...props}
+          attachmentProjectId="composer-project-b"
+          attachments={[{ ...attachment, sizeBytes }]}
+        />,
+      );
+      expect(queryByRole("img", { name: "shot.png" })).toBeNull();
+      expect(getByText("No preview")).toBeTruthy();
+      expect(getByText(message).getAttribute("role")).toBe("status");
+    }
+    expect(onExpandedImageIndexChange).not.toHaveBeenCalled();
+  });
+
   it("falls back cleanly when a thumbnail cannot load", () => {
     const onExpandedImageIndexChange = vi.fn();
     const { getByRole, getAllByRole, getByText } = render(
