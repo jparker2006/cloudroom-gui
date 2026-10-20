@@ -1,4 +1,4 @@
-// THROWAWAY design-options story for the Artifacts tab (Phase 1c).
+// THROWAWAY design-options story for the Artifacts tab (Phase 1d).
 // Lives in .artifacts-work/ and is copied into apps/app/src only while rendering screenshots.
 // Mock data only. Not production code.
 import { useMemo, type ReactNode } from "react";
@@ -27,11 +27,11 @@ const noop = () => {};
 const TOUCH = "max-md:pointer-coarse:min-h-11";
 const ROW_CLASS = `group flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left ${LIST_HOVER_TRANSITION} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${TOUCH}`;
 
-type Label = "generated" | "modified" | "uploaded" | "referenced";
+type Label = "generated" | "modified" | "uploaded" | "referenced" | "attached";
 type Owner = "workspace" | "thread-storage" | "cloud-workspace" | "attachment" | "outside" | "unresolved";
 type OccurrenceStatus = "ok" | "failed" | "pending" | "denied";
 type FileType = "image" | "doc" | "code" | "data";
-type Access = "allowed" | "unavailable" | "preview-unavailable" | "none";
+type Access = "not-checked" | "allowed" | "unavailable" | "preview-unavailable";
 
 interface Occurrence {
   id: string;
@@ -56,14 +56,14 @@ interface Artifact {
 
 const ARTIFACTS: Artifact[] = [
   {
-    id: "a1", name: "hero-banner.png", dir: "generated", owner: "thread-storage", type: "image", labels: ["generated"], access: "allowed",
+    id: "a1", name: "hero-banner.png", dir: "generated", owner: "thread-storage", type: "image", labels: ["generated"], access: "not-checked",
     occurrences: [
       { id: "o1", verb: "Generated image", status: "ok", where: "Turn 6", when: "12m ago" },
       { id: "o2", verb: "Viewed image", status: "ok", where: "Turn 6", when: "11m ago" },
     ],
   },
   {
-    id: "a2", name: "ThreadArtifacts.tsx", dir: "apps/app/src/components/secondary-panel", owner: "workspace", type: "code", labels: ["generated", "modified"], access: "allowed",
+    id: "a2", name: "ThreadArtifacts.tsx", dir: "apps/app/src/components/secondary-panel", owner: "workspace", type: "code", labels: ["generated", "modified"], access: "not-checked",
     occurrences: [
       { id: "o3", verb: "Created file", status: "ok", where: "Turn 3", when: "1h ago" },
       { id: "o4", verb: "Edited +18 −4", status: "ok", where: "Turn 5", when: "40m ago", nested: "Explore subagent" },
@@ -73,37 +73,37 @@ const ARTIFACTS: Artifact[] = [
     ],
   },
   {
-    id: "a3", name: "README.md", dir: "Workspace root", owner: "workspace", type: "doc", labels: ["modified"], access: "allowed",
+    id: "a3", name: "README.md", dir: "Workspace root", owner: "workspace", type: "doc", labels: ["modified"], access: "not-checked",
     occurrences: [{ id: "o7", verb: "Edited +6 −1", status: "ok", where: "Turn 2", when: "2h ago", earlier: true }],
   },
   {
-    id: "a4", name: "README.md", dir: "notes", owner: "thread-storage", type: "doc", labels: ["generated"], access: "allowed",
+    id: "a4", name: "README.md", dir: "notes", owner: "thread-storage", type: "doc", labels: ["generated"], access: "not-checked",
     occurrences: [{ id: "o8", verb: "Created file", status: "ok", where: "Turn 4", when: "1h ago" }],
   },
   {
-    id: "a5", name: "client.ts", dir: "src/api", owner: "workspace", type: "code", labels: ["modified"], access: "allowed",
+    id: "a5", name: "client.ts", dir: "src/api", owner: "workspace", type: "code", labels: ["modified"], access: "not-checked",
     occurrences: [{ id: "o9", verb: "Moved from src/client.ts", status: "ok", where: "Turn 5", when: "38m ago" }],
   },
   {
-    id: "a6", name: "launch-brief-1760….pdf", dir: "stored as launch-brief-1760…-k3x9q2.pdf", owner: "attachment", type: "doc", labels: ["referenced"], access: "allowed",
+    id: "a6", name: "launch-brief-1760….pdf", dir: "stored as launch-brief-1760…-k3x9q2.pdf", owner: "attachment", type: "doc", labels: ["attached"], access: "not-checked",
     occurrences: [
-      { id: "o10", verb: "Referenced by path", status: "ok", where: "Message 1", when: "3h ago", earlier: true },
+      { id: "o10", verb: "Attached in your message", status: "ok", where: "Message 1", when: "3h ago", earlier: true },
       { id: "o11", verb: "Read by agent", status: "ok", where: "Turn 1", when: "3h ago", earlier: true },
     ],
   },
   {
-    id: "a7", name: "old-report.html", dir: "reports", owner: "thread-storage", type: "doc", labels: ["generated"], access: "allowed",
+    id: "a7", name: "old-report.html", dir: "reports", owner: "thread-storage", type: "doc", labels: ["generated"], access: "not-checked",
     occurrences: [
       { id: "o12", verb: "Created file", status: "ok", where: "Turn 2", when: "2h ago", earlier: true },
       { id: "o13", verb: "Deleted", status: "ok", where: "Turn 5", when: "38m ago" },
     ],
   },
   {
-    id: "a8", name: "q3-metrics.csv", dir: "/Users/sam/Downloads", owner: "outside", type: "data", labels: ["referenced"], access: "none",
+    id: "a8", name: "q3-metrics.csv", dir: "/Users/sam/Downloads", owner: "outside", type: "data", labels: ["referenced"], access: "not-checked",
     occurrences: [{ id: "o14", verb: "Referenced by path", status: "ok", where: "Message 2", when: "2h ago", earlier: true }],
   },
   {
-    id: "a9", name: "logo.svg", dir: "assets/logo.svg (relative, no folder reported)", owner: "unresolved", type: "image", labels: ["referenced"], access: "none",
+    id: "a9", name: "logo.svg", dir: "assets/../logo.svg (unverified parent segment)", owner: "unresolved", type: "image", labels: ["referenced"], access: "not-checked",
     occurrences: [{ id: "o15", verb: "Viewed image", status: "ok", where: "Turn 4", when: "1h ago" }],
   },
   {
@@ -117,6 +117,7 @@ const LABEL_TEXT: Record<Label, string> = {
   modified: "Modified",
   uploaded: "Uploaded to this project",
   referenced: "Referenced",
+  attached: "Attached in your message",
 };
 
 const LABEL_TONE: Record<Label, string> = {
@@ -124,6 +125,7 @@ const LABEL_TONE: Record<Label, string> = {
   modified: "text-warning-text border-warning-text/40",
   uploaded: "text-file-accent border-file-accent/40",
   referenced: "text-muted-foreground border-border",
+  attached: "text-muted-foreground border-border",
 };
 
 const OWNER_TEXT: Record<Owner, string> = {
@@ -198,7 +200,7 @@ function AccessNote({ artifact }: { artifact: Artifact }) {
         : artifact.owner === "outside"
           ? { icon: "Lock", text: "Outside this thread's workspace and storage", tone: "text-muted-foreground" }
           : artifact.owner === "unresolved"
-            ? { icon: "CircleQuestion", text: "Not verified: the agent didn't report which folder this is in", tone: "text-muted-foreground" }
+            ? { icon: "CircleQuestion", text: "Not verified: this path needs a containment check", tone: "text-muted-foreground" }
             : null;
   if (note === null) return null;
   return (
@@ -263,7 +265,7 @@ type Coverage = "partial" | "complete" | "checking" | "context-clear" | "unreach
 function CoverageNote({ coverage }: { coverage: Coverage }) {
   if (coverage === "complete") {
     return (
-      <div className="mx-3 mt-2 flex items-center gap-1.5 text-[11px] text-subtle-foreground">
+      <div className="mx-3 mt-2 flex items-center gap-1.5 text-xs text-subtle-foreground">
         <Icon name="CircleCheck" className="size-3" aria-hidden />
         Checked every turn in this thread.
       </div>
@@ -271,7 +273,7 @@ function CoverageNote({ coverage }: { coverage: Coverage }) {
   }
   if (coverage === "checking") {
     return (
-      <div role="status" className="mx-3 mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div role="status" className="mx-3 mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon name="Spinner" className="size-3 animate-spin motion-reduce:animate-none" aria-hidden />
         Checking earlier turns… 3 pages loaded
       </div>
@@ -348,8 +350,12 @@ function OccurrenceRow({ occurrence, fileName }: { occurrence: Occurrence; fileN
   );
 }
 
+function canRequestAccess(artifact: Artifact) {
+  return artifact.owner !== "outside" && artifact.owner !== "unresolved" && artifact.access !== "preview-unavailable";
+}
+
 function FileActions({ artifact, layout = "inline" }: { artifact: Artifact; layout?: "inline" | "detail" }) {
-  if (artifact.access !== "allowed") return null;
+  if (!canRequestAccess(artifact)) return null;
   return (
     <div className={cn("flex flex-col gap-1.5", layout === "inline" ? "py-1.5 pl-7 pr-2" : "")}>
       <p className="text-xs leading-4 text-muted-foreground">{artifact.owner === "attachment" ? "Opens the stored file as it is now." : CURRENT_FILE_COPY}</p>
@@ -385,9 +391,9 @@ function OptionARow({ artifact, expanded }: { artifact: Artifact; expanded: bool
             <span className="min-w-0 truncate text-sm text-foreground">{artifact.name}</span>
             {artifact.labels.map((label) => <LabelTag key={label} label={label} />)}
           </span>
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
             <OwnerTag owner={artifact.owner} />
-            <span className="min-w-0 truncate text-[11px] text-subtle-foreground">{artifact.dir}</span>
+            <span className="min-w-0 break-all text-[11px] text-subtle-foreground">{artifact.dir}</span>
           </span>
           <AccessNote artifact={artifact} />
         </span>
@@ -528,11 +534,11 @@ function OptionBListRow({ artifact, selected }: { artifact: Artifact; selected: 
             <span className="min-w-0 flex-1 truncate text-sm text-foreground">{artifact.name}</span>
             <span className="shrink-0 text-xs text-muted-foreground">{plural(count, "source")}</span>
           </span>
-          <span className="flex min-w-0 items-center gap-1.5">
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             <span className="shrink-0 text-xs text-subtle-foreground">{OWNER_TEXT[artifact.owner]}</span>
             {artifact.labels.map((l) => <LabelTag key={l} label={l} />)}
-            {artifact.access === "unavailable" ? <span className="min-w-0 truncate text-xs text-destructive-text">Not available now</span> : null}
-            {artifact.access === "preview-unavailable" ? <span className="min-w-0 truncate text-xs text-muted-foreground">Preview unavailable</span> : null}
+            {artifact.access === "unavailable" ? <span className="shrink-0 text-xs text-destructive-text">Not available now</span> : null}
+            {artifact.access === "preview-unavailable" ? <span className="shrink-0 text-xs text-muted-foreground">Preview unavailable</span> : null}
           </span>
         </span>
       </button>
@@ -561,7 +567,7 @@ function OptionBDetail({ artifact, showBack = false }: { artifact: Artifact; sho
         {artifact.labels.map((l) => <LabelTag key={l} label={l} />)}
       </div>
       <AccessNote artifact={artifact} />
-      {artifact.access === "allowed" ? (
+      {canRequestAccess(artifact) ? (
         <div className="rounded-md border border-border bg-surface-recessed px-2.5 py-2">
           <div className="mb-0.5 flex items-center gap-1.5 text-xs text-foreground">
             <Icon name="Info" className="size-3.5" aria-hidden />
@@ -713,7 +719,7 @@ export function OptionADesktop() {
   return (
     <Grid>
       <Stage label="A · default: partial history, one file expanded (failed + denied edits as occurrences)"><OptionAContent /></Stage>
-      <Stage label="A · statuses: attachment (Referenced by path), old-report.html after a failed Open, outside scope, not verified, cloud preview unavailable">
+      <Stage label="A · statuses: attachment (Attached in your message), old-report.html after a failed Open, outside scope, not verified, cloud preview unavailable">
         <OptionAContent state="statuses" expandedIds={["a7", "a10"]} />
       </Stage>
       <div className="flex flex-col gap-4">

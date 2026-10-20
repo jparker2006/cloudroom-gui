@@ -1,6 +1,6 @@
-# Artifacts tab: discovery (Phase 1c)
+# Artifacts tab: discovery (Phase 1d)
 
-Scratch notes. This folder sits at the **repo root** (`.artifacts-work/`). Code paths below are relative to `gui/`. Line citations were re-verified against `4f3ab72`; the cited code is unchanged from base `37504fb`.
+Scratch notes. This folder sits at the **repo root** (`.artifacts-work/`). Code paths below are relative to `gui/`. Phase 1d revises `6b97033`; new projection and routing citations were checked against that baseline. The earlier citations refer to unchanged code from base `37504fb`.
 
 Path scoping, identity derivation, and read enforcement are an **external dependency** owned by the PNG/daemon thread (§7). Artifacts does not generalize, copy, or import the PNG helpers, and does not rebase onto that branch.
 
@@ -24,7 +24,7 @@ A file **is listed** only if at least one occurrence is *qualifying*:
 | Image view | `image-view` (L344) | `status === "completed"` | **Referenced** |
 | File read | `file-read` (L370) | `status === "completed"` | **Referenced** |
 | Markdown link or image in a conversation row | conversation `text` | Used link/image node (§8) | **Referenced** |
-| User attachment | user conversation `attachments` (L79) | See §1.3 | **Referenced by path**, or **Uploaded to this project** after D3 |
+| User attachment | user conversation `attachments` (L79) | See §1.3 | **Attached in your message**, or **Uploaded to this project** for new validated sends after D3 |
 
 **Non-qualifying occurrences:**
 - failed (`error`), `pending`, `interrupted`, `waiting_for_approval`, or `denied` file changes;
@@ -44,7 +44,7 @@ Labels are a union over qualifying occurrences, so a file can be Generated + Mod
 - **"Not available now"** appears only after a user action (open, preview, or download) whose `resolveAccess` / read failed. It uses the **same** text as an out-of-scope rejection: "Not available now. It may have been moved or deleted, or it's outside this thread's files."
 - The state is remembered for the session on that row only.
 
-### 1.3 Attachments: "Referenced by path" by default; "Uploaded to this project" after D3
+### 1.3 Attachments: "Attached in your message"; D3 applies only to new sends
 
 Facts:
 - Uploads go through `storeAttachment` (`apps/server/src/services/projects/attachments.ts:150`). The stored name is `<stem>-<Date.now()>-<rand6><ext>` (`buildStoredFilename`, L45), in a **project**-scoped directory.
@@ -61,11 +61,11 @@ Rule. **"Uploaded to this project"** requires **all** of:
 5. a relative stored path
 6. **a server-supplied marker that validation ran for that send** (D3)
 
-Until D3 lands, every accepted attachment reads **"Referenced by path"**. Pending or rejected rows count as non-qualifying occurrences. Agent-only attachments never appear, because `parsePromptInput` skips them.
+Every accepted attachment without the per-send D3 marker reads **"Attached in your message"**. D3 must persist the validation result on the accepted-input event at send time; it is never inferred from today's execution target or a later file check. **Pre-D3 sends keep this label forever**, even after D3 ships. "Referenced by path" is reserved for absolute paths authored in text or Markdown links. Pending or rejected rows count as non-qualifying occurrences. Agent-only attachments never appear, because `parsePromptInput` skips them.
 
 The copy says "to this project", never "to this thread". Attachments are project-scoped and get copied between projects by name (`copyProjectAttachments`).
 
-Per D-c, attachment-ness is **derived by the server from the referenced source occurrence**. The client never sends an "is attachment" flag.
+Per D-c/D-e, attachment-ness is **derived by the server while extracting the source occurrence**. The client never sends an "is attachment" flag.
 
 Attachment reads aren't exempt from D5:
 - `resolveAttachmentPath` → `resolveContainedPath` (`attachments.ts:76`) is lexical.
@@ -84,10 +84,10 @@ A `file-edit` message becomes an `approval` row **only when it has no changes an
 
 ## 2. Identity (D-a) and access (D-b) are separate
 
-### 2.1 Two calls
+### 2.1 Server occurrence extraction and action-time access (D-e replaces client extraction)
 
-- **Identity (batched, no filesystem access, no `stat`):** occurrence references go in; `(owner, key, basis)` comes out. The server derives it from the **raw event-store path** of the referenced event, not from the projected row. Raw events are reachable server-side (`GET /threads/:id/events`, `apps/server/src/routes/threads/data.ts:608`; same DB rows). It runs once per new occurrence. Its result never changes with current file-system state.
-- **Access (single path, on a user action only):** `resolveAccess(occurrenceRef)` returns `allowed {contentToken | previewTab} | unavailable`. It runs only when the user opens, previews, or downloads. Enforcement happens inside the read (D5).
+- **Discovery:** `artifacts.occurrences({threadId, turnRange | cursor})` re-projects one bounded stored seq range on the server using the existing timeline/turn-details projection, including buffered-text backfill and assistant assembly (§6). The shared extractor in `packages/thread-view` runs on those assembled rows. It returns server-issued opaque occurrence ids, category, seq range, display/jump `rowId`, status, identity `(owner, key, basis)`, and labels (§7.1). Identity derivation does no filesystem access (`stat` included); raw event-store paths remain authoritative for structured events (D-a), never the relativized display paths. Raw events are available server-side (`apps/server/src/routes/threads/data.ts:608`).
+- **Access:** `resolveAccess({threadId, occurrenceId})` re-verifies the stored evidence on every user action and returns a scoped read target or `unavailable`. The client builds no selectors and classifies no evidence. The server validates thread ownership of the id. No separate client `identify` call remains.
 
 Rejected, outside, and unresolved items keep their identity and history. They're **never merged** with an allowed group.
 
@@ -100,7 +100,7 @@ The server takes the **raw** event path (the stored provider event, before `rela
    - if the event store records a cwd for that event, resolve against it. Only `commandExecution` has one (`packages/domain/src/provider-event.ts:398`); `fileChange`, `fileRead`, `imageView`, and `imageGeneration` do not;
    - otherwise resolve against the thread's **`environment.path`**, the same root the timeline projection and Markdown routing use (`resolveThreadWorkspaceRoot`, `apps/server/src/services/threads/timeline.ts:112`). Identity then carries **`basis: "current-workspace"`**.
 
-   **Drift:** if the environment path changed after the event, the key names the file under the current root, not the original one. The UI shows nothing extra for this. It's documented here and in the dependency contract.
+   **Drift:** an absolute normalized path key is stable when `environment.path` changes. Its owner classification (workspace vs. outside) can change because containment is relative to the current root. For relative paths using `basis: "current-workspace"`, both resolution/key and owner can change with that root. Within one discovery snapshot, retain returned identities; on a root change, invalidate and re-fetch affected ranges rather than mixing snapshots. No original root is invented.
 3. **No environment:** the path is **unresolved**. Each unresolved occurrence keeps its **own** identity `(threadId, occurrenceId)`. Unresolved occurrences **never merge by raw string**.
 4. **Normalization:**
    - collapse `.` segments and duplicate slashes, and drop a trailing `/`;
@@ -121,9 +121,9 @@ For a `file-change` with `movePath`:
 - Completed with a path and no error: **Generated**.
 - Failed, interrupted, or pending: a non-qualifying occurrence. It attaches only if `path` is non-null and that path already qualifies; otherwise it's dropped.
 
-### 2.5 Occurrence identity
+### 2.5 Occurrence identity (D-e)
 
-Occurrence key = `(threadId, sourceSeqStart, callId | rowId, changeIndex | linkOrdinal | attachmentIndex)`. It's deduped across the latest page, older pages, and turn details. This same tuple is the **occurrence reference** sent to the server (D-c).
+The server issues an **opaque `occurrenceId`**, stable across overlapping pages and repeated extraction of the same stored evidence. It internally binds the thread, source event/use, and projected row; the client neither constructs nor decodes that binding. The client deduplicates by `(threadId, occurrenceId)`, retaining seq range and `rowId` only for display/jumps. Streaming updates replace the same occurrence; the server re-projects buffered and finalized assistant text before extracting, so a raw delta is never treated as a whole message. `resolveAccess` accepts only `{threadId, occurrenceId}` and re-verifies evidence on every call.
 
 ## 3. Completeness and pagination
 
@@ -142,7 +142,7 @@ Occurrence key = `(threadId, sourceSeqStart, callId | rowId, changeIndex | linkO
 
 **Turn details.** Fetched per segment, keyed `(turnId, sourceSeqStart, sourceSeqEnd)`:
 - The existing `useThreadTimelineTurnSummaryDetails` queryFn loops over all pages (`thread-queries.ts:973-1010`), and its cache uses `gcTime: 60_000` (`apps/app/src/hooks/queries/query-policies.ts:52-56`).
-- So Artifacts calls `sdk.threads.timelineTurnSummaryDetails` **one page per step**, and keeps occurrences and checked segments in its own state, keyed by `threadId`.
+- Artifacts instead calls the new `artifacts.occurrences` endpoint **one bounded range/page per step**, reusing the existing projection and pagination logic on the server. It keeps returned occurrences, received turn ranges, and checked segments in its own state keyed by `threadId`. It does not extract from client rows or call the all-pages details hook for discovery. A range is checked only when its occurrence cursor is exhausted.
 
 **Context clear.** Only rows after the latest completed context clear are served (`contextBoundarySeq`, `apps/server/src/services/threads/timeline.ts:1313`).
 
@@ -151,7 +151,7 @@ Occurrence key = `(threadId, sourceSeqStart, callId | rowId, changeIndex | linkO
 **Complete** only when **all** of these hold:
 1. `hasOlderRows === false`
 2. `contextBoundarySeq === null`
-3. every segment with `summaryCount > 0` has a fully paged detail result in Artifacts state
+3. every segment with `summaryCount > 0` has fully paged occurrence coverage for its turn/seq range held in Artifacts state; top-level conversation/image ranges also have occurrence coverage (collapsed segments are not the only evidence)
 
 Count distinct `turnId`. Never show "N of M".
 
@@ -165,13 +165,13 @@ Copy:
   - Required invariant: `hasOlderRows === true ⇒ olderCursor !== null`.
   - If it's violated, the UI shows "Can't load earlier history." with **no** Check earlier button and no retry loop. Coverage stays partial.
 
-**Check earlier** is user-triggered, one step per click: next detail page for an unchecked segment; when none are left, one `loadOlderTimelineRows` call.
+**Check earlier** is user-triggered, one step per click: one occurrence range/page for an unchecked segment; when none are left, one `loadOlderTimelineRows` call to discover earlier ranges. The server enforces bounded seq/event/byte budgets and returns a cursor plus the exact received range. Never fan out over turns or loop all pages in a queryFn (db-load-budget).
 
 ### 3.3 No rescans
 
-- Per-row derivation is memoized by row object identity (`WeakMap`). `applyTimelineDelta` reuses unchanged rows.
-- Detail pages are derived once.
-- State resets on `threadId` change. Async results for another thread are dropped.
+- The client merges server occurrences by opaque id and tracks received `(turnId, sourceSeqStart, sourceSeqEnd)` ranges and page cursors; it never rescans the transcript or classifies rows.
+- The server reuses existing projection/cache logic for unchanged ranges. Streaming changes invalidate only affected ranges; extraction sees assembled message text, including prefixes outside a page when needed.
+- State resets on `threadId` change. Async results for another thread are dropped. Query cache eviction cannot erase the client's received coverage or occurrence history.
 
 ## 4. Source jumps
 
@@ -196,7 +196,8 @@ Copy:
 - Cloud `cloudFile` keeps one overwritten copy per path (`apps/server/src/services/cloudroom/teleport-local.ts:195-207`).
 - Image generation `result` is retained output (`packages/db/src/retained-event-output.ts`).
 - Attachment `immutable` headers and the ETag don't prove a version.
-- The only genuinely historical data is `file-change.diff`. It can be `null`, and the timeline route truncates it to the inline output limit (`apps/server/src/services/threads/timeline-output-truncation.ts:39`, applied by `truncateTimelineResponseOutputs`, L83).
+- The only genuinely historical file-change data is `file-change.diff`. It can be `null`. **Only the timeline route** applies `truncateTimelineResponseOutputs` (`apps/server/src/services/threads/timeline-output-truncation.ts:39,83`); the **turn-details route does not** (`apps/server/src/routes/threads/data.ts:548-569`). Retained-output/byte budgets in the details service are separate from this route-level diff truncation.
+- **D-e projection choice:** the new occurrence endpoint uses the existing **turn-details projection path** (`apps/server/src/services/threads/timeline.ts:1857-1918`, `buildThreadTimelineTurnDetailsFromEvents`), including whole-item rows, parent/turn context, buffered-text backfill (`timeline.ts:859-875`) and assistant assembly in `packages/thread-view/src/assistant-event-projection.ts` / `buffered-text-projection.ts` (called by `build-event-projection.ts`). It extracts before any route-level output truncation; it does **not** apply `truncateTimelineResponseOutputs`. It never parses raw assistant deltas independently or uses a collapsed summary as evidence. Keep the existing bounded event/retained-output byte budgets and page cursors; truncated/incomplete source text must retain partial coverage and be continued before claiming the range checked. Diffs are historical evidence, not immutable file snapshots, and aren't required in the occurrence response.
 
 So **Open always means the current file**:
 
@@ -204,35 +205,52 @@ So **Open always means the current file**:
 
 ## 7. External dependency: identity and access (interface only)
 
-**Owner:** the PNG/daemon thread. The 37504fb/8b982e1 baseline is rejected (symlinked storage-root fail-open; check/read race). Nothing here is implemented by Artifacts.
+**Owner:** the PNG/daemon thread. The 37504fb/8b982e1 baseline is rejected (symlinked storage-root fail-open; check/read race). This section specifies future interfaces only. Artifacts owns server projection/extraction integration (D-e); containment and read enforcement remain external requirements.
 
-### 7.1 Interface (D-b, D-c)
+### 7.1 Interface (D-b, D-c, D-e)
 
-The client sends **occurrence references only**: no paths it classified, no roots, no cwd, no projectId, no evidence kind, no attachment flag. The server loads the referenced raw event and derives everything else (D-a).
+The client sends only the thread and a turn range or server page cursor for discovery, then `{threadId, occurrenceId}` for access. No client selectors, paths, classification, roots, cwd, projectId, evidence kind, or attachment flags. The server authorizes the thread and derives all evidence and identities.
 
 ```ts
-type OccurrenceRef = {
-  threadId: string;
+type TurnRange = { turnId: string | null; sourceSeqStart: number; sourceSeqEnd: number };
+type Occurrence = {
+  occurrenceId: string; // opaque, server-issued; stable across overlapping pages
+  category: "file-change" | "file-read" | "image-view" | "image-gen" |
+    "attachment" | "md-link" | "md-image";
   sourceSeqStart: number;
-  occurrenceId: string; // callId | rowId
-  index: number;        // changeIndex | linkOrdinal | attachmentIndex
+  sourceSeqEnd: number;
+  rowId: string; // display/jumps only; never an access selector
+  status: string; // projected status; preserves failed/pending/denied evidence
+  identity: {
+    owner: "workspace" | "thread-storage" | "cloud-workspace" | "attachment" |
+      "outside" | "unresolved";
+    key: string;
+    basis: "event-absolute" | "event-cwd" | "current-workspace" | "attachment" | "unresolved";
+  };
+  labels: Array<"Generated" | "Modified" | "Referenced" |
+    "Attached in your message" | "Uploaded to this project">;
+  qualifies: boolean; // server membership decision (§1); failed evidence stays occurrence-only
 };
 
-// Batched. No filesystem access. Stable result.
-identify(refs: OccurrenceRef[]): Array<
-  | { ref: OccurrenceRef; owner: "workspace" | "thread-storage" | "cloud-workspace" | "attachment" | "outside";
-      key: string; basis: "event-absolute" | "event-cwd" | "current-workspace" | "attachment";
-      evidenceKind: string; uploadValidated: boolean /* D3 */ }
-  | { ref: OccurrenceRef; owner: "unresolved" }
->
+artifacts.occurrences(request: { threadId: string } & (
+  | { turnRange: TurnRange; cursor?: never }
+  | { cursor: string; turnRange?: never }
+)): Promise<{
+  occurrences: Occurrence[];
+  receivedRange: TurnRange;
+  nextCursor: string | null; // checked only after all bounded pages for the range
+}>;
 
-// Single path, on user action only.
-resolveAccess(ref: OccurrenceRef): Promise<
+resolveAccess(request: { threadId: string; occurrenceId: string }): Promise<
   | { kind: "allowed"; contentToken: string; previewTab: ScopedPreviewTabRequest | null }
-  | { kind: "unavailable" }            // missing OR rejected: indistinguishable (D6)
-  | { kind: "preview-unavailable" }    // cloud until D4
->
+  | { kind: "unavailable" }         // missing OR rejected: indistinguishable (D6)
+  | { kind: "preview-unavailable" } // cloud until D4
+>;
 ```
+
+`resolveAccess` re-verifies the stored source evidence and current containment on **every call**, and binds the resulting content read to thread + identity (D7). A cursor is opaque and bound to thread/range; requested ranges are validated server-side. A null `turnId` covers ungrouped top-level evidence within a bounded seq range. One bounded page per call, no filesystem check during discovery. The client retains non-qualifying evidence until it can merge it into a qualifying group; failed-only groups stay hidden.
+
+Client access state starts **`not-checked`**. Open/Download are shown for eligible items in both `not-checked` and post-click `unavailable` states, so a later click can retry. Clicking calls `resolveAccess` first; its result updates the row. For Download, only an allowed result creates/uses `<a download>` with the scoped content URL. **Outside, unresolved, and cloud-gated items have no actions and never call `resolveAccess`.** A historical Deleted occurrence doesn't gate actions and proves neither present existence nor present absence. No `none` state.
 
 ### 7.2 Enforcement requirements (see `options.md` Blockers D1–D9)
 
@@ -246,11 +264,13 @@ resolveAccess(ref: OccurrenceRef): Promise<
 2. **Thread- and identity-bound content reads (D7).**
    - Content comes from an opaque server-issued `contentToken`, or from a thread-scoped route that re-verifies thread + identity on every read.
    - Never the generic `GET /projects/:id/files/content?environmentId=` route (`apps/server/src/routes/projects.ts:565-588`): it resolves any environment of the project, including other threads' worktrees.
-   - Never a client-chosen thread id.
+   - A content request cannot substitute a different thread id for the thread bound to the occurrence/token.
 3. **Contained Markdown image routing in previews (D8).**
    - Today `WorkspaceFilePreviewTabContent` / `ThreadStorageFilePreviewTabContent` pass `threadId` into `buildMarkdownFileImageRouting` (`apps/app/src/components/secondary-panel/ThreadSecondaryPanelTabContent.tsx:358-361`, L427-433, L566-572).
    - That turns `![](/abs)` into `trusted-host` and `buildThreadHostFileContentUrl` (`apps/app/src/components/ui/markdown-file-image-routing.ts:39-51`).
-   - Previews opened from Artifacts must use **contained** image routing. Phase 2 adds a test that an absolute image source inside a previewed `.md` is blocked.
+   - D8 must **separate the absolute-path policy from `threadId`** in `buildMarkdownFileImageRouting` (`markdown-file-image-routing.ts:36-51`): Artifacts previews explicitly block all absolute image sources, even inside the workspace. A contained root policy alone is insufficient if it still permits in-root absolute sources.
+   - Keep the real thread binding for relative images: `resolveRelativeSrc` uses `buildThreadWorktreeRawContentUrl` / `buildThreadStorageRawContentUrl`, subject to D7 re-verification. **Never set `threadId: null`** to obtain this policy: the preview wrappers then fall back to forbidden `buildProjectFileContentUrl`.
+   - Phase 2 tests absolute sources (inside and outside the root) blocked and relative sources still routed through thread-bound content, with no host/project fallback.
 4. **Upload validation marker (D3).**
 5. **Side-effect-free cloud read (D4).**
 6. **No existence oracle (D6).**
@@ -261,7 +281,7 @@ resolveAccess(ref: OccurrenceRef): Promise<
 - `@cloudroom/server-contract` types.
 - The `parsePromptInput` output shape (via row `attachments`).
 - `useThreadTimelineController` (extended).
-- `sdk.threads.timelineTurnSummaryDetails`.
+- The new `sdk.artifacts.occurrences` and `resolveAccess` contracts (§7.1); existing turn-details queries remain for timeline jumps, not client extraction.
 - The `useScrollToSearchedMessage` location-state contract.
 - `useThreadFileTabs().openTab`, **only** with `ScopedPreviewTabRequest`s from `resolveAccess`.
 - `SecondaryPanelFilePreview` / `FilePreview`, with the contained image routing from D8.
@@ -282,7 +302,7 @@ resolveAccess(ref: OccurrenceRef): Promise<
 ### 7.5 No existence oracle (D6)
 
 - Missing and rejected share one result and one text.
-- "Outside scope" comes only from the no-filesystem identity call, so it reveals nothing about existence.
+- "Outside scope" comes only from no-filesystem server occurrence identity derivation, so it reveals nothing about existence.
 - "Not verified" means `unresolved`.
 
 ## 8. Markdown extraction
@@ -292,13 +312,15 @@ resolveAccess(ref: OccurrenceRef): Promise<
   - **Unused definitions are never counted.**
   - GFM autolinks count. Inline `code` is excluded (§1.5).
 - **Href handling (D-a):**
-  - absolute hrefs: strip only `file://` and the line suffix (`#L…`, `:line[:col]`), then send the raw path as part of the occurrence. No `parseLocalFileHref` or `normalizeAbsoluteFilePath`;
-  - relative hrefs: sent raw. The server resolves them per §2.2;
+  - the **shared extractor on the server** strips `file://` and the line suffix (`#L…`, `:line[:col]`) from Markdown hrefs, percent-decodes the href path once, and passes it to server identity derivation (§2.2). Malformed percent escapes stay unresolved; no `parseLocalFileHref` or `normalizeAbsoluteFilePath`;
+  - relative hrefs are decoded once by that same extractor, then resolved on the server per §2.2;
+  - **event paths are literal and never percent-decoded**. Phase 2 test: Markdown `file:///ws/my%20file.md` groups with event path `/ws/my file.md`; event `/ws/my%20file.md` stays distinct;
   - schemes other than `file:` are ignored.
 - **Rows:**
-  - every assistant row, including intermediate ones that only appear once details load;
+  - every assembled assistant row from server projection, including intermediate ones hidden by collapsed client turns;
   - user rows with `initiator === "user"` and `senderThreadId === null`.
-- **Shared code:** per D-c the server re-derives the link at `linkOrdinal`, so the extractor must be shared. It would live in `packages/thread-view` (pure TS), and server and client then agree on ordinals.
+- **Shared code (D-e):** the pure extractor lives in `packages/thread-view` and runs on server-projected assembled rows only. The client consumes opaque occurrences, never generates ordinals/selectors, and never classifies. Reference-node uses each get their own server-issued id; definitions alone do not.
+- **Phase 2 extraction checks:** a Markdown href split across streamed deltas and its finalized text produce the same server occurrence; overlapping range pages deduplicate it; `resolveAccess` rejects an id from another thread and re-verifies edited evidence. These supplement the reference-node and percent-decoding cases above.
 - **Dependencies:**
   - `remark-gfm` is already a direct app dep (`apps/app/package.json:85`), but it's only a plugin. Parsing to mdast still needs `unified` + `remark-parse`.
   - Those aren't direct deps anywhere; they're in the lockfile transitively at `unified@11.0.5` and `remark-parse@11.0.0`.
