@@ -7,6 +7,7 @@ import {
   escapedOutputHtml,
   searchOutputHtml,
   mapOutputAnchor,
+  MAX_OUTPUT_HIGHLIGHTS,
 } from "./output-search";
 import {
   useTimelineWorkRowFullOutput,
@@ -67,22 +68,28 @@ export function OutputViewer({
   const [railPage, setRailPage] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const pre = useRef<HTMLPreElement>(null);
+  const pendingNavigation = useRef<number | null>(null);
   const snapshot = useRef({ top: 0, left: 0, offset: 0, line: 0, within: 0 });
   const previousText = useRef<string | null>(null);
-  const rendered = useMemo(
+  const sourceHtml = useMemo(
     () =>
-      searchOutputHtml(
-        row.workKind === "command"
-          ? terminalOutputHtml(fullOutput.output)
-          : escapedOutputHtml(fullOutput.output),
-        query,
-      ),
-    [fullOutput.output, query, row.workKind],
+      row.workKind === "command"
+        ? terminalOutputHtml(fullOutput.output)
+        : escapedOutputHtml(fullOutput.output),
+    [fullOutput.output, row.workKind],
+  );
+  const rendered = useMemo(
+    () => searchOutputHtml(sourceHtml, query, active),
+    [sourceHtml, query, active],
   );
   const coverage = outputCoverage(row, fullOutput);
   const count = rendered.matches.length;
   const selected =
     active === null || count === 0 ? null : Math.min(active, count - 1);
+  const visibleRailPage = Math.min(
+    railPage,
+    Math.max(0, Math.ceil(count / 50) - 1),
+  );
   const rememberPosition = () => {
     const element = scroller.current;
     const content = pre.current;
@@ -104,6 +111,22 @@ export function OutputViewer({
         .slice(0, line)
         .reduce((sum, value) => sum + value.length + 1, 0),
     };
+  };
+  const scrollToMatch = (index: number) => {
+    const element = scroller.current;
+    const target = element?.querySelector<HTMLElement>(
+      `[data-output-match="${index}"]`,
+    );
+    if (!element || !target) return false;
+    const box = target.getBoundingClientRect();
+    const viewport = element.getBoundingClientRect();
+    element.scrollTop += box.top - viewport.top - element.clientHeight / 3;
+    element.scrollLeft +=
+      box.left < viewport.left || box.right > viewport.right
+        ? box.left - viewport.left - 24
+        : 0;
+    rememberPosition();
+    return true;
   };
   useLayoutEffect(() => {
     const element = scroller.current;
@@ -142,6 +165,11 @@ export function OutputViewer({
           Number(mark.dataset.outputMatch) === selected,
         );
       });
+    if (
+      pendingNavigation.current !== null &&
+      scrollToMatch(pendingNavigation.current)
+    )
+      pendingNavigation.current = null;
   }, [rendered.html, selected]);
   const navigate = (index: number) => {
     if (count === 0) return;
@@ -149,20 +177,7 @@ export function OutputViewer({
     const next = (index + count) % count;
     setActive(next);
     setRailPage(Math.floor(next / 50));
-    const element = scroller.current;
-    const target = element?.querySelector<HTMLElement>(
-      `[data-output-match="${next}"]`,
-    );
-    if (element && target) {
-      const box = target.getBoundingClientRect();
-      const viewport = element.getBoundingClientRect();
-      element.scrollTop += box.top - viewport.top - element.clientHeight / 3;
-      element.scrollLeft +=
-        box.left < viewport.left || box.right > viewport.right
-          ? box.left - viewport.left - 24
-          : 0;
-      rememberPosition();
-    }
+    pendingNavigation.current = scrollToMatch(next) ? null : next;
   };
   const output = (
     <pre
@@ -283,6 +298,12 @@ export function OutputViewer({
             Enter / Shift+Enter to navigate
           </span>
         </div>
+        {count > MAX_OUTPUT_HIGHLIGHTS ? (
+          <p className="text-xs text-muted-foreground">
+            All loaded matches counted. Dense results: highlighting follows
+            match navigation.
+          </p>
+        ) : null}
       </header>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {direction === "indexed" && query ? (
@@ -294,14 +315,16 @@ export function OutputViewer({
               Matching lines
             </p>
             {rendered.matches
-              .slice(railPage * 50, railPage * 50 + 50)
+              .slice(visibleRailPage * 50, visibleRailPage * 50 + 50)
               .map((match, offset) => (
                 <button
                   type="button"
-                  key={railPage * 50 + offset}
-                  onClick={() => navigate(railPage * 50 + offset)}
+                  key={visibleRailPage * 50 + offset}
+                  onClick={() => navigate(visibleRailPage * 50 + offset)}
                   aria-current={
-                    selected === railPage * 50 + offset ? "true" : undefined
+                    selected === visibleRailPage * 50 + offset
+                      ? "true"
+                      : undefined
                   }
                   className="mb-1 block min-h-11 w-full rounded-md px-2 py-2 text-left text-xs hover:bg-muted aria-[current=true]:bg-muted"
                 >
@@ -316,20 +339,20 @@ export function OutputViewer({
             {count > 50 ? (
               <div className="space-y-2 text-xs">
                 <p>
-                  Matches {railPage * 50 + 1}–
-                  {Math.min(count, railPage * 50 + 50)} of {count}
+                  Matches {visibleRailPage * 50 + 1}–
+                  {Math.min(count, visibleRailPage * 50 + 50)} of {count}
                 </p>
                 <Button
                   variant="outline"
-                  disabled={railPage === 0}
-                  onClick={() => setRailPage((value) => value - 1)}
+                  disabled={visibleRailPage === 0}
+                  onClick={() => setRailPage(visibleRailPage - 1)}
                 >
                   Back
                 </Button>
                 <Button
                   variant="outline"
-                  disabled={(railPage + 1) * 50 >= count}
-                  onClick={() => setRailPage((value) => value + 1)}
+                  disabled={(visibleRailPage + 1) * 50 >= count}
+                  onClick={() => setRailPage(visibleRailPage + 1)}
                 >
                   More
                 </Button>

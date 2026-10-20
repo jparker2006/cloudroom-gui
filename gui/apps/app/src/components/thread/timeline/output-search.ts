@@ -5,6 +5,8 @@ export interface OutputMatch {
   excerpt: string;
 }
 
+export const MAX_OUTPUT_HIGHLIGHTS = 1_000;
+
 export function mapOutputAnchor(
   previous: string,
   next: string,
@@ -30,7 +32,11 @@ export function mapOutputAnchor(
   return null;
 }
 
-export function searchOutputHtml(html: string, query: string) {
+export function searchOutputHtml(
+  html: string,
+  query: string,
+  activeMatch: number | null = null,
+) {
   const template = document.createElement("template");
   template.innerHTML = html;
   const root = template.content;
@@ -68,10 +74,15 @@ export function searchOutputHtml(html: string, query: string) {
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
   let offset = 0;
-  let index = 0;
+  const activeOnly = matches.length > MAX_OUTPUT_HIGHLIGHTS;
+  let index = activeOnly ? Math.min(activeMatch ?? 0, matches.length - 1) : 0;
   for (const node of nodes) {
     const value = node.data;
     const end = offset + value.length;
+    if (index >= matches.length || matches[index]!.start >= end) {
+      offset = end;
+      continue;
+    }
     const fragment = document.createDocumentFragment();
     let local = 0;
     while (index < matches.length && matches[index]!.start < end) {
@@ -87,7 +98,7 @@ export function searchOutputHtml(html: string, query: string) {
       fragment.append(mark);
       local = to;
       if (match.end > end) break;
-      index++;
+      index = activeOnly ? matches.length : index + 1;
     }
     fragment.append(document.createTextNode(value.slice(local)));
     node.replaceWith(fragment);

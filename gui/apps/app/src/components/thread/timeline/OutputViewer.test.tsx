@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -153,6 +154,99 @@ describe("output HTML search", () => {
 });
 
 describe("output viewer", () => {
+  it("counts every dense match while rendering and navigating one safe highlight", () => {
+    renderViewer(previewedCommand(), fullOutput("hit ".repeat(1005)));
+    fireEvent.change(searchInput(), { target: { value: "hit" } });
+    expect(outputCount().textContent).toContain("0 of 1,005 matches");
+    expect(document.querySelectorAll("[data-output-match]")).toHaveLength(1);
+    fireEvent.keyDown(searchInput(), { key: "Enter", shiftKey: true });
+    expect(outputCount().textContent).toContain("1005 of 1,005 matches");
+    expect(
+      document
+        .querySelector('[data-output-match="1004"]')
+        ?.getAttribute("data-active"),
+    ).toBe("true");
+    expect(
+      screen.getByText(/Dense results: highlighting follows match navigation/),
+    ).toBeTruthy();
+  });
+
+  it("clamps the indexed rail when hydration reduces matches on a later page", () => {
+    const row = previewedCommand();
+    const view = render(
+      <OutputViewer
+        row={row}
+        direction="indexed"
+        fullOutput={fullOutput(
+          Array.from({ length: 120 }, (_, i) => `hit ${i}`).join("\n"),
+          "loading",
+        )}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    );
+    fireEvent.change(searchInput(), { target: { value: "hit" } });
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByText("Matches 101–120 of 120")).toBeTruthy();
+    view.rerender(
+      <OutputViewer
+        row={row}
+        direction="indexed"
+        fullOutput={fullOutput("hit first\nhit second\nhit third")}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    );
+    expect(
+      within(
+        screen.getByRole("complementary", { name: "Matching lines" }),
+      ).getAllByRole("button"),
+    ).toHaveLength(3);
+    expect(outputCount().textContent).toContain("of 3 matches");
+  });
+
+  it("handles completion while open and request resolution after close without another fetch", async () => {
+    const row = { ...previewedCommand(), status: "pending" as const };
+    let resolve!: (value: { rows: TimelinePreviewableWorkRow[] }) => void;
+    timelineTurnSummaryDetails.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const view = render(
+      <PreviewableOutputBody row={row} direction="reader" />,
+      { wrapper },
+    );
+    screen.getByRole("button", { name: "Open output" }).focus();
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
+    expect(timelineTurnSummaryDetails).not.toHaveBeenCalled();
+    const finished = { ...row, status: "completed" as const, exitCode: 0 };
+    view.rerender(<PreviewableOutputBody row={finished} direction="reader" />);
+    await waitFor(() =>
+      expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await act(async () => {
+      resolve({
+        rows: [
+          {
+            ...finished,
+            output: "COMPLETED HYDRATION",
+            outputPreview: undefined,
+          },
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toBe("Open output"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open output" }));
+    expect(await screen.findByText("COMPLETED HYDRATION")).toBeTruthy();
+    expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
+  });
+
   it("searches loaded output only, excluding command, tool args, and preview omission text", () => {
     const commandView = renderViewer();
     fireEvent.change(searchInput(), { target: { value: "COMMAND_SECRET" } });
