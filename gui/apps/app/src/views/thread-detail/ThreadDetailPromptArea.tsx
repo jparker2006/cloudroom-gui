@@ -1,4 +1,5 @@
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
+import { ThreadConnectionStatus } from "@/components/promptbox/banner/ThreadConnectionStatus";
 import { TeleportLocalNotice, TeleportNotice } from "@/components/thread/TeleportNotice";
 import { TeleportCheckCard } from "@/components/thread/TeleportCheckCard";
 import { ProjectCopyNotice } from "@/components/thread/ProjectCopyNotice";
@@ -2132,10 +2133,7 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  const cloudFetchFailed = cloudState.error instanceof TypeError;
-  const cloudOffline = cloudFetchFailed || (typeof navigator !== "undefined" && !navigator.onLine);
-  const cloudError = retryCloudStart.error?.message ?? (cloudFetchFailed ? undefined : cloudState.error?.message) ?? cloudState.data?.error;
-  const cloudReconnecting = !cloudError && (cloudOffline || cloudState.data?.reconnecting);
+  const cloudError = retryCloudStart.error?.message ?? cloudState.data?.error;
   const cloudLimitNotice = isCloud && !shouldHideComposer ? cloudState.data?.usageLimit ? <CloudUsageLimitNotice /> : cloudState.data?.diskFull ? <CloudDiskFullNotice /> : null : null;
   const cloudFixPrompt = cloudError || cloudState.data?.failedStart ? cloudThreadFixPrompt(thread.id, thread.providerId, cloudError) : null;
   const cloudStatusKey = `${thread.id}|${cloudState.data?.failedStart ? "failed" : ""}|${cloudError ?? ""}`;
@@ -2154,21 +2152,11 @@ export function ThreadDetailPromptArea({
       {retryCloudStart.error && <p role="alert" className="mt-2 text-destructive">{retryCloudStart.error.message}</p>}
     </PromptStackCard>
   ) : null;
-  const cloudReconnectingPill = cloudReconnecting ? (
-    <div className="flex items-center gap-2 justify-self-center rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
-      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
-      <span role="status" className="flex items-center gap-2">{cloudOffline && <><span className="text-foreground">Offline</span><span aria-hidden>·</span></>}<span>Reconnecting…</span></span>
-      <span aria-hidden>·</span>
-      <button type="button" className="underline underline-offset-2 hover:text-foreground disabled:opacity-50" disabled={cloudState.isFetching} onClick={() => void cloudState.refetch()}>Retry</button>
-    </div>
-  ) : null;
-  const cloudNotice = cloudAuthNotice ?? cloudLimitNotice ?? (isCloud && !shouldHideComposer && (cloudError || cloudReconnecting || cloudState.data?.failedStart) ? (<>
-    {cloudReconnectingPill}
-    {(cloudError || cloudState.data?.failedStart) && !cloudStatusDismissed && <PromptStackCard ariaLabel="Cloud thread status" className="space-y-2 p-3 text-xs" onDismiss={() => setDismissedCloudStatus(cloudStatusKey)}>
+  const cloudNotice = cloudAuthNotice ?? cloudLimitNotice ?? (isCloud && !shouldHideComposer && (cloudError || cloudState.data?.failedStart) ? (<>
+    {!cloudStatusDismissed && <PromptStackCard ariaLabel="Cloud thread status" className="space-y-2 p-3 text-xs" onDismiss={() => setDismissedCloudStatus(cloudStatusKey)}>
       {cloudError && <div role="alert" className="whitespace-pre-wrap break-words pr-6 text-destructive">{cloudError}</div>}
       <div className="flex items-center gap-2">
         {cloudState.data?.failedStart && <Button type="button" size="sm" variant="outline" disabled={retryCloudStart.isPending} onClick={() => retryCloudStart.mutate()}>Retry start</Button>}
-        {cloudState.isError && !cloudFetchFailed && <Button type="button" size="sm" variant="outline" disabled={cloudState.isFetching} onClick={() => void cloudState.refetch()}>Reconnect</Button>}
       </div>
       {cloudFixPrompt && <FixPrompt prompt={cloudFixPrompt} />}
     </PromptStackCard>}
@@ -2178,7 +2166,7 @@ export function ThreadDetailPromptArea({
     <FollowUpPromptBox
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={bottomAttachmentsConfig}
-      stack={<>{!isCloud && !teleporting && <TeleportCheckCard error={teleport.error} models={[...modelOptions, ...moreModelOptions]} reasoning={reasoningLevel} usedTokens={contextWindowUsage?.usedTokens ?? null} levelsFor={(model) => cloudReasoningLevels(cloudConnection.data, thread.providerId, model)} onTeleport={(choice) => teleport.mutate(choice)} onDismiss={teleport.reset} />}{thread.teleport && !movingToLocal && <TeleportNotice thread={thread} pendingDelivery={cloudState.data?.pendingDelivery} paused={cloudState.data?.paused} sending={sendMessage.isPending} />}{movingToLocal && <TeleportLocalNotice step={thread.teleportLocalStep} />}{thread.projectCopy && <ProjectCopyNotice thread={thread} />}{cloudNotice}{isCloud && claudeThread && !shouldHideComposer && <CloudMcpSignInNotice />}{!isCloud && !shouldHideComposer && <LocalSignInNotice threadId={thread.id} providerId={thread.providerId} hostId={environmentHostId} environmentId={thread.environmentId} authFailed={providerAuthFailed} started={thread.status !== "pending"} />}{pendingInteractionNode ? pendingInteractionStack : promptStack}</>}
+      stack={<>{!isCloud && !teleporting && <TeleportCheckCard error={teleport.error} models={[...modelOptions, ...moreModelOptions]} reasoning={reasoningLevel} usedTokens={contextWindowUsage?.usedTokens ?? null} levelsFor={(model) => cloudReasoningLevels(cloudConnection.data, thread.providerId, model)} onTeleport={(choice) => teleport.mutate(choice)} onDismiss={teleport.reset} />}{thread.teleport && !movingToLocal && <TeleportNotice thread={thread} pendingDelivery={cloudState.data?.pendingDelivery} paused={cloudState.data?.paused} sending={sendMessage.isPending} />}{movingToLocal && <TeleportLocalNotice step={thread.teleportLocalStep} />}{thread.projectCopy && <ProjectCopyNotice thread={thread} />}{!shouldHideComposer && <ThreadConnectionStatus cloud={isCloud ? { statusReadError: cloudState.error, reconnecting: Boolean(cloudState.data?.reconnecting) && !cloudError, isFetching: cloudState.isFetching, refetch: () => void cloudState.refetch() } : null} />}{cloudNotice}{isCloud && claudeThread && !shouldHideComposer && <CloudMcpSignInNotice />}{!isCloud && !shouldHideComposer && <LocalSignInNotice threadId={thread.id} providerId={thread.providerId} hostId={environmentHostId} environmentId={thread.environmentId} authFailed={providerAuthFailed} started={thread.status !== "pending"} />}{pendingInteractionNode ? pendingInteractionStack : promptStack}</>}
       pendingInteraction={pendingInteractionNode}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer || (teleporting && !movingToLocal) || transferredChild ? null : bottomComposerConfig}

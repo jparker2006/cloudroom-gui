@@ -16,6 +16,7 @@ interface ConnectionAwareQuerySnapshot {
 export interface ConnectionAwareQueryStateArgs extends ConnectionAwareQuerySnapshot {
   serverConnectionState: WebSocketConnectionState;
   connectionGracePeriodElapsed: boolean;
+  loadingErrorGracePeriodElapsed: boolean;
 }
 
 interface ConnectionAwareQueryState {
@@ -29,6 +30,7 @@ export function getConnectionAwareQueryState({
   isRecoverableLoadingError = false,
   serverConnectionState,
   connectionGracePeriodElapsed,
+  loadingErrorGracePeriodElapsed,
 }: ConnectionAwareQueryStateArgs): ConnectionAwareQueryState {
   if (!hasResolvedData && isFetching) {
     return { status: "loading" };
@@ -47,6 +49,7 @@ export function getConnectionAwareQueryState({
     !hasResolvedData &&
     isLoadingError &&
     isRecoverableLoadingError &&
+    !loadingErrorGracePeriodElapsed &&
     (serverConnectionState === "connected" || !connectionGracePeriodElapsed)
   ) {
     return { status: "loading" };
@@ -59,12 +62,11 @@ export function getConnectionAwareQueryState({
   return { status: "ready" };
 }
 
-function useServerConnectionGracePeriodElapsed(): boolean {
-  const connectionState = useServerConnectionState();
+function useElapsedWhile(active: boolean): boolean {
   const [elapsed, setElapsed] = useState(false);
 
   useEffect(() => {
-    if (connectionState === "connected") {
+    if (!active) {
       setElapsed(false);
       return;
     }
@@ -73,9 +75,13 @@ function useServerConnectionGracePeriodElapsed(): boolean {
       CONNECTION_GRACE_PERIOD_MS,
     );
     return () => clearTimeout(timer);
-  }, [connectionState]);
+  }, [active]);
 
   return elapsed;
+}
+
+export function useServerConnectionGracePeriodElapsed(): boolean {
+  return useElapsedWhile(useServerConnectionState() !== "connected");
 }
 
 export function useConnectionAwareQueryState({
@@ -86,6 +92,9 @@ export function useConnectionAwareQueryState({
 }: ConnectionAwareQuerySnapshot): ConnectionAwareQueryState {
   const serverConnectionState = useServerConnectionState();
   const connectionGracePeriodElapsed = useServerConnectionGracePeriodElapsed();
+  const loadingErrorGracePeriodElapsed = useElapsedWhile(
+    !hasResolvedData && isLoadingError && isRecoverableLoadingError === true,
+  );
 
   return useMemo(
     () =>
@@ -96,6 +105,7 @@ export function useConnectionAwareQueryState({
         isRecoverableLoadingError,
         serverConnectionState,
         connectionGracePeriodElapsed,
+        loadingErrorGracePeriodElapsed,
       }),
     [
       hasResolvedData,
@@ -104,6 +114,7 @@ export function useConnectionAwareQueryState({
       isRecoverableLoadingError,
       serverConnectionState,
       connectionGracePeriodElapsed,
+      loadingErrorGracePeriodElapsed,
     ],
   );
 }

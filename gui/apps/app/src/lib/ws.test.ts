@@ -467,6 +467,26 @@ describe("WebSocketManager liveness", () => {
     expect(fakeSocketState.instances).toHaveLength(2);
   });
 
+  it("exposes when live updates stopped, in the same notification as the state change", () => {
+    const { manager } = createLiveManager();
+    const seen: Array<[string, number | null]> = [];
+    manager.onConnectionStateChange(() => {
+      seen.push([manager.getConnectionState(), manager.getDisconnectedAt()]);
+    });
+    const lastActivityAt = Date.now();
+
+    expect(manager.getDisconnectedAt()).toBeNull();
+    vi.advanceTimersByTime(
+      REALTIME_PING_INTERVAL_MS + REALTIME_PONG_TIMEOUT_MS,
+    );
+    getSocketAt(1).open();
+
+    expect(seen).toEqual([
+      ["reconnecting", lastActivityAt],
+      ["connected", null],
+    ]);
+  });
+
   it("re-sends subscriptions on the replacement socket after a failed probe", () => {
     const { manager } = createLiveManager();
     manager.subscribe(THREAD_TARGET);

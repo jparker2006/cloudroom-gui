@@ -978,13 +978,13 @@ describe("ThreadDetailPromptArea", () => {
     const status = { sessionId: "cloud-session", paused: false, model: "gpt-6-astra", reasoning: "medium", error: null, pendingDelivery: 0, reconnecting: true };
     testQueryClient.setQueryData(queryKey, status);
     renderPromptArea({ thread: makeThread({ executionTarget: "cloud", status: "idle" }) });
-    expect(screen.getByRole("status").textContent).toBe("Reconnecting…");
+    expect(screen.getByRole("status").textContent).toBe("Cloud session reconnecting…");
     expect(screen.queryByRole("alert")).toBeNull();
     await act(async () => { testQueryClient.setQueryData(queryKey, { ...status, reconnecting: false }); });
-    await waitFor(() => expect(screen.queryByText("Reconnecting…")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Cloud session reconnecting…")).toBeNull());
     await act(async () => { testQueryClient.setQueryData(queryKey, { ...status, error: "Cloudroom authentication failed" }); });
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Cloudroom authentication failed"));
-    expect(screen.queryByText("Reconnecting…")).toBeNull();
+    expect(screen.queryByText("Cloud session reconnecting…")).toBeNull();
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
   });
 

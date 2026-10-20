@@ -87,6 +87,7 @@ import {
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
+import { wsManager } from "@/lib/ws";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
@@ -2454,6 +2455,33 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
 
   if (threadQueryState.status === "loading") {
     return <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />;
+  }
+  if (!thread && isTransientReadError(error)) {
+    return (
+      <PageShell contentClassName="min-h-full items-center justify-center">
+        <div className="max-w-xs space-y-2 py-12 text-center text-sm">
+          <Icon
+            name="CloudOff"
+            className="mx-auto size-5 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <p className="text-foreground">
+            This conversation isn't saved on this device yet
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Cloudroom couldn't load it. The cause is unknown.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => wsManager.reconnectNow()}
+          >
+            Refresh connection
+          </Button>
+        </div>
+      </PageShell>
+    );
   }
   if (!thread || thread.projectId !== projectId) {
     return (

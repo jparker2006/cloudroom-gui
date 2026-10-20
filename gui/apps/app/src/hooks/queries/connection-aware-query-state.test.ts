@@ -10,6 +10,7 @@ const baseArgs: ConnectionAwareQueryStateArgs = {
   isLoadingError: false,
   serverConnectionState: "connecting",
   connectionGracePeriodElapsed: false,
+  loadingErrorGracePeriodElapsed: false,
 };
 
 describe("getConnectionAwareQueryState", () => {
@@ -84,5 +85,30 @@ describe("getConnectionAwareQueryState", () => {
         testCase.status,
       );
     }
+  });
+
+  it("stops holding a failed first read as loading once its own grace period passes, even while connected", () => {
+    const failedWhileConnected: ConnectionAwareQueryStateArgs = {
+      ...baseArgs,
+      isLoadingError: true,
+      isRecoverableLoadingError: true,
+      serverConnectionState: "connected",
+    };
+    expect(getConnectionAwareQueryState(failedWhileConnected).status).toBe(
+      "loading",
+    );
+    expect(
+      getConnectionAwareQueryState({
+        ...failedWhileConnected,
+        loadingErrorGracePeriodElapsed: true,
+      }).status,
+    ).toBe("unavailable");
+    expect(
+      getConnectionAwareQueryState({
+        ...failedWhileConnected,
+        isFetching: true,
+        loadingErrorGracePeriodElapsed: true,
+      }).status,
+    ).toBe("loading");
   });
 });

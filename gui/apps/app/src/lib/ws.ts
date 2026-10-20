@@ -429,6 +429,10 @@ export class WebSocketManager {
     return this.connectionState;
   }
 
+  getDisconnectedAt(): number | null {
+    return this.disconnectedAt;
+  }
+
   private sendMessage(msg: ClientMessage): void {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(msg));
