@@ -1089,3 +1089,53 @@ describe("restoring a close-time recovery copy", () => {
     expect(reloaded.listNewThreadDraftsNotShown([alphaId()])).toEqual([]);
   });
 });
+
+describe("review fixes: terminal writes", () => {
+  it("doesn't list the sent text as a conflict copy after a send", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    act(() => {
+      result.current.clearIfCurrentMatches(result.current.getCurrent());
+    });
+
+    expect(listNewThreadDraftsNotShown([alphaId()])).toEqual([]);
+  });
+
+  it("reports a send clear as failed when the sent marker can't be saved", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "send me", mentions: [], attachments: [] }));
+    const sent = result.current.getCurrent();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let cleared = true;
+    try {
+      act(() => {
+        cleared = result.current.clearIfCurrentMatches(sent);
+      });
+    } finally {
+      setItem.mockRestore();
+      warn.mockRestore();
+    }
+
+    expect(cleared).toBe(false);
+    expect(result.current.text).toBe("send me");
+  });
+
+  it("doesn't list moved or discarded text as a conflict copy", () => {
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}src` });
+    source.setDraft({ text: "move me", mentions: [], attachments: [] });
+    const discarded = getPromptDraftAccessor({ kind: "new-thread", projectId: `${alphaId()}gone` });
+    discarded.setDraft({ text: "discard me", mentions: [], attachments: [] });
+
+    moveNewThreadDraft(source.storageKey, alphaId());
+    discardNewThreadDraft(discarded.storageKey);
+
+    expect(listNewThreadDraftsNotShown([alphaId(), `${alphaId()}src`, `${alphaId()}gone`])).toEqual([]);
+  });
+});

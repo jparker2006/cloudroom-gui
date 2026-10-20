@@ -339,17 +339,29 @@ function reconcileWithStoredNewThreadDraft(
   return true;
 }
 
-function writeNewThreadSentMarker(storageKey: string): void {
-  const marker = withDraftRev(storageKey, JSON.stringify({ sent: true }));
-  promptDraftCache.set(storageKey, { rawValue: marker, draft: EMPTY_PROMPT_DRAFT });
-  try {
-    window.localStorage.setItem(storageKey, marker);
-    unsavedPromptDraftKeys.delete(storageKey);
-  } catch (error) {
-    unsavedPromptDraftKeys.add(storageKey);
-    console.warn(`[prompt-draft] could not mark ${storageKey} as sent`, error);
+function writeTerminalRecord(storageKey: string, value: string): boolean {
+  if (isNewThreadProjectDraftKey(storageKey)) {
+    const replacedRev = readStoredRev(readStoredPromptDraftValue(storageKey));
+    if (replacedRev) removeRecoveryCopiesWithRev(storageKey, replacedRev);
+    window.localStorage.removeItem(newThreadRecoveryKey(storageKey));
   }
+  try {
+    window.localStorage.setItem(storageKey, value);
+    return true;
+  } catch (error) {
+    console.warn(`[prompt-draft] could not update ${storageKey}`, error);
+    return false;
+  }
+}
+
+function writeNewThreadSentMarker(storageKey: string): boolean {
+  const marker = JSON.stringify({ rev: createDraftRev(), sent: true });
+  if (!writeTerminalRecord(storageKey, marker)) return false;
+  newThreadDraftRevs.set(storageKey, String(readStoredRev(marker)));
+  promptDraftCache.set(storageKey, { rawValue: marker, draft: EMPTY_PROMPT_DRAFT });
+  unsavedPromptDraftKeys.delete(storageKey);
   emitPromptDraftChange(storageKey);
+  return true;
 }
 
 function keepNewThreadDraftOnIncomingChange(storageKey: string): boolean {
@@ -640,10 +652,7 @@ export function moveNewThreadDraft(
     leftovers.length > 0
       ? JSON.stringify({ text: "", attachments: leftovers, rev })
       : JSON.stringify({ rev, moved: true });
-  try {
-    window.localStorage.setItem(sourceKey, sourceValue);
-  } catch (error) {
-    console.warn(`[prompt-draft] moved ${sourceKey} but could not update it`, error);
+  if (!writeTerminalRecord(sourceKey, sourceValue)) {
     return { status: "source-not-updated" };
   }
   promptDraftCache.delete(sourceKey);
@@ -683,13 +692,7 @@ export function discardNewThreadDraft(
   ) {
     return "failed";
   }
-  try {
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify({ rev: createDraftRev(), discarded: true }),
-    );
-  } catch (error) {
-    console.warn(`[prompt-draft] could not discard ${storageKey}`, error);
+  if (!writeTerminalRecord(storageKey, JSON.stringify({ rev: createDraftRev(), discarded: true }))) {
     return "failed";
   }
   promptDraftCache.delete(storageKey);
@@ -904,8 +907,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         }
         clearPromptDraftPersistTimer(storageKey);
         pendingPromptDraftStorageKeys.delete(storageKey);
-        writeNewThreadSentMarker(storageKey);
-        return true;
+        return writeNewThreadSentMarker(storageKey);
       }
       setDraftAndPersist(EMPTY_PROMPT_DRAFT);
       return true;
