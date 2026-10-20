@@ -809,7 +809,7 @@ describe("new-thread recovery copies", () => {
 describe("moving the pre-upgrade draft into a project", () => {
   const LEGACY_KEY = "bb.promptbox.contents-draft-3";
 
-  it("appends the text to the project's draft and leaves untagged attachments behind", () => {
+  it("appends the text to the project's draft and leaves untagged attachments behind", async () => {
     window.localStorage.setItem(
       LEGACY_KEY,
       JSON.stringify({
@@ -820,7 +820,7 @@ describe("moving the pre-upgrade draft into a project", () => {
     const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
     target.setDraft({ text: "alpha text", mentions: [], attachments: [] });
 
-    const result = moveNewThreadDraft(LEGACY_KEY, alphaId());
+    const result = await moveNewThreadDraft(LEGACY_KEY, alphaId());
 
     expect(result).toEqual({ status: "moved", leftoverAttachments: ["old.png"] });
     expect(target.getCurrent().text).toBe("alpha text\n\nlegacy text");
@@ -831,12 +831,12 @@ describe("moving the pre-upgrade draft into a project", () => {
     });
   });
 
-  it("marks a fully moved draft as moved so a second move adds nothing", () => {
+  it("marks a fully moved draft as moved so a second move adds nothing", async () => {
     window.localStorage.setItem(LEGACY_KEY, storedDraft("legacy text"));
     const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
 
-    moveNewThreadDraft(LEGACY_KEY, alphaId());
-    const second = moveNewThreadDraft(LEGACY_KEY, alphaId());
+    await moveNewThreadDraft(LEGACY_KEY, alphaId());
+    const second = await moveNewThreadDraft(LEGACY_KEY, alphaId());
 
     expect(second.status).toBe("nothing-to-move");
     expect(target.getCurrent().text).toBe("legacy text");
@@ -845,7 +845,7 @@ describe("moving the pre-upgrade draft into a project", () => {
     });
   });
 
-  it("changes nothing when the project's draft can't be saved", () => {
+  it("changes nothing when the project's draft can't be saved", async () => {
     window.localStorage.setItem(LEGACY_KEY, storedDraft("legacy text"));
     const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
     target.setDraft({ text: "alpha text", mentions: [], attachments: [] });
@@ -855,7 +855,7 @@ describe("moving the pre-upgrade draft into a project", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     let result;
     try {
-      result = moveNewThreadDraft(LEGACY_KEY, alphaId());
+      result = await moveNewThreadDraft(LEGACY_KEY, alphaId());
     } finally {
       setItem.mockRestore();
       warn.mockRestore();
@@ -1037,6 +1037,24 @@ describe("new-thread saves with Web Locks", () => {
     });
     Reflect.deleteProperty(navigator, "locks");
     window.localStorage.clear();
+  });
+
+  it("moves only after a pending save of the target draft has finished", async () => {
+    window.localStorage.setItem("bb.promptbox.contents-draft-3", storedDraft("legacy"));
+    const target = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    target.setDraft({ text: "typed", mentions: [], attachments: [] });
+
+    const moved = moveNewThreadDraft("bb.promptbox.contents-draft-3", alphaId());
+
+    expect(window.localStorage.getItem("bb.promptbox.contents-draft-3")).toBe(storedDraft("legacy"));
+    await act(async () => {
+      while (releases.length > 0) {
+        releases.shift()?.();
+        await Promise.resolve();
+      }
+    });
+    expect(await moved).toEqual({ status: "moved", leftoverAttachments: [] });
+    expect(storedRecord(alphaKey()).text).toBe("typed\n\nlegacy");
   });
 
   it("saves only once it holds the draft's lock, and keeps the draft readable meanwhile", async () => {

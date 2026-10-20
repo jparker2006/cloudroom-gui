@@ -637,12 +637,35 @@ export type MoveNewThreadDraftResult =
   | { status: "moved"; leftoverAttachments: string[] }
   | { status: "nothing-to-move" | "unreadable" | "failed" | "source-not-updated" };
 
-export function moveNewThreadDraft(
+export async function moveNewThreadDraft(
+  sourceKey: string,
+  targetProjectId: string,
+): Promise<MoveNewThreadDraftResult> {
+  const locks = webLocks();
+  if (!locks) return moveNewThreadDraftNow(sourceKey, targetProjectId);
+  const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
+  try {
+    return await locks.request(
+      "bb.promptbox.move",
+      { signal: AbortSignal.timeout(PROMPT_DRAFT_LOCK_TIMEOUT_MS) },
+      () =>
+        locks.request(`bb.promptbox.write.${targetKey}`, () =>
+          locks.request(`bb.promptbox.write.${sourceKey}`, () =>
+            moveNewThreadDraftNow(sourceKey, targetProjectId),
+          ),
+        ),
+    );
+  } catch {
+    return moveNewThreadDraftNow(sourceKey, targetProjectId);
+  }
+}
+
+function moveNewThreadDraftNow(
   sourceKey: string,
   targetProjectId: string,
 ): MoveNewThreadDraftResult {
   const targetKey = getPromptDraftStorageKey({ kind: "new-thread", projectId: targetProjectId });
-  if (pendingPromptDraftStorageKeys.has(targetKey)) persistPromptDraftCache(targetKey);
+  if (pendingPromptDraftStorageKeys.has(targetKey)) persistPromptDraftCacheNow(targetKey);
 
   const sourceRaw = readStoredPromptDraftValue(sourceKey);
   const source = readNewThreadRecord(sourceRaw);
@@ -657,10 +680,13 @@ export function moveNewThreadDraft(
   const leftovers = source.draft.attachments.filter((attachment) => !carried.includes(attachment));
   const previousTarget = readPromptDraft(targetKey);
   const targetWasUnsaved = unsavedPromptDraftKeys.has(targetKey);
-  writePromptDraft(
-    targetKey,
-    appendPromptDraft(previousTarget, { ...source.draft, attachments: carried }),
-  );
+  promptDraftCache.set(targetKey, {
+    rawValue: null,
+    draft: appendPromptDraft(previousTarget, { ...source.draft, attachments: carried }),
+  });
+  unsavedPromptDraftKeys.delete(targetKey);
+  persistPromptDraftCacheNow(targetKey);
+  emitPromptDraftChange(targetKey);
   if (unsavedPromptDraftKeys.has(targetKey)) {
     promptDraftCache.set(targetKey, {
       rawValue: readStoredPromptDraftValue(targetKey),
