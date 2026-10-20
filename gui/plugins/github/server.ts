@@ -369,12 +369,21 @@ export function resolvePullAssociation(
   };
 }
 
+function checkHost(url: unknown): string | null {
+  try {
+    return new URL(String(url)).host || null;
+  } catch {
+    return null;
+  }
+}
+
 export function latestCheckRuns<
   T extends {
     __typename?: unknown;
     name?: unknown;
     context?: unknown;
     workflowName?: unknown;
+    detailsUrl?: unknown;
     startedAt?: unknown;
   },
 >(entries: T[]): T[] {
@@ -384,10 +393,14 @@ export function latestCheckRuns<
       entry.__typename ??
       (entry.context === undefined ? "CheckRun" : "StatusContext");
     const workflow = String(entry.workflowName ?? "");
-    const name = JSON.stringify(
+    const source =
       kind === "CheckRun" && workflow === ""
+        ? checkHost(entry.detailsUrl)
+        : workflow;
+    const name = JSON.stringify(
+      source === null
         ? [kind, index]
-        : [kind, workflow, entry.name ?? entry.context ?? "check"],
+        : [kind, source, entry.name ?? entry.context ?? "check"],
     );
     const current = latest.get(name);
     const started = Date.parse(String(entry.startedAt ?? ""));

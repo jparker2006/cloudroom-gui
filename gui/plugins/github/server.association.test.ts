@@ -1078,6 +1078,42 @@ esac
     expect(pull.checks?.map((check) => check.status)).toContain("failure");
   });
 
+  it("collapses a same-app rerun of a check without a workflow", async () => {
+    writeGh({
+      42: pullView(42, {
+        statusCheckRollup: [
+          {
+            __typename: "CheckRun",
+            name: "deploy",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            startedAt: "2026-10-01T12:00:00Z",
+            detailsUrl: "https://ci-one.example/deploy/1",
+          },
+          {
+            __typename: "CheckRun",
+            name: "deploy",
+            workflowName: "",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            startedAt: "2026-10-01T12:05:00Z",
+            detailsUrl: "https://ci-one.example/deploy/2",
+          },
+        ],
+      }),
+    });
+    const { harness } = await loadPlugin(newWorld());
+
+    const { pull } = (await harness.callRpc("getPull", {
+      repo: "acme/widgets",
+      number: 42,
+    })) as FetchedPull;
+    expect(pull.checks).toEqual([
+      expect.objectContaining({ name: "deploy", status: "success" }),
+    ]);
+  });
+
   it("refuses detail that GitHub reports for a different number", async () => {
     writeGh({ 42: pullView(43) });
     const { harness } = await loadPlugin(newWorld());
