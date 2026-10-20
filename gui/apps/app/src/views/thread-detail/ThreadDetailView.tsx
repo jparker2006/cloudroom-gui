@@ -280,6 +280,7 @@ import {
 } from "./threadWorkspaceOpenPath";
 import {
   resolveThreadLocalFileLink,
+  resolveTimelineImagePreviewLink,
   type ThreadLocalFileLinkResolution,
 } from "@/lib/thread-local-file-links";
 import {
@@ -2225,6 +2226,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     ({ href }) => handleOpenUrlByPreference(href),
     [handleOpenUrlByPreference],
   );
+  const isTimelineThreadLoaded = thread?.id === threadId;
+  const imagePreviewWorkspaceRootPath =
+    isTimelineThreadLoaded && environment?.id === thread.environmentId
+      ? workspacePreviewRootPath
+      : null;
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
       switch (action.kind) {
@@ -2240,11 +2246,32 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               params: { threadId: action.threadId, sourceThreadId: threadId },
             });
           };
+        case "open-image-preview": {
+          if (!isTimelineThreadLoaded) {
+            return null;
+          }
+          const link = resolveTimelineImagePreviewLink({
+            path: action.path,
+            workspaceRootPath: imagePreviewWorkspaceRootPath,
+          });
+          return link === null
+            ? null
+            : () => {
+                handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
+              };
+        }
         default:
           return assertNever(action);
       }
     },
-    [openSecondaryPanelDiffFile, handleOpenTimelinePluginPanel, threadId],
+    [
+      handleOpenTimelineLocalFileLink,
+      handleOpenTimelinePluginPanel,
+      imagePreviewWorkspaceRootPath,
+      isTimelineThreadLoaded,
+      openSecondaryPanelDiffFile,
+      threadId,
+    ],
   );
   const metadataStorage = useMemo(
     () =>

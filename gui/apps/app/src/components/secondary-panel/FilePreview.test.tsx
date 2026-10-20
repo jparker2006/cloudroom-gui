@@ -16,6 +16,7 @@ import {
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { BbHttpError } from "@cloudroom/sdk/browser";
 import {
   PierreWorkerPoolGateContext,
   type PierreWorkerPoolGate,
@@ -943,5 +944,64 @@ describe("FilePreview", () => {
       />,
     );
     expect(screen.getByTitle(path)).not.toBe(firstIframe);
+  });
+
+  it("shows the missing-file state when the host reports ENOENT", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="assets/missing.png"
+        error={
+          new BbHttpError({
+            body: null,
+            code: "ENOENT",
+            message: "Path does not exist: /repo/assets/missing.png",
+            status: 502,
+          })
+        }
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("File not found.");
+  });
+
+  it("keeps other preview failures as errors", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="assets/chart.png"
+        error={
+          new BbHttpError({
+            body: null,
+            code: "host_offline",
+            message: "Host is offline",
+            status: 502,
+          })
+        }
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText("HTTP 502: Host is offline")).not.toBeNull();
+    expect(screen.queryByText("File not found.")).toBeNull();
+  });
+
+  it("never shows a preview loaded for a different path", () => {
+    const { container } = render(
+      <SecondaryPanelFilePreview
+        activePath="assets/chart.png"
+        filePreview={{
+          kind: "image",
+          mimeType: "image/png",
+          path: "assets/other.png",
+          url: "/api/v1/preview/other.png",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("[aria-busy]")).not.toBeNull();
   });
 });

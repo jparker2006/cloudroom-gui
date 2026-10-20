@@ -110,6 +110,10 @@ export type TimelineTitleAction =
   | {
       kind: "open-plugin-side-chat";
       threadId: string;
+    }
+  | {
+      kind: "open-image-preview";
+      path: string;
     };
 
 export interface TimelineTitle {
@@ -192,6 +196,18 @@ function segment(
     ...(opts.link !== undefined ? { link: opts.link } : {}),
     ...(opts.accent !== undefined ? { accent: opts.accent } : {}),
   };
+}
+
+function imagePreviewAction(path: string | null): TimelineTitleAction | null {
+  return path !== null && /\.png$/iu.test(path)
+    ? { kind: "open-image-preview", path }
+    : null;
+}
+
+function intentImagePreviewAction(
+  intent: TimelineActivityIntent,
+): TimelineTitleAction | null {
+  return intent.type === "read" ? imagePreviewAction(intent.path) : null;
 }
 
 function filterNull<T>(values: (T | null)[]): T[] {
@@ -610,6 +626,7 @@ function mapSingleExplorationIntentTitle(
     });
   }
 
+  const action = intentImagePreviewAction(intent);
   const segments: TimelineTitleSegment[] = [];
   if (detail.prefix) {
     segments.push(segment(detail.prefix, { shimmer: pending }));
@@ -619,6 +636,7 @@ function mapSingleExplorationIntentTitle(
       em: false,
       truncate: true,
       plainText: plainDetail.content,
+      ...(action ? { accent: "file" as const } : {}),
     }),
   );
 
@@ -631,7 +649,7 @@ function mapSingleExplorationIntentTitle(
         : []),
   ];
 
-  return makeTitle({ segments, decorations });
+  return makeTitle({ segments, decorations, action });
 }
 
 function mapFileChangeTitle(row: TimelineFileChangeWorkRow): TimelineTitle {
@@ -1276,14 +1294,17 @@ function mapQuestionTitle(row: TimelineQuestionViewWorkRow): TimelineTitle {
 
 function mapFileReadTitle(row: TimelineFileReadWorkRow): TimelineTitle {
   if (row.presentation) {
-    return presentedTitle({
-      presentation: row.presentation,
-      status: row.status,
-      startedAt: row.startedAt,
-      completedAt: row.completedAt,
-      content: formatTimelinePath({ path: row.path, mode: "compact" }),
-      plainContent: row.path,
-    });
+    return {
+      ...presentedTitle({
+        presentation: row.presentation,
+        status: row.status,
+        startedAt: row.startedAt,
+        completedAt: row.completedAt,
+        content: formatTimelinePath({ path: row.path, mode: "compact" }),
+        plainContent: row.path,
+      }),
+      action: imagePreviewAction(row.path),
+    };
   }
   return (
     mapSingleExplorationIntentTitle(row) ??
@@ -1654,6 +1675,7 @@ function mapTimelineActivityIntentTitle({
     pathMode: "full",
     pending,
   });
+  const action = intentImagePreviewAction(intent);
   const segments: TimelineTitleSegment[] = [];
   if (detail.prefix) {
     segments.push(segment(detail.prefix, { shimmer: pending }));
@@ -1663,13 +1685,14 @@ function mapTimelineActivityIntentTitle({
       em: false,
       truncate: true,
       plainText: plainDetail.content,
+      ...(action ? { accent: "file" as const } : {}),
     }),
   );
   const decorations = [
     ...badges,
     ...(failureStatus ? [statusDecoration(failureStatus, null)] : []),
   ];
-  return makeTitle({ segments, decorations });
+  return makeTitle({ segments, decorations, action });
 }
 
 export function buildTimelineActivityIntentTitles(

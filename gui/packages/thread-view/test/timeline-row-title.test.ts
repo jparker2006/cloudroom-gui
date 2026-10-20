@@ -1084,6 +1084,71 @@ describe("buildTimelineRowTitle", () => {
     });
   });
 
+  it("declares an open-image-preview action on PNG file-read titles", () => {
+    const title = buildTimelineRowTitle(
+      fileReadRow("/repo/assets/Chart.PNG"),
+      DEFAULT_OPTIONS,
+    );
+
+    expect(title.action).toEqual({
+      kind: "open-image-preview",
+      path: "/repo/assets/Chart.PNG",
+    });
+    expect(title.segments[1]).toMatchObject({
+      text: "Chart.PNG",
+      accent: "file",
+    });
+  });
+
+  it("keeps the exact relative path on presented PNG file-read titles", () => {
+    const title = buildTimelineRowTitle(
+      {
+        ...fileReadRow("assets/chart.png"),
+        presentation: {
+          label: { pending: "Reading file", completed: "Read file" },
+          icon: { glyph: "File" },
+        },
+      },
+      DEFAULT_OPTIONS,
+    );
+
+    expect(title.action).toEqual({
+      kind: "open-image-preview",
+      path: "assets/chart.png",
+    });
+  });
+
+  it("does not declare an image action on non-PNG file reads", () => {
+    for (const path of ["/repo/notes.txt", "/repo/photo.jpg", "/repo/png"]) {
+      const title = buildTimelineRowTitle(fileReadRow(path), DEFAULT_OPTIONS);
+      expect(title.action).toBeNull();
+      expect(title.segments.some((s) => s.accent === "file")).toBe(false);
+    }
+  });
+
+  it("declares image actions only on PNG exploration read intents", () => {
+    const row = {
+      ...commandRow(),
+      activityIntents: [
+        readIntent("out/render.png"),
+        readIntent("src/app.ts"),
+        searchIntent("TODO", "src"),
+      ],
+    } satisfies TimelineCommandWorkRow;
+
+    const titles = buildTimelineActivityIntentTitles(row);
+
+    expect(titles.map((entry) => entry.title.action)).toEqual([
+      { kind: "open-image-preview", path: "out/render.png" },
+      null,
+      null,
+    ]);
+    expect(titles[0]?.title.segments[1]).toMatchObject({
+      text: "render.png",
+      accent: "file",
+    });
+  });
+
   it("does not declare an action on non-file-change titles", () => {
     const commandRow = {
       ...baseRow("cmd-1"),

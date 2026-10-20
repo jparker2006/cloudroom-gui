@@ -7,6 +7,7 @@ import {
 import { hashSourceContents } from "@/components/code/source-code-budget";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@cloudroom/sdk/browser";
 import type {
   FilePreview,
   FilePreviewLineRange,
@@ -99,7 +100,9 @@ function resolveSecondaryPanelFilePreviewState({
   lineRange,
 }: ResolveSecondaryPanelFilePreviewStateArgs): FilePreviewState {
   if (error) {
-    const isNotFound = error instanceof HttpError && error.status === 404;
+    const isNotFound =
+      (error instanceof HttpError || error instanceof BbHttpError) &&
+      (error.status === 404 || error.code === "ENOENT");
     return isNotFound ? { kind: "not-found" } : { kind: "error", message: error.message };
   }
 

@@ -1,6 +1,7 @@
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
 import type { FilePreviewLineRange } from "@cloudroom/client-core";
 import {
+  buildAbsoluteFilePath,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "./absolute-file-path";
@@ -15,6 +16,11 @@ interface ResolveThreadLocalFileLinkArgs {
   hostFileLinksAvailable: boolean;
   link: ThreadTimelineLocalFileLink;
   threadStorageRootPath: string | null;
+  workspaceRootPath: string | null;
+}
+
+interface ResolveTimelineImagePreviewLinkArgs {
+  path: string;
   workspaceRootPath: string | null;
 }
 
@@ -185,4 +191,33 @@ export function resolveThreadLocalFileLink(
       path: normalizedPath,
     },
   };
+}
+
+export function resolveTimelineImagePreviewLink({
+  path,
+  workspaceRootPath,
+}: ResolveTimelineImagePreviewLinkArgs): ThreadTimelineLocalFileLink | null {
+  if (
+    !/\.png$/iu.test(path) ||
+    /[\u0000-\u001f\u007f\\]/u.test(path) ||
+    /^(?:~|[a-z][a-z0-9+.-]*:)/iu.test(path)
+  ) {
+    return null;
+  }
+  if (path.startsWith("/")) {
+    const absolutePath = normalizeAbsoluteFilePath({ path });
+    return absolutePath === null || isRoutePath({ path: absolutePath })
+      ? null
+      : { lineRange: null, path: absolutePath };
+  }
+  if (workspaceRootPath === null) {
+    return null;
+  }
+  const resolvedPath = normalizeLocalFilePathWithinRoot({
+    linkPath: buildAbsoluteFilePath({ path, rootPath: workspaceRootPath }),
+    rootPath: workspaceRootPath,
+  });
+  return resolvedPath === null
+    ? null
+    : { lineRange: null, path: resolvedPath.path };
 }

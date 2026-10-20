@@ -149,7 +149,7 @@ function renderSegment(
     );
   }
 
-  if (segment.em && interactive.onClick) {
+  if ((segment.em || segment.accent === "file") && interactive.onClick) {
     const onClick = interactive.onClick;
     return (
       <span
