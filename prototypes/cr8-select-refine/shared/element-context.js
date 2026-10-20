@@ -66,13 +66,25 @@
     return FIELD_TAGS.has(el.localName) || el.isContentEditable;
   }
 
+  const EXCLUDED_TEXT = "input,textarea,select,script,style,template,noscript,[hidden],[aria-hidden=true],[data-private],[data-cloudroom-redact],[contenteditable]:not([contenteditable=false])";
+
+  function rendered(node) {
+    if (node.checkVisibility) return node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    const style = node.ownerDocument.defaultView.getComputedStyle(node);
+    return node.getClientRects().length > 0 && style.visibility !== "hidden" && style.opacity !== "0";
+  }
+
   function visibleText(el) {
     if (isField(el)) return "";
-    const clone = el.cloneNode(true);
-    for (const field of clone.querySelectorAll("input,textarea,select,script,style,template,noscript,[hidden],[aria-hidden=true],[data-private],[data-cloudroom-redact],[contenteditable]")) {
-      field.remove();
+    const doc = el.ownerDocument;
+    const walker = doc.createTreeWalker(el, doc.defaultView.NodeFilter.SHOW_TEXT);
+    let out = "";
+    for (let node = walker.nextNode(); node && out.length < 2000; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(EXCLUDED_TEXT) || !rendered(parent)) continue;
+      out += ` ${node.nodeValue}`;
     }
-    return clone.textContent || "";
+    return out;
   }
 
   function textOfIds(doc, ids) {

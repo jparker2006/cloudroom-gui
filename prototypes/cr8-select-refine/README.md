@@ -22,7 +22,7 @@ Open `http://localhost:4302/` (desktop layout) or the same URL in a phone-sized 
 
 ```sh
 node server.mjs
-CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/run.mjs            # 99 checks: chromium-phone, webkit-phone, chromium-desktop
+CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/run.mjs            # 102 checks: chromium-phone, webkit-phone, chromium-desktop
 CR8_PLAYWRIGHT=/path/to/playwright/index.mjs node tests/render-designs.mjs # writes designs/*.png
 electron --no-sandbox desktop/electron-select.cjs                          # native desktop path, needs a display (Xvfb)
 ```
