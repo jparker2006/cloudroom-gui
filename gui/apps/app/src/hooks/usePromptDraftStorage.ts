@@ -724,6 +724,14 @@ export function keepNewThreadDraftCopy(
   return withDraftWriteLock(storageKey, () => {
     const side = readNewThreadRecord(readStoredPromptDraftValue(sideKey));
     if (side.kind !== "draft" || isPromptDraftEmpty(side.draft)) return "nothing-to-keep";
+    const held = promptDraftCache.get(storageKey)?.draft;
+    if (
+      (pendingPromptDraftStorageKeys.has(storageKey) || unsavedPromptDraftKeys.has(storageKey)) &&
+      held &&
+      !isPromptDraftEmpty(held)
+    ) {
+      return "changed";
+    }
     const storedValue = readStoredPromptDraftValue(storageKey);
     const stored = readNewThreadRecord(storedValue);
     if (stored.kind === "draft" && !isPromptDraftEmpty(stored.draft)) return "changed";

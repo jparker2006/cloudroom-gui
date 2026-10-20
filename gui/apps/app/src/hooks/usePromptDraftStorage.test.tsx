@@ -2096,3 +2096,25 @@ describe("attachments left behind by a move", () => {
     ]);
   });
 });
+
+describe("keeping a copy over unsaved typing", () => {
+  it("refuses instead of replacing typing that hasn't been saved yet", async () => {
+    vi.useFakeTimers();
+    const sourceId = `${alphaId()}src`;
+    const source = getPromptDraftAccessor({ kind: "new-thread", projectId: sourceId });
+    source.setDraft({ text: "moved text", mentions: [], attachments: [] });
+    const savedRev = String(storedRecord(source.storageKey).rev);
+    const recoveryKey = `bb.promptbox.recovery-new-thread-${sourceId}-d1d1d1d1d1d1d1d1-3`;
+    window.localStorage.setItem(
+      recoveryKey,
+      JSON.stringify({ text: "moved text, typed", attachments: [], rev: "e2e2e2e2e2e2e2e2", base: savedRev }),
+    );
+    await moveNewThreadDraft(source.storageKey, alphaId());
+    const { result } = renderHook(() => usePromptDraftStorage({ kind: "new-thread", projectId: sourceId }));
+    act(() => result.current.setTextAndMentions("new live typing", []));
+
+    expect(await keepNewThreadDraftCopy(recoveryKey)).toBe("changed");
+    act(() => vi.advanceTimersByTime(250));
+    expect(result.current.text).toBe("new live typing");
+  });
+});
