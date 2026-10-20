@@ -509,6 +509,15 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       }
 
       if (isNewThreadProjectDraftKey(storageKey)) {
+        const storedValue = readStoredPromptDraftValue(storageKey);
+        const storedRev = readStoredRev(storedValue);
+        if (
+          storedValue !== null &&
+          storedRev !== newThreadDraftRevs.get(storageKey) &&
+          !arePromptDraftStatesEqual(parsePromptDraftStorage(storedValue), expectedDraft)
+        ) {
+          return false;
+        }
         clearPromptDraftPersistTimer(storageKey);
         pendingPromptDraftStorageKeys.delete(storageKey);
         writeNewThreadSentMarker(storageKey);

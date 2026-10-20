@@ -611,4 +611,33 @@ describe("clearing a new-thread draft after a send", () => {
     expect(result.current.text).toBe("send me, then more");
     expect(storedRecord(ALPHA_KEY).text).toBe("send me, then more");
   });
+
+  it("keeps another window's draft when the sent text was still waiting to be saved", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: "proj_alpha" }),
+    );
+    act(() => result.current.setDraft({ text: "older", mentions: [], attachments: [] }));
+    act(() => result.current.setTextAndMentions("send me", []));
+    const sent = result.current.getCurrent();
+    const otherWindowRecord = JSON.stringify({
+      text: "written in another window",
+      attachments: [],
+      rev: "ffffffffffffffff",
+    });
+    window.localStorage.setItem(ALPHA_KEY, otherWindowRecord);
+
+    act(() => {
+      result.current.clearIfCurrentMatches(sent);
+    });
+    act(() => vi.advanceTimersByTime(250));
+
+    expect(
+      [window.localStorage.getItem(ALPHA_KEY), ...Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("bb.promptbox.conflict-"))
+        .map((key) => window.localStorage.getItem(key))],
+    ).toContain(otherWindowRecord);
+    expect(storedRecord(ALPHA_KEY).sent).toBeUndefined();
+  });
 });
+
