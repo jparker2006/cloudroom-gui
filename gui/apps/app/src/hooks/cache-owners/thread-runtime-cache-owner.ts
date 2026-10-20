@@ -22,7 +22,10 @@ import type {
   UpdateQueuedMessageRequest,
 } from "@cloudroom/server-contract";
 import type { AppCreateThreadRequest } from "@cloudroom/client-core";
-import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@cloudroom/client-core";
+import {
+  OPTIMISTIC_QUEUED_MESSAGE_ID_PREFIX,
+  OPTIMISTIC_TIMELINE_ROW_ID_PREFIX,
+} from "@cloudroom/client-core";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
@@ -338,7 +341,7 @@ function buildOptimisticQueuedMessage({
       : null;
 
   return {
-    id: `optimistic-queued-${nanoid()}`,
+    id: `${OPTIMISTIC_QUEUED_MESSAGE_ID_PREFIX}${nanoid()}`,
     initiator: "user",
     senderThreadId: null,
     threadId: request.id,

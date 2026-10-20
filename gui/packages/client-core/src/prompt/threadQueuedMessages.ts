@@ -4,6 +4,12 @@ import { promptInputToDraft, type PromptDraftState } from "./prompt-draft.js";
 
 const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 140;
 
+export const OPTIMISTIC_QUEUED_MESSAGE_ID_PREFIX = "optimistic-queued-";
+
+export function isOptimisticQueuedMessageId(id: string): boolean {
+  return id.startsWith(OPTIMISTIC_QUEUED_MESSAGE_ID_PREFIX);
+}
+
 interface FormatQueuedMessagePreviewOptions {
   truncate?: boolean;
 }

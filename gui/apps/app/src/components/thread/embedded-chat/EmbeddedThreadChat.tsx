@@ -431,6 +431,7 @@ function EmbeddedThreadChatWithComposer({
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
+    pendingQueuedMessageSend,
   } = useQueuedMessageActions({
     threadId,
     queuedMessages,
@@ -1098,6 +1099,7 @@ function EmbeddedThreadChatWithComposer({
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
+          pendingSend={pendingQueuedMessageSend}
           onSend={handleSendQueuedMessage}
           onReorder={handleReorderQueuedMessage}
           onEdit={beginEditQueuedMessage}
@@ -1113,6 +1115,7 @@ function EmbeddedThreadChatWithComposer({
       isProvisioning,
       processingQueuedMessage?.action,
       processingQueuedMessage?.id,
+      pendingQueuedMessageSend,
       pendingInteractionOccupiesComposer,
       projectId,
       queuedMessageActionPending,

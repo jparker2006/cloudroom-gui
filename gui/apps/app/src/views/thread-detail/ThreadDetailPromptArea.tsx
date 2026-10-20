@@ -859,6 +859,7 @@ export function ThreadDetailPromptArea({
   const {
     processingQueuedMessage: displayedProcessingQueuedMessage,
     queuedMessageActionPending,
+    pendingQueuedMessageSend,
     isUpdateQueuedMessagePending,
     sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
@@ -2046,6 +2047,7 @@ export function ThreadDetailPromptArea({
             actionDisabled={isQueueMutationPending}
             processingMessageId={displayedProcessingQueuedMessage?.id ?? null}
             processingAction={displayedProcessingQueuedMessage?.action ?? null}
+            pendingSend={pendingQueuedMessageSend}
             onSend={handleSendQueuedMessage}
             onReorder={handleReorderQueuedMessage}
             onEdit={beginEditQueuedMessage}
@@ -2086,6 +2088,7 @@ export function ThreadDetailPromptArea({
       pullRequestSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
+      pendingQueuedMessageSend,
       isCloud,
       cloudConnection.data?.queue_reorder,
       queuedMessageCount,

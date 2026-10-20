@@ -282,7 +282,7 @@ describe("QueuedMessagesList", () => {
         '[data-icon="ChevronUp"]',
       ),
     ).not.toBeNull();
-    expect(surface?.style.height).toBe("36px");
+    expect(surface?.style.height).toBe("54px");
     expect(scrollFrame?.hidden).toBe(true);
 
     fireEvent.click(getByRole("button", { name: "Show queued messages" }));

@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PromptInput, ThreadQueuedMessage } from "@cloudroom/domain";
 import type { SendQueuedMessageMode } from "@cloudroom/server-contract";
-import type { QueuedMessageProcessingAction } from "@/components/promptbox/banner/QueuedMessagesList";
+import type {
+  QueuedMessagePendingSend,
+  QueuedMessageProcessingAction,
+} from "@/components/promptbox/banner/QueuedMessagesList";
 import {
   useDeleteThreadQueuedMessage,
   useReorderThreadQueuedMessage,
@@ -38,6 +41,7 @@ interface UseQueuedMessageActionsResult {
     id: string;
   } | null;
   queuedMessageActionPending: boolean;
+  pendingQueuedMessageSend: QueuedMessagePendingSend | null;
   isUpdateQueuedMessagePending: boolean;
   sendQueuedMessageById: (args: SendQueuedMessageByIdArgs) => Promise<void>;
   handleSaveInlineQueuedMessage: () => Promise<void>;
@@ -224,9 +228,21 @@ export function useQueuedMessageActions({
     sendQueuedMessage.isPending ||
     updateQueuedMessage.isPending;
 
+  const pendingQueuedMessageSend = useMemo(
+    () =>
+      sendQueuedMessage.isPending && sendQueuedMessage.variables
+        ? {
+            queuedMessageId: sendQueuedMessage.variables.queuedMessageId,
+            mode: sendQueuedMessage.variables.mode,
+          }
+        : null,
+    [sendQueuedMessage.isPending, sendQueuedMessage.variables],
+  );
+
   return {
     processingQueuedMessage: displayedProcessingQueuedMessage,
     queuedMessageActionPending,
+    pendingQueuedMessageSend,
     isUpdateQueuedMessagePending: updateQueuedMessage.isPending,
     sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
