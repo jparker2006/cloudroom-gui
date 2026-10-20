@@ -445,3 +445,17 @@ describe("appendPromptDraft", () => {
     expect(appendPromptDraft(emptyPromptDraftState(), source)).toEqual(source);
   });
 });
+
+describe("appendPromptDraft duplicates", () => {
+  it("adds each attachment path once even when the source repeats it", () => {
+    const attachment = { type: "localImage" as const, path: "a.png", name: "a.png", sizeBytes: 1 };
+
+    expect(
+      appendPromptDraft(emptyPromptDraftState(), {
+        text: "x",
+        mentions: [],
+        attachments: [attachment, attachment],
+      }).attachments,
+    ).toEqual([attachment]);
+  });
+});

@@ -50,6 +50,13 @@ export function readNewThreadRecord(rawValue: string | null): NewThreadDraftReco
   if (record.text !== undefined && typeof record.text !== "string") {
     return { kind: "unreadable" };
   }
+  if (
+    ["mentions", "attachments", "contexts"].some(
+      (field) => record[field] !== undefined && !Array.isArray(record[field]),
+    )
+  ) {
+    return { kind: "unreadable" };
+  }
   const draft = parsePromptDraftStorage(rawValue);
   if (
     draft.mentions.length !== arrayLength(record.mentions) ||

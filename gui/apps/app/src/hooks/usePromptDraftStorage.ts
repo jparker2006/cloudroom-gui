@@ -110,8 +110,13 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     return promptDraftCache.get(storageKey)?.draft ?? EMPTY_PROMPT_DRAFT;
   }
 
-  const rawValue = window.localStorage.getItem(storageKey);
   const cachedEntry = promptDraftCache.get(storageKey);
+  let rawValue: string | null;
+  try {
+    rawValue = window.localStorage.getItem(storageKey);
+  } catch {
+    return cachedEntry?.draft ?? EMPTY_PROMPT_DRAFT;
+  }
   if (cachedEntry && cachedEntry.rawValue === rawValue) {
     return cachedEntry.draft;
   }

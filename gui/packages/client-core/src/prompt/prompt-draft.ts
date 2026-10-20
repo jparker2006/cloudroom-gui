@@ -248,7 +248,11 @@ export function appendPromptDraft(
     ],
     attachments: [
       ...target.attachments,
-      ...source.attachments.filter((attachment) => !targetPaths.has(attachment.path)),
+      ...source.attachments.filter((attachment) => {
+        if (targetPaths.has(attachment.path)) return false;
+        targetPaths.add(attachment.path);
+        return true;
+      }),
     ],
     ...(contexts.length > 0 ? { contexts } : {}),
   };

@@ -1447,3 +1447,36 @@ describe("re-review fixes: half-applied move", () => {
     expect(target.getCurrent().text).toBe("legacy");
   });
 });
+
+describe("Luna review fixes", () => {
+  it.each([
+    ["attachments", JSON.stringify({ text: "keep me", attachments: "corrupt", rev: "4545454545454545" })],
+    ["mentions", JSON.stringify({ text: "keep me", mentions: {}, attachments: [], rev: "4545454545454545" })],
+    ["contexts", JSON.stringify({ text: "keep me", attachments: [], contexts: 3, rev: "4545454545454545" })],
+  ])("never saves over a draft whose %s field is not a list", (_, stored) => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "mine", mentions: [], attachments: [] });
+    window.localStorage.setItem(alphaKey(), stored);
+
+    alpha.setDraft({ text: "mine, edited", mentions: [], attachments: [] });
+
+    expect(window.localStorage.getItem(alphaKey())).toBe(stored);
+  });
+
+  it("falls back to memory instead of throwing when storage can't be read", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({ kind: "new-thread", projectId: alphaId() }),
+    );
+    act(() => result.current.setDraft({ text: "in memory", mentions: [], attachments: [] }));
+    window.localStorage.setItem(alphaKey(), storedDraft("changed elsewhere"));
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    try {
+      expect(() => result.current.getCurrent()).not.toThrow();
+      expect(result.current.getCurrent().text).toBe("in memory");
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+});
