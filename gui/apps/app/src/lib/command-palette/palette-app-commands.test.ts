@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AppCommandId } from "@cloudroom/domain";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import { APP_COMMAND_GROUPS } from "@/lib/app-command-metadata";
 import {
   buildAppCommandActions,
   PALETTE_COMMAND_IDS,
@@ -47,6 +48,18 @@ describe("PALETTE_COMMAND_IDS", () => {
     ] as const) {
       expect(PALETTE_COMMAND_IDS).not.toContain(cycled);
     }
+  });
+});
+
+describe("Collapse all subthreads", () => {
+  it("is a palette command that the shortcut settings list under Threads", () => {
+    expect(PALETTE_COMMAND_IDS).toContain("sidebar.collapseAllSubthreads");
+    const threads = APP_COMMAND_GROUPS.find((group) => group.label === "Threads");
+    expect(
+      threads?.commands.find(
+        (metadata) => metadata.command === "sidebar.collapseAllSubthreads",
+      )?.label,
+    ).toBe("Collapse all subthreads");
   });
 });
 

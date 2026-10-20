@@ -122,6 +122,36 @@ describe("app keybindings", () => {
     expect([...actualCollisions].sort()).toEqual(allowedCollisions.sort());
   });
 
+  it("binds Collapse all subthreads to Cmd+Option+C on Mac desktop only", () => {
+    const shortcutFor = (client: (typeof DEFAULT_KEYBINDING_CLIENTS)[number]) =>
+      DEFAULT_APP_KEYBINDINGS.filter(
+        (binding) =>
+          binding.command === "sidebar.collapseAllSubthreads" &&
+          isAppKeybindingAvailableForClient(binding, client),
+      ).at(-1)?.shortcut;
+
+    expect(shortcutFor(DEFAULT_KEYBINDING_CLIENTS[0])).toEqual({
+      key: "c",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: true,
+      shift: false,
+    });
+    for (const client of DEFAULT_KEYBINDING_CLIENTS.slice(1)) {
+      expect(shortcutFor(client)).toBeNull();
+    }
+    expect(
+      DEFAULT_APP_KEYBINDINGS.some(
+        (binding) =>
+          binding.command !== "sidebar.collapseAllSubthreads" &&
+          binding.shortcut?.key.toLowerCase() === "c" &&
+          binding.shortcut.alt &&
+          (binding.shortcut.mod || binding.shortcut.meta),
+      ),
+    ).toBe(false);
+  });
+
   it("serves validated explicit defaults from system config", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
