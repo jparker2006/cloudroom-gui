@@ -1012,3 +1012,52 @@ describe("answering a notice about another window", () => {
     expect(result.current.text).toBe("mine, edited");
   });
 });
+
+describe("new-thread saves with Web Locks", () => {
+  let releases: (() => void)[] = [];
+
+  beforeEach(() => {
+    releases = [];
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: (_name: string, optionsOrCallback: unknown, maybeCallback?: () => unknown) => {
+          const callback = (maybeCallback ?? optionsOrCallback) as () => unknown;
+          return new Promise((resolve) => {
+            releases.push(() => resolve(callback()));
+          });
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "locks");
+  });
+
+  it("saves only once it holds the draft's lock, and keeps the draft readable meanwhile", async () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+
+    alpha.setDraft({ text: "waiting for the lock", mentions: [], attachments: [] });
+
+    expect(window.localStorage.getItem(alphaKey())).toBeNull();
+    expect(alpha.getCurrent().text).toBe("waiting for the lock");
+    await act(async () => releases.shift()?.());
+    expect(storedRecord(alphaKey()).text).toBe("waiting for the lock");
+  });
+
+  it("saves only to this tab's recovery copy when the page closes before the lock arrives", () => {
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: alphaId() });
+    alpha.setDraft({ text: "typed before close", mentions: [], attachments: [] });
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(window.localStorage.getItem(alphaKey())).toBeNull();
+    const recovery = Object.keys(window.localStorage).find((key) =>
+      key.startsWith(`bb.promptbox.recovery-new-thread-${alphaId()}-`),
+    );
+    expect(JSON.parse(window.localStorage.getItem(recovery!) ?? "null")).toMatchObject({
+      text: "typed before close",
+    });
+  });
+});

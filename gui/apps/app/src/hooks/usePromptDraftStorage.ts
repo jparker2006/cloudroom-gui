@@ -145,8 +145,54 @@ function clearPromptDraftPersistTimer(storageKey: string): void {
   promptDraftPersistTimers.delete(storageKey);
 }
 
+const queuedLockedPersists = new Set<string>();
+const PROMPT_DRAFT_LOCK_TIMEOUT_MS = 2000;
+
+function webLocks(): LockManager | undefined {
+  return typeof navigator === "undefined" ? undefined : navigator.locks;
+}
+
 function persistPromptDraftCache(storageKey: string): void {
   if (typeof window === "undefined") return;
+  const locks = webLocks();
+  if (!locks || !isNewThreadProjectDraftKey(storageKey)) {
+    persistPromptDraftCacheNow(storageKey);
+    return;
+  }
+
+  clearPromptDraftPersistTimer(storageKey);
+  pendingPromptDraftStorageKeys.add(storageKey);
+  if (queuedLockedPersists.has(storageKey)) return;
+  queuedLockedPersists.add(storageKey);
+  const runWrite = () => {
+    queuedLockedPersists.delete(storageKey);
+    if (pendingPromptDraftStorageKeys.has(storageKey)) persistPromptDraftCacheNow(storageKey);
+  };
+  locks
+    .request(
+      `bb.promptbox.write.${storageKey}`,
+      { signal: AbortSignal.timeout(PROMPT_DRAFT_LOCK_TIMEOUT_MS) },
+      runWrite,
+    )
+    .catch(runWrite);
+}
+
+function writeRecoveryCopyOnly(storageKey: string): void {
+  const cachedEntry = promptDraftCache.get(storageKey);
+  const serialized = cachedEntry && serializePromptDraftStorage(cachedEntry.draft);
+  if (!serialized) return;
+  const base = newThreadDraftRevs.get(storageKey);
+  try {
+    window.localStorage.setItem(
+      newThreadRecoveryKey(storageKey),
+      JSON.stringify({ ...JSON.parse(serialized), rev: createDraftRev(), ...(base ? { base } : {}) }),
+    );
+  } catch (error) {
+    console.warn(`[prompt-draft] could not keep a recovery copy of ${storageKey}`, error);
+  }
+}
+
+function persistPromptDraftCacheNow(storageKey: string): void {
 
   clearPromptDraftPersistTimer(storageKey);
   pendingPromptDraftStorageKeys.delete(storageKey);
@@ -364,7 +410,11 @@ function schedulePromptDraftPersist(storageKey: string): void {
 
 function flushPendingPromptDraftPersists(): void {
   for (const storageKey of Array.from(pendingPromptDraftStorageKeys)) {
-    persistPromptDraftCache(storageKey);
+    if (webLocks() && isNewThreadProjectDraftKey(storageKey)) {
+      writeRecoveryCopyOnly(storageKey);
+    } else {
+      persistPromptDraftCacheNow(storageKey);
+    }
   }
 }
 
