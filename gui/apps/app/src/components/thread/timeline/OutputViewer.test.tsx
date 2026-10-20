@@ -26,6 +26,7 @@ import {
   escapedOutputHtml,
   searchOutputHtml,
   mapOutputAnchor,
+  outputMatchContext,
 } from "./output-search";
 import { terminalOutputHtml } from "./TerminalOutputBlock";
 
@@ -92,6 +93,27 @@ beforeEach(() => {
 });
 
 describe("output HTML search", () => {
+  it("indexes dense output with compact offsets and creates excerpts on demand", () => {
+    const result = searchOutputHtml(
+      escapedOutputHtml("x".repeat(100_000)),
+      "x",
+      99_999,
+    );
+    expect(result.matches).toBeInstanceOf(Uint32Array);
+    expect(result.matches.length).toBe(100_000);
+    expect(result.matches.byteLength + result.ends.byteLength).toBe(800_000);
+    expect(result.matches[99_999]).toBe(99_999);
+    expect(result.ends[99_999]).toBe(100_000);
+    expect(result.html.match(/<mark /g)).toHaveLength(1);
+    expect(
+      outputMatchContext(
+        result.text,
+        result.matches[99_999]!,
+        result.ends[99_999]!,
+      ).excerpt.length,
+    ).toBeLessThanOrEqual(97);
+  });
+
   it("maps repeated lines without jumping to the first occurrence during append or hydration", () => {
     const previous = "head\nrepeat\nrepeat\nrepeat\ntail";
     const offset = previous.lastIndexOf("repeat");
@@ -130,7 +152,13 @@ describe("output HTML search", () => {
     parsed.innerHTML = unsafe.html;
 
     expect(regexLike.matches).toHaveLength(1);
-    expect(regexLike.matches[0]?.excerpt).toContain(".*");
+    expect(
+      outputMatchContext(
+        regexLike.text,
+        regexLike.matches[0]!,
+        regexLike.ends[0]!,
+      ).excerpt,
+    ).toContain(".*");
     expect(unsafe.matches).toHaveLength(0);
     expect(parsed.querySelector("img")).toBeNull();
   });
@@ -149,7 +177,10 @@ describe("output HTML search", () => {
       (acrossSpans.html.match(/data-output-match="0"/g) ?? []).length,
     ).toBe(2);
     expect(unicode.matches).toHaveLength(1);
-    expect(unicode.matches[0]?.excerpt).toContain("café 🐈");
+    expect(
+      outputMatchContext(unicode.text, unicode.matches[0]!, unicode.ends[0]!)
+        .excerpt,
+    ).toContain("café 🐈");
   });
 });
 

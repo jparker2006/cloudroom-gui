@@ -1,8 +1,13 @@
-export interface OutputMatch {
-  start: number;
-  end: number;
-  line: number;
-  excerpt: string;
+export function outputMatchContext(text: string, start: number, end: number) {
+  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+  const newline = text.indexOf("\n", start);
+  return {
+    line: text.slice(0, start).split("\n").length,
+    excerpt: text.slice(
+      Math.max(lineStart, start - 36),
+      Math.min(newline === -1 ? text.length : newline, end + 60),
+    ),
+  };
 }
 
 export const MAX_OUTPUT_HIGHLIGHTS = 1_000;
@@ -41,35 +46,24 @@ export function searchOutputHtml(
   template.innerHTML = html;
   const root = template.content;
   const text = root.textContent ?? "";
-  const matches: OutputMatch[] = [];
-  if (query.length === 0) return { html, text, matches };
+  const capacity =
+    query.length === 0 ? 0 : Math.floor(text.length / Array.from(query).length);
+  const starts = new Uint32Array(capacity);
+  const finishes = new Uint32Array(capacity);
+  if (query.length === 0)
+    return { html, text, matches: starts, ends: finishes };
   const expression = new RegExp(
     query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     "giu",
   );
-  let line = 1;
-  let lineStart = 0;
+  let matchCount = 0;
   for (const match of text.matchAll(expression)) {
-    const start = match.index;
-    let newline = text.indexOf("\n", lineStart);
-    while (newline !== -1 && newline < start) {
-      line++;
-      lineStart = newline + 1;
-      newline = text.indexOf("\n", lineStart);
-    }
-    matches.push({
-      start,
-      end: start + match[0].length,
-      line,
-      excerpt: text.slice(
-        Math.max(lineStart, start - 36),
-        Math.min(
-          newline === -1 ? text.length : newline,
-          start + match[0].length + 60,
-        ),
-      ),
-    });
+    starts[matchCount] = match.index;
+    finishes[matchCount] = match.index + match[0].length;
+    matchCount++;
   }
+  const matches = starts.subarray(0, matchCount);
+  const ends = finishes.subarray(0, matchCount);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
@@ -79,16 +73,15 @@ export function searchOutputHtml(
   for (const node of nodes) {
     const value = node.data;
     const end = offset + value.length;
-    if (index >= matches.length || matches[index]!.start >= end) {
+    if (index >= matches.length || matches[index]! >= end) {
       offset = end;
       continue;
     }
     const fragment = document.createDocumentFragment();
     let local = 0;
-    while (index < matches.length && matches[index]!.start < end) {
-      const match = matches[index]!;
-      const from = Math.max(0, match.start - offset);
-      const to = Math.min(value.length, match.end - offset);
+    while (index < matches.length && matches[index]! < end) {
+      const from = Math.max(0, matches[index]! - offset);
+      const to = Math.min(value.length, ends[index]! - offset);
       fragment.append(document.createTextNode(value.slice(local, from)));
       const mark = document.createElement("mark");
       mark.dataset.outputMatch = String(index);
@@ -97,7 +90,7 @@ export function searchOutputHtml(
       mark.textContent = value.slice(from, to);
       fragment.append(mark);
       local = to;
-      if (match.end > end) break;
+      if (ends[index]! > end) break;
       index = activeOnly ? matches.length : index + 1;
     }
     fragment.append(document.createTextNode(value.slice(local)));
@@ -106,7 +99,7 @@ export function searchOutputHtml(
   }
   const container = document.createElement("div");
   container.append(root);
-  return { html: container.innerHTML, text, matches };
+  return { html: container.innerHTML, text, matches, ends };
 }
 
 export function escapedOutputHtml(output: string): string {
