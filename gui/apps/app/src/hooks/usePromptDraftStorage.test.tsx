@@ -383,3 +383,20 @@ describe("usePromptDraftStorage addQuote", () => {
     expect(second.result.current.text).toBe("> shared selection\n");
   });
 });
+
+describe("project-scoped new-thread drafts", () => {
+  it("keeps each project's draft separate and leaves the legacy draft untouched", () => {
+    window.localStorage.setItem(NEW_THREAD_DRAFT_KEY, storedDraft("legacy text"));
+    const alpha = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_alpha" });
+    const personal = getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_personal" });
+
+    alpha.setDraft({ text: "alpha text", mentions: [], attachments: [] });
+    personal.setDraft({ text: "no project text", mentions: [], attachments: [] });
+
+    expect(alpha.getCurrent().text).toBe("alpha text");
+    expect(personal.getCurrent().text).toBe("no project text");
+    expect(getPromptDraftAccessor({ kind: "new-thread", projectId: "proj_beta" }).getCurrent().text).toBe("");
+    expect(window.localStorage.getItem(NEW_THREAD_DRAFT_KEY)).toBe(storedDraft("legacy text"));
+    expect(window.localStorage.getItem("bb.promptbox.contents-new-thread-proj_alpha-3")).toContain("alpha text");
+  });
+});
