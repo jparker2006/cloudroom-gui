@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { classifyGhFailure, parsePullUrl, pullKey } from "./app-logic.js";
 
 const SYNC_INTERVAL_MS = 15 * 60_000;
 const SYNC_RETRY_MAX_MS = 5 * 60_000;
@@ -57,12 +58,14 @@ const threadLinkSchema = z
     number: itemNumberSchema,
     threadId: z.string().min(1),
     createdAt: z.string(),
+    pullId: z.string().min(1).optional(),
   })
   .strict();
 const pullSchema = z
   .object({
     repo: repoNameSchema,
     number: itemNumberSchema,
+    id: z.string(),
     title: z.string(),
     state: z.string(),
     author: z.string(),
@@ -80,15 +83,23 @@ const pullSchema = z
     reviewDecision: z.string(),
     mergeStateStatus: z.string(),
     reviewRequests: z.array(z.string()),
-    checks: z.array(
-      z
-        .object({
-          name: z.string(),
-          status: z.enum(["success", "failure", "pending", "neutral"]),
-          url: z.string(),
-        })
-        .strict(),
-    ),
+    checks: z
+      .array(
+        z
+          .object({
+            name: z.string(),
+            status: z.enum([
+              "success",
+              "failure",
+              "pending",
+              "neutral",
+              "unknown",
+            ]),
+            url: z.string(),
+          })
+          .strict(),
+      )
+      .nullable(),
     comments: z.array(commentSchema),
     reviews: z.array(
       z
@@ -121,6 +132,68 @@ const pullSchema = z
         })
         .strict(),
     ),
+  })
+  .strict();
+const pullRefSchema = z
+  .object({ repo: repoNameSchema, number: itemNumberSchema })
+  .strict();
+const pullSelectionSchema = pullRefSchema
+  .extend({ id: z.string().min(1), selectedAt: z.string() })
+  .strict();
+const failureReasonSchema = z.enum(["auth", "unavailable", "lookup"]);
+const pullSourceSchema = z.enum(["workspace", "review"]);
+const pullCandidateSchema = pullRefSchema
+  .extend({
+    id: z.string().nullable(),
+    sources: z.array(pullSourceSchema).min(1),
+  })
+  .strict();
+const cachedPullSchema = z
+  .object({ pull: pullSchema, fetchedAt: z.string() })
+  .strict();
+const pullAssociationSchema = z
+  .object({
+    threadId: z.string().min(1),
+    environmentId: z.string().nullable(),
+    selection: pullSelectionSchema.nullable(),
+    candidates: z.array(pullCandidateSchema),
+    failures: z.array(
+      z
+        .object({
+          source: z.enum(["selection", "workspace", "review"]),
+          runsOn: z.enum(["workspace", "server"]),
+          reason: failureReasonSchema,
+          message: z.string(),
+        })
+        .strict(),
+    ),
+    resolution: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("selected"),
+          repo: repoNameSchema,
+          number: itemNumberSchema,
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("candidate"),
+          repo: repoNameSchema,
+          number: itemNumberSchema,
+          id: z.string().nullable(),
+          sources: z.array(pullSourceSchema).min(1),
+        })
+        .strict(),
+      z.object({ kind: z.literal("ambiguous") }).strict(),
+      z.object({ kind: z.literal("none") }).strict(),
+      z
+        .object({
+          kind: z.literal("failed"),
+          reason: failureReasonSchema,
+          message: z.string(),
+        })
+        .strict(),
+    ]),
   })
   .strict();
 
@@ -206,7 +279,11 @@ export const githubRpcContract = defineRpcContract({
   },
   getPull: {
     input: itemInputSchema,
-    output: z.object({ pull: pullSchema }).strict(),
+    output: cachedPullSchema,
+  },
+  cachedPull: {
+    input: itemInputSchema,
+    output: z.object({ cached: cachedPullSchema.nullable() }).strict(),
   },
   commentPull: {
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
@@ -214,18 +291,13 @@ export const githubRpcContract = defineRpcContract({
   },
   pullForThread: {
     input: z.object({ threadId: z.string().min(1) }).strict(),
-    output: z
-      .object({
-        pull: z
-          .object({
-            repo: repoNameSchema,
-            number: itemNumberSchema,
-            environmentId: z.string().nullable(),
-          })
-          .strict()
-          .nullable(),
-      })
+    output: pullAssociationSchema,
+  },
+  setPullForThread: {
+    input: z
+      .object({ threadId: z.string().min(1), pull: pullRefSchema.nullable() })
       .strict(),
+    output: pullAssociationSchema,
   },
   commentIssue: {
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
@@ -262,6 +334,143 @@ export const githubRpcContract = defineRpcContract({
 type RepoInfo = z.infer<typeof repoInfoSchema>;
 type CachedItem = z.infer<typeof itemSchema>;
 type ThreadLink = z.infer<typeof threadLinkSchema>;
+type PullAssociation = z.infer<typeof pullAssociationSchema>;
+type PullCandidate = z.infer<typeof pullCandidateSchema>;
+type PullFailure = PullAssociation["failures"][number];
+
+const FAILURE_PRIORITY = ["auth", "unavailable", "lookup"] as const;
+
+export function resolvePullAssociation(
+  selection: PullAssociation["selection"],
+  candidates: PullCandidate[],
+  failures: PullFailure[],
+): PullAssociation["resolution"] {
+  if (selection !== null) {
+    return { kind: "selected", repo: selection.repo, number: selection.number };
+  }
+  if (failures.length > 0) {
+    const first = FAILURE_PRIORITY.map((reason) =>
+      failures.find((failure) => failure.reason === reason),
+    ).find((failure) => failure !== undefined)!;
+    return { kind: "failed", reason: first.reason, message: first.message };
+  }
+  if (candidates.length === 0) return { kind: "none" };
+  if (candidates.length > 1) return { kind: "ambiguous" };
+  const [only] = candidates;
+  if (only.id === null && !only.sources.includes("workspace")) {
+    return { kind: "ambiguous" };
+  }
+  return {
+    kind: "candidate",
+    repo: only.repo,
+    number: only.number,
+    id: only.id,
+    sources: only.sources,
+  };
+}
+
+function checkHost(url: unknown): string | null {
+  try {
+    const { host } = new URL(String(url));
+    return host === "" || host === "github.com" ? null : host;
+  } catch {
+    return null;
+  }
+}
+
+function workflowRunId(url: unknown): string | null {
+  const match = String(url ?? "").match(
+    /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)(?:[/?#]|$)/,
+  );
+  return match === null ? null : match[1];
+}
+
+export function latestCheckRuns<
+  T extends {
+    __typename?: unknown;
+    name?: unknown;
+    context?: unknown;
+    workflowName?: unknown;
+    detailsUrl?: unknown;
+    startedAt?: unknown;
+  },
+>(entries: T[]): T[] {
+  const latest = new Map<string, T>();
+  for (const [index, entry] of entries.entries()) {
+    const kind =
+      entry.__typename ??
+      (entry.context === undefined ? "CheckRun" : "StatusContext");
+    const workflow = String(entry.workflowName ?? "");
+    const host = checkHost(entry.detailsUrl);
+    const run = workflowRunId(entry.detailsUrl);
+    const source =
+      kind !== "CheckRun"
+        ? ["status"]
+        : workflow !== ""
+          ? run === null
+            ? null
+            : ["workflow", workflow, run]
+          : host === null
+            ? null
+            : ["host", host];
+    const name = JSON.stringify(
+      source === null
+        ? [kind, index]
+        : [kind, ...source, entry.name ?? entry.context ?? "check"],
+    );
+    const current = latest.get(name);
+    const started = Date.parse(String(entry.startedAt ?? ""));
+    const currentStarted = Date.parse(String(current?.startedAt ?? ""));
+    if (
+      current === undefined ||
+      (Number.isNaN(started)
+        ? Number.isNaN(currentStarted)
+        : Number.isNaN(currentStarted) || started >= currentStarted)
+    ) {
+      latest.set(name, entry);
+    }
+  }
+  return [...latest.values()];
+}
+
+export function mapCheckRollupStatus(entry: {
+  status?: unknown;
+  conclusion?: unknown;
+  state?: unknown;
+}): "success" | "failure" | "pending" | "neutral" | "unknown" {
+  const conclusion = String(
+    entry.conclusion ?? entry.state ?? "",
+  ).toUpperCase();
+  const progress = String(entry.status ?? entry.state ?? "").toUpperCase();
+  if (conclusion === "SUCCESS") return "success";
+  if (
+    [
+      "FAILURE",
+      "ERROR",
+      "TIMED_OUT",
+      "CANCELLED",
+      "ACTION_REQUIRED",
+      "STARTUP_FAILURE",
+      "STALE",
+    ].includes(conclusion)
+  ) {
+    return "failure";
+  }
+  if (
+    [
+      "IN_PROGRESS",
+      "QUEUED",
+      "PENDING",
+      "EXPECTED",
+      "WAITING",
+      "REQUESTED",
+    ].includes(progress)
+  ) {
+    return "pending";
+  }
+  if (["NEUTRAL", "SKIPPED"].includes(conclusion)) return "neutral";
+  return "unknown";
+}
 
 interface GhListEntry {
   number?: unknown;
@@ -911,11 +1120,18 @@ export default async function plugin(bb: BbPluginApi) {
     return `link:${kind}:${repo}#${number}`;
   }
 
-  async function addLink(link: ThreadLink): Promise<void> {
+  let linkWrites: Promise<void> = Promise.resolve();
+
+  function addLink(link: ThreadLink): Promise<void> {
     const key = linkKey(link.kind, link.repo, link.number);
-    const existing = (await bb.storage.kv.get<ThreadLink[]>(key)) ?? [];
-    await bb.storage.kv.set(key, [...existing, link]);
-    bb.realtime.publish("links-changed", { key });
+    const write = linkWrites
+      .catch(() => {})
+      .then(async () => {
+        const existing = (await bb.storage.kv.get<ThreadLink[]>(key)) ?? [];
+        await bb.storage.kv.set(key, [...existing, link]);
+      });
+    linkWrites = write;
+    return write.then(() => bb.realtime.publish("links-changed", { key }));
   }
 
   async function listAllLinks(): Promise<Record<string, ThreadLink[]>> {
@@ -983,12 +1199,28 @@ export default async function plugin(bb: BbPluginApi) {
       title: `${ref}: ${title}`.slice(0, 120),
       prompt,
     });
+    let pullId: string | undefined;
+    if (kind === "pr") {
+      try {
+        const raw = await gh(
+          ["pr", "view", String(number), "-R", repo, "--json", "id"],
+          15_000,
+        );
+        const id = (JSON.parse(raw) as { id?: unknown }).id;
+        if (typeof id === "string" && id.length > 0) pullId = id;
+      } catch (error) {
+        bb.log.warn(
+          `could not record the GitHub id for ${ref}: ${errorMessage(error)}`,
+        );
+      }
+    }
     await addLink({
       kind,
       repo,
       number,
       threadId: thread.id,
       createdAt: new Date().toISOString(),
+      ...(pullId === undefined ? {} : { pullId }),
     });
     bb.log.info(`spawned thread ${thread.id} for ${kind} ${ref}`);
     return { threadId: thread.id };
@@ -1051,6 +1283,325 @@ export default async function plugin(bb: BbPluginApi) {
       .sort((a, b) => a.localeCompare(b));
     labelsCache.set(repo, { labels, fetchedAt: Date.now() });
     return labels;
+  }
+
+  const associationWrites = new Map<string, Promise<void>>();
+  let lastFetchStamp = 0;
+
+  function nextFetchStamp(): string {
+    lastFetchStamp = Math.max(Date.now(), lastFetchStamp + 1);
+    return new Date(lastFetchStamp).toISOString();
+  }
+
+  function pullDetailKey(repo: string, number: number): string {
+    return `pull-detail:${pullKey(repo, number)}`;
+  }
+
+  function selectionKey(threadId: string): string {
+    return `selection:${threadId}`;
+  }
+
+  const MAX_CACHED_DETAIL_BYTES = 200_000;
+
+  const cacheWrites = new Map<string, Promise<void>>();
+
+  async function cachePullDetail(
+    fetched: z.infer<typeof cachedPullSchema>,
+    requestedRepo: string,
+  ): Promise<void> {
+    await cachePullDetailUnder(fetched.pull.repo, fetched);
+    if (pullKey(requestedRepo, 1) !== pullKey(fetched.pull.repo, 1)) {
+      await cachePullDetailUnder(requestedRepo, fetched);
+    }
+  }
+
+  function cachePullDetailUnder(
+    repo: string,
+    fetched: z.infer<typeof cachedPullSchema>,
+  ): Promise<void> {
+    const key = pullDetailKey(repo, fetched.pull.number);
+    const write = (cacheWrites.get(key) ?? Promise.resolve())
+      .then(async () => {
+        const stored = cachedPullSchema.safeParse(await bb.storage.kv.get(key));
+        if (stored.success && stored.data.fetchedAt > fetched.fetchedAt) return;
+        const compact = {
+          ...fetched,
+          pull: {
+            ...fetched.pull,
+            files: fetched.pull.files.map((file) => ({ ...file, patch: null })),
+          },
+        };
+        const bytes = new TextEncoder().encode(JSON.stringify(compact)).length;
+        if (bytes > MAX_CACHED_DETAIL_BYTES) return;
+        await bb.storage.kv.set(key, compact);
+      })
+      .catch((error: unknown) => {
+        bb.log.warn(`could not cache ${key}: ${errorMessage(error)}`);
+      });
+    cacheWrites.set(key, write);
+    void write.then(() => {
+      if (cacheWrites.get(key) === write) cacheWrites.delete(key);
+    });
+    return write;
+  }
+
+  function failureFrom(
+    source: PullFailure["source"],
+    runsOn: PullFailure["runsOn"],
+    error: unknown,
+  ): PullFailure {
+    const message = errorMessage(error);
+    return { source, runsOn, reason: classifyGhFailure(message), message };
+  }
+
+  async function verifyPull(
+    repo: string,
+    number: number,
+  ): Promise<{ repo: string; number: number; id: string }> {
+    let raw: string;
+    try {
+      raw = await gh(
+        ["pr", "view", String(number), "-R", repo, "--json", "id,number,url"],
+        15_000,
+      );
+    } catch (error) {
+      const message = errorMessage(error);
+      if (/could not resolve|not found|HTTP 404/i.test(message)) {
+        throw new Error(
+          `${repo}#${number} was not found, or this GitHub account cannot read it.`,
+        );
+      }
+      throw error;
+    }
+    const view = JSON.parse(raw) as {
+      id?: unknown;
+      number?: unknown;
+      url?: unknown;
+    };
+    const identity = parsePullUrl(String(view.url ?? ""));
+    if (
+      identity === null ||
+      typeof view.id !== "string" ||
+      view.id.length === 0 ||
+      Number(view.number) !== number ||
+      identity.number !== number
+    ) {
+      throw new Error(
+        `GitHub did not confirm ${repo}#${number} as a pull request.`,
+      );
+    }
+    if (pullKey(identity.repo, number) !== pullKey(repo, number)) {
+      throw new Error(
+        `GitHub resolved ${repo}#${number} to ${identity.repo}#${number}. Choose ${identity.repo}#${number} instead.`,
+      );
+    }
+    return { repo: identity.repo, number, id: view.id };
+  }
+
+  async function mergeByIdentity(
+    list: PullCandidate[],
+    failures: PullFailure[],
+  ): Promise<PullCandidate[]> {
+    const needsId = list.filter((candidate) => candidate.id === null);
+    const otherIds = list.some((candidate) => candidate.id !== null);
+    if (needsId.length > 0 && otherIds && list.length > 1) {
+      for (const candidate of needsId) {
+        try {
+          const raw = await gh(
+            [
+              "pr",
+              "view",
+              String(candidate.number),
+              "-R",
+              candidate.repo,
+              "--json",
+              "id",
+            ],
+            15_000,
+          );
+          const id = (JSON.parse(raw) as { id?: unknown }).id;
+          if (typeof id === "string" && id.length > 0) {
+            candidate.id = id;
+          } else {
+            failures.push({
+              source: candidate.sources[0],
+              runsOn: "server",
+              reason: "lookup",
+              message: `GitHub returned no id for ${candidate.repo}#${candidate.number}, so it can't be matched with other links.`,
+            });
+          }
+        } catch (error) {
+          failures.push({
+            ...failureFrom(candidate.sources[0], "server", error),
+            message: `Couldn't confirm ${candidate.repo}#${candidate.number}: ${errorMessage(error)}`,
+          });
+        }
+      }
+    }
+    const merged: PullCandidate[] = [];
+    for (const candidate of list) {
+      const same =
+        candidate.id === null
+          ? undefined
+          : merged.find((entry) => entry.id === candidate.id);
+      if (same === undefined) {
+        merged.push(candidate);
+        continue;
+      }
+      if (candidate.sources.includes("workspace")) {
+        same.repo = candidate.repo;
+        same.number = candidate.number;
+      }
+      for (const source of candidate.sources) {
+        if (!same.sources.includes(source)) same.sources.push(source);
+      }
+    }
+    return merged;
+  }
+
+  async function lookupPullAssociation(
+    threadId: string,
+  ): Promise<PullAssociation> {
+    const failures: PullFailure[] = [];
+    const candidates = new Map<string, PullCandidate>();
+    const addCandidate = (
+      repo: string,
+      number: number,
+      source: PullCandidate["sources"][number],
+      id: string | null = null,
+    ) => {
+      const key = pullKey(repo, number);
+      const existing = candidates.get(key);
+      if (existing === undefined) {
+        candidates.set(key, { repo, number, id, sources: [source] });
+        return;
+      }
+      if (!existing.sources.includes(source)) existing.sources.push(source);
+      if (existing.id === null) {
+        existing.id = id;
+      } else if (id !== null && id !== existing.id) {
+        failures.push({
+          source: "review",
+          runsOn: "server",
+          reason: "lookup",
+          message: `Review threads link ${repo}#${number} to different GitHub pull requests.`,
+        });
+      }
+    };
+
+    let selection: PullAssociation["selection"] = null;
+    try {
+      const stored = await bb.storage.kv.get(selectionKey(threadId));
+      if (stored !== undefined) {
+        const parsed = pullSelectionSchema.safeParse(stored);
+        if (parsed.success) {
+          selection = parsed.data;
+        } else {
+          failures.push({
+            source: "selection",
+            runsOn: "server",
+            reason: "lookup",
+            message:
+              "The saved pull request choice for this thread is unreadable. Choose again or clear it.",
+          });
+        }
+      }
+    } catch (error) {
+      failures.push(failureFrom("selection", "server", error));
+    }
+
+    let environmentId: string | null = null;
+    try {
+      const thread = await bb.sdk.threads.get({ threadId });
+      environmentId = thread?.environmentId ?? null;
+    } catch (error) {
+      failures.push({
+        source: "workspace",
+        runsOn: "server",
+        reason: "lookup",
+        message: `Couldn’t read this thread: ${errorMessage(error)}`,
+      });
+    }
+    try {
+      if (environmentId !== null) {
+        const result = await bb.sdk.environments.pullRequest({ environmentId });
+        if (result.outcome === "available") {
+          const identity = parsePullUrl(result.pullRequest.url);
+          if (
+            identity === null ||
+            identity.number !== result.pullRequest.number
+          ) {
+            failures.push({
+              source: "workspace",
+              runsOn: "workspace",
+              reason: "lookup",
+              message: `The workspace branch reported an unrecognized pull request URL: ${result.pullRequest.url}`,
+            });
+          } else {
+            addCandidate(identity.repo, identity.number, "workspace");
+          }
+        } else if (result.outcome === "unavailable") {
+          failures.push({
+            source: "workspace",
+            runsOn: "workspace",
+            reason: classifyGhFailure(result.message, "unavailable"),
+            message: result.message,
+          });
+        }
+      }
+    } catch (error) {
+      failures.push(failureFrom("workspace", "workspace", error));
+    }
+
+    try {
+      const keys = await bb.storage.kv.list("link:pr:");
+      for (const key of keys) {
+        const match = key.match(/^link:pr:([\w.-]+\/[\w.-]+)#(\d+)$/);
+        if (match === null) continue;
+        const links = (await bb.storage.kv.get<ThreadLink[]>(key)) ?? [];
+        for (const link of links) {
+          if (link.threadId === threadId) {
+            addCandidate(
+              match[1],
+              Number(match[2]),
+              "review",
+              link.pullId ?? null,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      failures.push(failureFrom("review", "server", error));
+    }
+
+    const candidateList = await mergeByIdentity(
+      [...candidates.values()],
+      failures,
+    );
+    return {
+      threadId,
+      environmentId,
+      selection,
+      candidates: candidateList,
+      failures,
+      resolution: resolvePullAssociation(selection, candidateList, failures),
+    };
+  }
+
+  async function saveSelection(
+    threadId: string,
+    pull: { repo: string; number: number } | null,
+  ): Promise<void> {
+    if (pull === null) {
+      await bb.storage.kv.delete(selectionKey(threadId));
+      return;
+    }
+    await bb.sdk.threads.get({ threadId });
+    const verified = await verifyPull(pull.repo, pull.number);
+    await bb.storage.kv.set(selectionKey(threadId), {
+      ...verified,
+      selectedAt: new Date().toISOString(),
+    });
   }
 
   bb.rpc.register(githubRpcContract, {
@@ -1209,8 +1760,9 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     async getPull({ repo, number }) {
+      const startedAt = nextFetchStamp();
       const prFields =
-        "number,title,body,state,isDraft,author,createdAt,updatedAt,labels," +
+        "id,number,title,body,state,isDraft,author,createdAt,updatedAt,labels," +
         "assignees,url,baseRefName,headRefName,additions,deletions," +
         "changedFiles,reviewDecision,mergeStateStatus,statusCheckRollup," +
         "comments,reviews,reviewRequests";
@@ -1240,6 +1792,7 @@ export default async function plugin(bb: BbPluginApi) {
       ]);
 
       interface GhPullView extends GhListEntry {
+        id?: unknown;
         isDraft?: unknown;
         createdAt?: unknown;
         baseRefName?: unknown;
@@ -1253,11 +1806,13 @@ export default async function plugin(bb: BbPluginApi) {
           __typename?: unknown;
           name?: unknown;
           context?: unknown;
+          workflowName?: unknown;
           status?: unknown;
           conclusion?: unknown;
           state?: unknown;
           detailsUrl?: unknown;
           targetUrl?: unknown;
+          startedAt?: unknown;
         }>;
         comments?: Array<{
           author?: { login?: unknown };
@@ -1277,32 +1832,29 @@ export default async function plugin(bb: BbPluginApi) {
         }>;
       }
       const view = JSON.parse(viewRaw) as GhPullView;
+      const identity = parsePullUrl(String(view.url ?? ""));
+      if (
+        Number(view.number) !== number ||
+        identity === null ||
+        identity.number !== number
+      ) {
+        throw new Error(
+          `GitHub returned ${String(view.url ?? "an unrecognized pull request")} for ${repo}#${number}; refusing to show a different pull request.`,
+        );
+      }
 
-      const checks = (view.statusCheckRollup ?? []).map((entry) => {
-        const conclusion = String(
-          entry.conclusion ?? entry.state ?? "",
-        ).toUpperCase();
-        const running =
-          entry.conclusion === "" ||
-          ["IN_PROGRESS", "QUEUED", "PENDING", "EXPECTED", "WAITING"].includes(
-            String(entry.status ?? entry.state ?? "").toUpperCase(),
-          );
-        const status: "success" | "failure" | "pending" | "neutral" =
-          conclusion === "SUCCESS"
-            ? "success"
-            : conclusion === "FAILURE" ||
-                conclusion === "ERROR" ||
-                conclusion === "TIMED_OUT"
-              ? "failure"
-              : running
-                ? "pending"
-                : "neutral";
-        return {
-          name: String(entry.name ?? entry.context ?? "check"),
-          status,
-          url: String(entry.detailsUrl ?? entry.targetUrl ?? ""),
-        };
-      });
+      const checks = Array.isArray(view.statusCheckRollup)
+        ? latestCheckRuns(view.statusCheckRollup).map((entry) => ({
+            name: [
+              entry.workflowName,
+              String(entry.name ?? entry.context ?? "check"),
+            ]
+              .filter((part) => typeof part === "string" && part !== "")
+              .join(" / "),
+            status: mapCheckRollupStatus(entry),
+            url: String(entry.detailsUrl ?? entry.targetUrl ?? ""),
+          }))
+        : null;
 
       interface GhReviewComment {
         id?: unknown;
@@ -1373,10 +1925,11 @@ export default async function plugin(bb: BbPluginApi) {
         },
       );
 
-      return {
+      const fetched = {
         pull: {
-          repo,
+          repo: identity.repo,
           number,
+          id: String(view.id ?? ""),
           title: String(view.title ?? ""),
           state:
             view.isDraft === true && String(view.state ?? "") === "OPEN"
@@ -1418,7 +1971,17 @@ export default async function plugin(bb: BbPluginApi) {
           reviewThreads,
           files,
         },
+        fetchedAt: startedAt,
       };
+      await cachePullDetail(fetched, repo);
+      return fetched;
+    },
+
+    async cachedPull({ repo, number }) {
+      const parsed = cachedPullSchema.safeParse(
+        await bb.storage.kv.get(pullDetailKey(repo, number)),
+      );
+      return { cached: parsed.success ? parsed.data : null };
     },
 
     async commentPull({ repo, number, body }): Promise<{ ok: true }> {
@@ -1427,46 +1990,24 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     async pullForThread({ threadId }) {
-      let environmentId: string | null = null;
+      return await lookupPullAssociation(threadId);
+    },
+
+    async setPullForThread({ threadId, pull }) {
+      const previous = associationWrites.get(threadId) ?? Promise.resolve();
+      const write = previous
+        .catch(() => {})
+        .then(() => saveSelection(threadId, pull));
+      associationWrites.set(threadId, write);
       try {
-        const thread = await bb.sdk.threads.get({ threadId });
-        if (thread?.environmentId) {
-          environmentId = thread.environmentId;
-          const result = await bb.sdk.environments.pullRequest({
-            environmentId: thread.environmentId,
-          });
-          const url =
-            result.outcome === "available" ? result.pullRequest.url : null;
-          const match =
-            typeof url === "string"
-              ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)
-              : null;
-          if (match !== null) {
-            return {
-              pull: {
-                repo: match[1],
-                number: Number(match[2]),
-                environmentId,
-              },
-            };
-          }
-        }
-      } catch {}
-      const links = await listAllLinks();
-      for (const [key, threadLinks] of Object.entries(links)) {
-        const match = key.match(/^pr:([\w.-]+\/[\w.-]+)#(\d+)$/);
-        if (match === null) continue;
-        if (threadLinks.some((link) => link.threadId === threadId)) {
-          return {
-            pull: {
-              repo: match[1],
-              number: Number(match[2]),
-              environmentId,
-            },
-          };
+        await write;
+      } finally {
+        if (associationWrites.get(threadId) === write) {
+          associationWrites.delete(threadId);
         }
       }
-      return { pull: null };
+      bb.realtime.publish("association-changed", { threadId });
+      return await lookupPullAssociation(threadId);
     },
 
     async commentIssue({ repo, number, body }): Promise<{ ok: true }> {

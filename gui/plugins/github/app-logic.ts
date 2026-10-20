@@ -243,3 +243,83 @@ export function buildSuggestions(
   }
   return [];
 }
+
+export type GhFailureReason = "auth" | "unavailable" | "lookup";
+
+const GH_RATE_LIMITED = /rate limit/i;
+const GH_AUTH_FAILURE =
+  /not logged in|auth login|no oauth token|authentication|bad credentials|HTTP 401|HTTP 403|forbidden|SAML|resource not accessible|requires authentication/i;
+const GH_UNAVAILABLE_FAILURE =
+  /HTTP 5\d\d|timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|could not connect|error connecting|check your internet|no such host|dial tcp|host is not connected|host is suspended/i;
+
+export function classifyGhFailure(
+  message: string,
+  fallback: GhFailureReason = "lookup",
+): GhFailureReason {
+  if (GH_RATE_LIMITED.test(message)) return "unavailable";
+  if (GH_AUTH_FAILURE.test(message)) return "auth";
+  if (GH_UNAVAILABLE_FAILURE.test(message)) return "unavailable";
+  return fallback;
+}
+
+export function parsePullUrl(
+  url: string,
+): { repo: string; number: number } | null {
+  const match = url
+    .trim()
+    .match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)\/?$/);
+  if (match === null) return null;
+  return { repo: match[1], number: Number(match[2]) };
+}
+
+export function pullKey(repo: string, number: number): string {
+  return `${repo.toLowerCase()}#${number}`;
+}
+
+export type CheckStatus =
+  | "success"
+  | "failure"
+  | "pending"
+  | "neutral"
+  | "unknown";
+
+export type ChecksSummary =
+  | { state: "unknown" }
+  | { state: "none" }
+  | {
+      state: "failing" | "pending" | "unknown_results" | "passing" | "neutral";
+      total: number;
+      passed: number;
+      failed: number;
+      pending: number;
+      unknown: number;
+      neutral: number;
+    };
+
+export function summarizeChecks(
+  checks: Array<{ status: CheckStatus }> | null,
+): ChecksSummary {
+  if (checks === null) return { state: "unknown" };
+  if (checks.length === 0) return { state: "none" };
+  const count = (status: CheckStatus) =>
+    checks.filter((check) => check.status === status).length;
+  const counts = {
+    total: checks.length,
+    passed: count("success"),
+    failed: count("failure"),
+    pending: count("pending"),
+    unknown: count("unknown"),
+    neutral: count("neutral"),
+  };
+  const state =
+    counts.failed > 0
+      ? "failing"
+      : counts.pending > 0
+        ? "pending"
+        : counts.unknown > 0
+          ? "unknown_results"
+          : counts.passed > 0
+            ? "passing"
+            : "neutral";
+  return { state, ...counts };
+}

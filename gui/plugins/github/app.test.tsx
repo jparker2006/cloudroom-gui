@@ -86,16 +86,29 @@ describe("GitHub app navigation", () => {
       {
         rpc: {
           pullForThread: () => ({
-            pull: {
+            threadId: "thr-1",
+            environmentId: "env-1",
+            selection: null,
+            candidates: [
+              { repo: "get-bb/bb", number: 42, sources: ["workspace"] },
+            ],
+            failures: [],
+            resolution: {
+              kind: "candidate",
               repo: "get-bb/bb",
               number: 42,
-              environmentId: "env-1",
+              id: null,
+              sources: ["workspace"],
             },
           }),
+          cachedPull: () => ({ cached: null }),
+          listItems: () => ({ items: [] }),
           getPull: () => ({
+            fetchedAt: "2026-08-20T00:00:00.000Z",
             pull: {
               repo: "get-bb/bb",
               number: 42,
+              id: "PR_42",
               title: "Navigation fix",
               state: "OPEN",
               author: "octocat",
