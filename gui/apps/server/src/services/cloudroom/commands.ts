@@ -192,6 +192,7 @@ function prepareWithAttachmentNote(prompt: { text: string; content: unknown }, m
     try { return prepareCloudInstructionInput(withAttachmentNote(prompt, note), instructions); }
     catch { continue; }
   }
+  if (missing.length > 0) throw new ApiError(400, "invalid_request", `Attachment "${missing[0]}" could not be delivered, and the message is too long to tell the agent. Shorten the message or attach the file again.`);
   return prepareCloudInstructionInput(prompt, instructions);
 }
 

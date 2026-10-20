@@ -1239,9 +1239,11 @@ it("keeps Cloud image attachments resolvable after a project switch, and replays
     storeLegacyPrompt("legacy-at-limit", onlyInA, Date.now() + 4, atLimit);
     expect((await request(`/threads/${thread.id}/send`, { requestId: "continues", mode: "auto", input: [{ type: "text", text: "continues", mentions: [] }, { type: "localImage", path }] })).status).toBe(200);
 
-    await expect.poll(() => prompts.map((prompt) => prompt.request_id), { timeout: 5000 }).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "legacy-absolute", "legacy-near-limit", "legacy-at-limit", "continues"]);
+    await expect.poll(() => prompts.map((prompt) => prompt.request_id), { timeout: 5000 }).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "legacy-absolute", "legacy-near-limit", "continues"]);
     expect(prompts.find((item) => item.request_id === "legacy-near-limit")!.text).toBe(`${nearLimit}\n\n${shortNote}`);
-    expect(prompts.find((item) => item.request_id === "legacy-at-limit")!.text).toBe(atLimit);
+    expect(command(harness.db, "legacy-at-limit")?.state).toBe("failed");
+    expect(service.threadStatus(thread.id)?.error).toContain(`Attachment "${onlyInA}" could not be delivered, and the message is too long to tell the agent`);
+    expect(atLimit).toHaveLength(32768);
     for (const id of ["legacy-bare-name", "legacy-escaping", "legacy-absolute"]) {
       const prompt = prompts.find((item) => item.request_id === id)!;
       expect(prompt.attachments ?? []).toEqual([]);
