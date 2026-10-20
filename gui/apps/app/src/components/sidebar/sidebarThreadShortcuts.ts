@@ -114,6 +114,19 @@ export function getSidebarThreadNavigationTargets(
   return collectSidebarThreadTargets(root, Number.POSITIVE_INFINITY, true);
 }
 
+export function getSidebarTopLevelThreadTarget(
+  root: HTMLElement | null,
+  index: number,
+): SidebarThreadShortcutTarget | undefined {
+  const seen = new Set<string>();
+  const topLevel = getSidebarThreadNavigationTargets(root).filter((target) => {
+    if (target.isChild || seen.has(target.threadId)) return false;
+    seen.add(target.threadId);
+    return true;
+  });
+  return topLevel[index];
+}
+
 const MAX_REVEAL_FRAMES = 30;
 
 const MAX_STICKY_ADJUSTMENTS = 10;

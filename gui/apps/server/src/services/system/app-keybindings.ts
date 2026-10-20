@@ -11,6 +11,7 @@ import {
   QUESTION_SELECT_APP_COMMAND_IDS,
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
+  TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
 } from "@cloudroom/domain";
 
 interface ShortcutModifiers {
@@ -138,6 +139,18 @@ const splitWithoutModal = {
 } as const;
 
 export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
+  ...TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS.map((command, index) =>
+    binding(
+      command,
+      String(index + 1),
+      { mod: true, alt: true },
+      {
+        all: ["mainSurface", "macPlatform"],
+        desktopOnly: true,
+        none: ["modalOpen"],
+      },
+    ),
+  ),
   binding("palette.open", "p", { mod: true, shift: true }, mainWithoutModal),
   binding("thread.new", "o", { mod: true, shift: true }, mainWithoutModal),
   binding(

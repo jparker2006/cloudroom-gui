@@ -12,6 +12,18 @@ export const THREAD_JUMP_APP_COMMAND_IDS = [
   "thread.jump.9",
 ] as const;
 
+export const TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS = [
+  "thread.jumpTopLevel.1",
+  "thread.jumpTopLevel.2",
+  "thread.jumpTopLevel.3",
+  "thread.jumpTopLevel.4",
+  "thread.jumpTopLevel.5",
+  "thread.jumpTopLevel.6",
+  "thread.jumpTopLevel.7",
+  "thread.jumpTopLevel.8",
+  "thread.jumpTopLevel.9",
+] as const;
+
 export const QUESTION_SELECT_APP_COMMAND_IDS = [
   "question.select.1",
   "question.select.2",
@@ -46,6 +58,7 @@ export const APP_COMMAND_IDS = [
   "thread.next",
   "thread.oldestInProject",
   ...THREAD_JUMP_APP_COMMAND_IDS,
+  ...TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
   "pane.focus.previous",
   "pane.focus.next",
   ...PANE_FOCUS_APP_COMMAND_IDS,

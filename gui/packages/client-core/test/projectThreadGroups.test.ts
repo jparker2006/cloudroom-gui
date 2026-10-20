@@ -5,6 +5,7 @@ import {
   buildChronologicalThreadList,
   buildSectionThreadList,
   buildProjectThreadGroups,
+  collectProjectThreadItemNavigationEntries,
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
@@ -851,6 +852,41 @@ describe("resolveSidebarProjectId", () => {
       "thr_child",
       "thr_child",
       "thr_child",
+    ]);
+  });
+});
+
+describe("collectProjectThreadItemNavigationEntries", () => {
+  it("lists windowed rows in display order and skips collapsed rows", () => {
+    const items = buildSectionThreadList(
+      [
+        createThread({ id: "open", sectionId: "sec_open", createdAt: 50 }),
+        createThread({ id: "open-child", parentThreadId: "open" }),
+        createThread({ id: "folded", sectionId: "sec_open", createdAt: 40 }),
+        createThread({ id: "folded-child", parentThreadId: "folded" }),
+        createThread({ id: "hidden", sectionId: "sec_closed" }),
+        createThread({ id: "orphan", parentThreadId: "archived" }),
+      ],
+      compareStandardThreads,
+      [
+        { id: "sec_closed", name: "Closed" },
+        { id: "sec_open", name: "Open" },
+      ],
+    );
+    const context = {
+      collapsedThreadIds: new Set(["folded"]),
+      collapsedSectionKeys: new Set(["chronological::sec_closed"]),
+    };
+
+    expect(
+      items.flatMap((item) =>
+        collectProjectThreadItemNavigationEntries(item, context),
+      ),
+    ).toEqual([
+      { threadId: "open", projectId: "proj_1", isChild: false },
+      { threadId: "open-child", projectId: "proj_1", isChild: true },
+      { threadId: "folded", projectId: "proj_1", isChild: false },
+      { threadId: "orphan", projectId: "proj_1", isChild: true },
     ]);
   });
 });

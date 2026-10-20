@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@cloudroom/shared-ui/lib/utils";
-import { THREAD_JUMP_APP_COMMAND_IDS } from "@cloudroom/domain";
+import {
+  THREAD_JUMP_APP_COMMAND_IDS,
+  TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
+} from "@cloudroom/domain";
 import { useNavigate } from "react-router-dom";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
@@ -33,6 +36,7 @@ import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   getSidebarThreadNavigationTargets,
   getSidebarThreadShortcutTargets,
+  getSidebarTopLevelThreadTarget,
   revealSidebarThread,
   SidebarThreadShortcutKeysContext,
   type SidebarThreadShortcutPresentation,
@@ -197,6 +201,15 @@ export function AppSidebar({
   useIndexedAppCommandHandlers(
     THREAD_JUMP_APP_COMMAND_IDS,
     activateVisibleThreadShortcut,
+  );
+  useIndexedAppCommandHandlers(
+    TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
+    (index) =>
+      isHiddenHostedBody
+        ? false
+        : openNavigationTarget(
+            getSidebarTopLevelThreadTarget(sidebarRef.current, index),
+          ),
   );
   useAppCommandHandler("thread.previous", () =>
     isHiddenHostedBody ? false : activateAdjacentThread(-1),

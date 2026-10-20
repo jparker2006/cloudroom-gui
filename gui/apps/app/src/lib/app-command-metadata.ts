@@ -2,6 +2,7 @@ import {
   QUESTION_SELECT_APP_COMMAND_IDS,
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
+  TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
   type AppCommandId,
 } from "@cloudroom/domain";
 
@@ -80,6 +81,13 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
           `Open visible sidebar thread ${index + 1}.`,
         ),
       ),
+      ...TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS.map((id, index) =>
+        paletteHiddenCommand(
+          id,
+          `Open top-level thread ${index + 1}`,
+          `Open top-level sidebar thread ${index + 1}, skipping child threads.`,
+        ),
+      ),
     ],
   },
   {
@@ -90,7 +98,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open quick palette",
         "Search and run Cloudroom commands from the keyboard.",
       ),
-      command("window.new", "New window", "Open another Cloudroom desktop window."),
+      command(
+        "window.new",
+        "New window",
+        "Open another Cloudroom desktop window.",
+      ),
       command(
         "app.back",
         "Back to app",

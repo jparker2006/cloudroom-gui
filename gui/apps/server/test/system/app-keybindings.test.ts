@@ -3,6 +3,7 @@ import { getAppKeybindingOverrides } from "@cloudroom/db";
 import {
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
+  TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
   applyAppKeybindingOverrides,
   appKeybindingOverridesSchema,
   isAppKeybindingAvailableForClient,
@@ -434,6 +435,10 @@ describe("app keybindings", () => {
             shift: binding.shortcut.shift,
           })),
       ).toEqual([
+        ...TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS.map((command) => ({
+          command,
+          shift: false,
+        })),
         { command: "modelPicker.cycleModel", shift: false },
         { command: "modelPicker.cycleModelBackward", shift: true },
         { command: "modelPicker.cycleProvider", shift: false },
@@ -522,6 +527,7 @@ describe("app keybindings", () => {
           .filter((binding) => binding.desktopOnly)
           .map((binding) => binding.command),
       ).toEqual([
+        ...TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS,
         "thread.new",
         "history.back",
         "history.forward",
@@ -535,6 +541,92 @@ describe("app keybindings", () => {
         "browser.find",
         "window.new",
       ]);
+    });
+  });
+
+  it("binds Command+Option+1-9 to top-level threads on the Mac desktop only", () => {
+    const assigned = applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, []);
+    const topLevel = assigned.filter((binding) =>
+      binding.command.startsWith("thread.jumpTopLevel."),
+    );
+    expect(topLevel).toEqual(
+      TOP_LEVEL_THREAD_JUMP_APP_COMMAND_IDS.map((command, index) => ({
+        command,
+        desktopOnly: true,
+        shortcut: {
+          key: String(index + 1),
+          mod: true,
+          meta: false,
+          control: false,
+          alt: true,
+          shift: false,
+        },
+        when: { all: ["mainSurface", "macPlatform"], none: ["modalOpen"] },
+      })),
+    );
+    expect(assigned.slice(0, topLevel.length)).toEqual(topLevel);
+    for (const client of DEFAULT_KEYBINDING_CLIENTS) {
+      expect(
+        topLevel.some((binding) =>
+          isAppKeybindingAvailableForClient(binding, client),
+        ),
+      ).toBe(client.name === "desktop-mac");
+    }
+    expect(
+      assigned.some(
+        (binding) =>
+          binding.shortcut.alt &&
+          binding.shortcut.shift &&
+          /^[0-9]$/u.test(binding.shortcut.key),
+      ),
+    ).toBe(false);
+  });
+
+  it("replaces every top-level jump binding with a user override", async () => {
+    await withTestHarness(async (harness) => {
+      const shortcut = {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: true,
+        alt: true,
+        shift: false,
+      };
+      const overrides = [
+        { command: "thread.jumpTopLevel.1" as const, shortcut },
+        { command: "thread.jumpTopLevel.2" as const, shortcut: null },
+      ];
+      const response = await harness.app.request("/api/v1/settings/keyboard", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(overrides),
+      });
+      expect(response.status).toBe(200);
+      const config = systemConfigResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/system/config")),
+      );
+      expect(
+        config.keybindings.filter(
+          (binding) => binding.command === "thread.jumpTopLevel.1",
+        ),
+      ).toEqual([
+        {
+          command: "thread.jumpTopLevel.1",
+          desktopOnly: true,
+          shortcut,
+          when: { all: ["mainSurface", "macPlatform"], none: ["modalOpen"] },
+        },
+      ]);
+      expect(
+        config.keybindings.some(
+          (binding) => binding.command === "thread.jumpTopLevel.2",
+        ),
+      ).toBe(false);
+      expect(
+        config.keybindings.find(
+          (binding) => binding.command === "thread.jumpTopLevel.3",
+        )?.shortcut,
+      ).toMatchObject({ key: "3", mod: true, alt: true });
     });
   });
 
