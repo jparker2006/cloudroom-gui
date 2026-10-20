@@ -104,6 +104,7 @@ import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import {
   arePromptDraftStatesEqual,
+  getCrossProjectPromptAttachmentCopies,
   getProjectStoredPromptAttachmentPaths,
   isPromptDraftEmpty,
   promptDraftToInput,
@@ -1292,7 +1293,7 @@ export function NewThreadComposer({
               file,
             });
             if (currentUploadTargetRef.current !== capturedTarget) return;
-            promptDraft.addAttachment(uploaded);
+            promptDraft.addAttachment({ ...uploaded, projectId });
           } catch (error) {
             if (currentUploadTargetRef.current === capturedTarget) {
               setComposerError(
@@ -1625,6 +1626,12 @@ export function NewThreadComposer({
       setIsSubmitting(true);
       setComposerError(null);
       try {
+        for (const copy of getCrossProjectPromptAttachmentCopies(
+          submittedDraft.attachments,
+          projectId,
+        )) {
+          await sdk.projects.attachments.copy({ projectId, ...copy });
+        }
         await onSubmit(request);
         promptDraft.clearIfCurrentMatches(submittedDraft);
         if (executionTarget === "cloud")

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,6 +53,56 @@ describe("project attachments", () => {
       "image-uploaded.png",
     );
     expect(copied.content.toString("utf8")).toBe("image bytes");
+  });
+
+  it("copies image bytes exactly, again without error, and never overwrites a different target file", async () => {
+    const dataDir = await makeTempDir();
+    const sourceDir = join(dataDir, "attachments", "proj_source");
+    const targetDir = join(dataDir, "attachments", "proj_target");
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x0d, 0x0a]);
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(join(sourceDir, "shot.png"), png);
+    await writeFile(join(sourceDir, "taken.png"), png);
+    await writeFile(join(targetDir, "taken.png"), "other image");
+
+    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+      "shot.png",
+    ]);
+    await copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+      "shot.png",
+    ]);
+    expect(
+      (await readAttachment(dataDir, "proj_target", "shot.png")).content,
+    ).toEqual(png);
+
+    await expect(
+      copyProjectAttachments(dataDir, "proj_source", "proj_target", [
+        "taken.png",
+      ]),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await readFile(join(targetDir, "taken.png"), "utf8")).toBe(
+      "other image",
+    );
+    expect(await readFile(join(sourceDir, "taken.png"))).toEqual(png);
+    expect(await readFile(join(sourceDir, "shot.png"))).toEqual(png);
+  });
+
+  it("rejects copy paths that leave either project's attachment directory", async () => {
+    const dataDir = await makeTempDir();
+    await mkdir(join(dataDir, "attachments", "proj_other"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(dataDir, "attachments", "proj_other", "secret.png"),
+      "secret",
+    );
+
+    for (const path of ["../proj_other/secret.png", "/etc/passwd", "."]) {
+      await expect(
+        copyProjectAttachments(dataDir, "proj_source", "proj_target", [path]),
+      ).rejects.toMatchObject({ status: 400 });
+    }
   });
 
   it("does not partially copy when one source attachment is missing", async () => {

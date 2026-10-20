@@ -1,6 +1,6 @@
 import { createServer, type ServerResponse } from "node:http";
 import { once } from "node:events";
-import { mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import * as sync from "../../src/services/cloudroom/sync.js";
@@ -1148,6 +1148,95 @@ it("shows Teleport the moment it starts, and never leaves a failed or interrupte
     const response = await stopped;
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: "teleport_interrupted", message: expect.stringContaining("stopped or archived") });
+  } finally {
+    service.stop(); core.closeAllConnections(); await new Promise<void>((resolve) => core.close(() => resolve())); await harness.cleanup();
+  }
+});
+
+it("keeps Cloud image attachments resolvable after a project switch, and replays missing or escaping ones as warnings", async () => {
+  const harness = await createTestAppHarness();
+  const { host } = seedHostSession(harness.deps);
+  const { project: projectA } = seedProjectWithSource(harness.deps, { hostId: host.id, name: "A", path: "/tmp/project-a" });
+  const { project: projectB } = seedProjectWithSource(harness.deps, { hostId: host.id, name: "B", path: "/tmp/project-b" });
+  const service = cloudroom(harness.deps);
+  const sid = "cr_cross_project";
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x80, 0x7f, 0x0d, 0x0a]);
+  const uploads: Buffer[] = [];
+  const prompts: { request_id: string; text: string; attachments?: unknown[] }[] = [];
+  const core = createServer(async (req, res) => {
+    const json = (body: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (req.url === "/v1/health") return json({});
+    if (req.url === "/v1/capabilities") return json({
+      version: 1, repository: "/code/test", stop: true, resume: true, launch_settings: true, direct_workspaces: true, command_guard: true,
+      structured_prompt: true, attachments: true, harnesses: [{ id: "codex", model: "test-model" }],
+    });
+    if (req.url === "/v1/ready") return json({ ready: true });
+    if (req.url?.includes("/stream?")) { res.writeHead(200, { "Content-Type": "text/event-stream" }); res.flushHeaders(); return; }
+    const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(chunk as Buffer);
+    const raw = Buffer.concat(chunks);
+    if (req.url?.includes("/attachments?")) {
+      const id = new URL(req.url, "http://fixture").searchParams.get("request_id");
+      uploads.push(raw);
+      return json({ session_id: sid, receipt: { request_id: id, command: "attach", state: "completed", input: { id, path: `/code/test/.cloudroom/attachments/${id}/image.png` } }, saving: {} }, 202);
+    }
+    const body = raw.length ? JSON.parse(raw.toString("utf8")) : {};
+    if (req.url === "/v1/sessions") return json({ session_id: sid, receipt: { request_id: body.request_id, command: "start", state: "completed", input: {} }, saving: {} }, 202);
+    if (String(req.url).endsWith("/prompts")) prompts.push(body);
+    json({ session_id: sid, receipt: { request_id: body.request_id, command: "prompt", state: "accepted", input: body }, saving: {} }, 202);
+  });
+  core.listen(0, "127.0.0.1"); await once(core, "listening");
+  const address = core.address();
+  if (!address || typeof address === "string") throw new Error("fixture did not listen");
+  const request = (path: string, body?: unknown) => harness.app.request(`/api/v1${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const upload = async (projectId: string) => {
+    const form = new FormData();
+    form.set("file", new File([png], "screen shot.png", { type: "image/png" }));
+    const response = await harness.app.request(`/api/v1/projects/${projectId}/attachments`, { method: "POST", body: form });
+    expect(response.status).toBe(201);
+    return (await response.json()) as { path: string };
+  };
+  const createIn = (projectId: string, requestId: string, path: string) => request("/threads", { executionTarget: "cloud", requestId, projectId, providerId: "codex", origin: "app", model: "test-model", reasoningLevel: "medium", environment: { type: "project-default" }, input: [{ type: "text", text: requestId, mentions: [] }, { type: "localImage", path }] });
+  try {
+    await service.configure({ url: `http://127.0.0.1:${address.port}`, token: "x".repeat(40) });
+    const { path } = await upload(projectA.id);
+    const fileInA = join(harness.config.dataDir, "attachments", projectA.id, path);
+
+    const rejected = await createIn(projectB.id, "cross-project", path);
+    expect(rejected.status).toBe(400);
+    expect(await rejected.text()).toContain("was not uploaded for this project");
+    expect(harness.db.select().from(cloudroomCommands).all()).toHaveLength(0);
+
+    expect((await request(`/projects/${projectB.id}/attachments/copy`, { sourceProjectId: projectA.id, paths: [path] })).status).toBe(200);
+    const created = await createIn(projectB.id, "after-copy", path);
+    expect(created.status, await created.clone().text()).toBe(201);
+    const thread = await created.json();
+    await expect.poll(() => prompts.some((prompt) => prompt.text.includes("after-copy"))).toBe(true);
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]!.equals(png)).toBe(true);
+    expect((await readFile(fileInA)).equals(png)).toBe(true);
+
+    const { path: onlyInA } = await upload(projectA.id);
+    const storeLegacyPrompt = (requestId: string, localPath: string, at: number) => harness.db.insert(cloudroomCommands).values({
+      id: requestId, threadId: thread.id, command: "prompt", createdAt: at,
+      input: JSON.stringify({ text: requestId, content: [{ type: "text", text: requestId, mentions: [] }, { type: "localImage", path: localPath }], attachments: [{ name: localPath, kind: "image", localPath }], customInstructions: "" }),
+    }).run();
+    storeLegacyPrompt("legacy-bare-name", onlyInA, Date.now());
+    storeLegacyPrompt("legacy-escaping", `../${projectA.id}/${onlyInA}`, Date.now() + 1);
+    expect((await request(`/threads/${thread.id}/send`, { requestId: "continues", mode: "auto", input: [{ type: "text", text: "continues", mentions: [] }, { type: "localImage", path }] })).status).toBe(200);
+
+    await expect.poll(() => prompts.map((prompt) => prompt.request_id)).toEqual([`first_${thread.id}`, "legacy-bare-name", "legacy-escaping", "continues"]);
+    for (const [id, name] of [["legacy-bare-name", onlyInA], ["legacy-escaping", `../${projectA.id}/${onlyInA}`]] as const) {
+      const prompt = prompts.find((item) => item.request_id === id)!;
+      expect(prompt.attachments ?? []).toEqual([]);
+      expect(prompt.text).toContain(`[Attachment "${name}" could not be delivered`);
+      expect(prompt.text).toContain("You have not seen it");
+    }
+    expect(prompts.at(-1)!.attachments).toHaveLength(1);
+    expect(prompts.at(-1)!.text).not.toContain("could not be delivered");
+    expect(uploads).toHaveLength(2);
+    expect(uploads.every((bytes) => bytes.equals(png))).toBe(true);
+    expect((await readFile(join(harness.config.dataDir, "attachments", projectA.id, onlyInA))).equals(png)).toBe(true);
+    expect((await readFile(fileInA)).equals(png)).toBe(true);
   } finally {
     service.stop(); core.closeAllConnections(); await new Promise<void>((resolve) => core.close(() => resolve())); await harness.cleanup();
   }

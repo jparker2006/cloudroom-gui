@@ -18,7 +18,13 @@ import {
   restorePromptDraftAfterOptionChange,
   type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
-import { getProjectStoredPromptAttachmentPaths } from "@cloudroom/client-core";
+import {
+  getCrossProjectPromptAttachmentCopies,
+  getProjectStoredPromptAttachmentPaths,
+  parsePromptDraftStorage,
+  promptDraftToInput,
+  serializePromptDraftStorage,
+} from "@cloudroom/client-core";
 import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
@@ -659,6 +665,62 @@ describe("getProjectStoredPromptAttachmentPaths", () => {
         },
       ]),
     ).toEqual(["image-uploaded.png"]);
+  });
+});
+
+describe("getCrossProjectPromptAttachmentCopies", () => {
+  const image = (path: string, projectId?: string) => ({
+    type: "localImage" as const,
+    path,
+    name: "screen shot.png",
+    mimeType: "image/png",
+    sizeBytes: 64,
+    ...(projectId === undefined ? {} : { projectId }),
+  });
+
+  it("copies attachments uploaded in another project into the target", () => {
+    expect(
+      getCrossProjectPromptAttachmentCopies(
+        [
+          image("a-1.png", "proj_a"),
+          image("b-1.png", "proj_b"),
+          image("a-2.png", "proj_a"),
+          image("legacy.png"),
+          image("/tmp/absolute.png", "proj_a"),
+        ],
+        "proj_b",
+      ),
+    ).toEqual([{ sourceProjectId: "proj_a", paths: ["a-1.png", "a-2.png"] }]);
+  });
+
+  it("copies nothing for same-project or legacy untagged attachments", () => {
+    expect(
+      getCrossProjectPromptAttachmentCopies(
+        [image("b-1.png", "proj_b"), image("legacy.png")],
+        "proj_b",
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps the owning project across a reload without sending it", () => {
+    const draft = {
+      text: "look",
+      mentions: [],
+      attachments: [image("a-1.png", "proj_a")],
+    };
+    const reloaded = parsePromptDraftStorage(
+      serializePromptDraftStorage(draft),
+    );
+    expect(reloaded.attachments).toEqual(draft.attachments);
+    expect(promptDraftToInput(reloaded)).toEqual([
+      { type: "text", text: "look", mentions: [] },
+      { type: "localImage", path: "a-1.png" },
+    ]);
+    expect(
+      parsePromptDraftStorage(
+        JSON.stringify({ text: "", attachments: [image("legacy.png")] }),
+      ).attachments,
+    ).toEqual([image("legacy.png")]);
   });
 });
 

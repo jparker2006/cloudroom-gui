@@ -13,7 +13,13 @@ import {
   SUBMITTED_AUTOMATION_PROMPT_PREFIX,
 } from "./automation-prompt.js";
 
-export type PromptDraftAttachment = UploadedPromptAttachment;
+export type PromptDraftAttachment = UploadedPromptAttachment & {
+  projectId?: string;
+};
+
+const promptDraftAttachmentSchema = uploadedPromptAttachmentSchema.extend({
+  projectId: z.string().min(1).optional(),
+});
 
 /** Full text behind a short `<context> [label] </context>` line in the draft. */
 export interface PromptDraftContext {
@@ -49,7 +55,7 @@ const promptDraftStorageSchema = z.object({
     .default([])
     .transform((items) =>
       items.flatMap((item) => {
-        const result = uploadedPromptAttachmentSchema.safeParse(item);
+        const result = promptDraftAttachmentSchema.safeParse(item);
         return result.success ? [result.data] : [];
       }),
     ),
@@ -474,6 +480,24 @@ export function promptInputToDraft(
     mentions,
     attachments,
   };
+}
+
+export function getCrossProjectPromptAttachmentCopies(
+  attachments: readonly PromptDraftAttachment[],
+  projectId: string,
+): { sourceProjectId: string; paths: string[] }[] {
+  const bySource = new Map<string, PromptDraftAttachment[]>();
+  for (const attachment of attachments) {
+    if (!attachment.projectId || attachment.projectId === projectId) continue;
+    bySource.set(attachment.projectId, [
+      ...(bySource.get(attachment.projectId) ?? []),
+      attachment,
+    ]);
+  }
+  return [...bySource].flatMap(([sourceProjectId, items]) => {
+    const paths = getProjectStoredPromptAttachmentPaths(items);
+    return paths.length > 0 ? [{ sourceProjectId, paths }] : [];
+  });
 }
 
 export function getProjectStoredPromptAttachmentPaths(

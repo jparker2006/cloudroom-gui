@@ -130,7 +130,10 @@ export function AttachmentPreview({
   );
   const attachmentImageItems = imageAttachments.map((attachment) => ({
     alt: attachment.name,
-    src: resolveAttachmentPreviewSrc(attachment.path, attachmentProjectId),
+    src: resolveAttachmentPreviewSrc(
+      attachment.path,
+      attachment.projectId ?? attachmentProjectId,
+    ),
   }));
   const hasMultipleAttachmentImages = imageAttachments.length > 1;
   const currentAttachmentImage =

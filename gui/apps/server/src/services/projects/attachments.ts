@@ -187,7 +187,7 @@ export async function storeAttachment(
 }
 
 interface StoredAttachmentContent {
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
   etag: string;
   mimeType?: string;
 }
@@ -225,17 +225,28 @@ export async function copyProjectAttachments(
   const uniquePaths = [...new Set(attachmentPaths)];
   const targetDir = projectAttachmentDir(dataDir, targetProjectId);
   const attachments = await Promise.all(
-    uniquePaths.map(async (attachmentPath) => ({
-      content: (await readAttachment(dataDir, sourceProjectId, attachmentPath))
-        .content,
-      targetPath: resolveAttachmentPath(targetDir, attachmentPath),
-    })),
+    uniquePaths.map(async (attachmentPath) => {
+      const content = (
+        await readAttachment(dataDir, sourceProjectId, attachmentPath)
+      ).content;
+      const targetPath = resolveAttachmentPath(targetDir, attachmentPath);
+      const existing = await readFile(targetPath).catch(() => null);
+      if (existing && !existing.equals(content)) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `Attachment ${attachmentPath} already exists in the target project with different content`,
+        );
+      }
+      return { content, exists: existing !== null, targetPath };
+    }),
   );
 
   await Promise.all(
-    attachments.map(async ({ content, targetPath }) => {
+    attachments.map(async ({ content, exists, targetPath }) => {
+      if (exists) return;
       await mkdir(dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, content);
+      await writeFile(targetPath, content, { flag: "wx" });
     }),
   );
 }
