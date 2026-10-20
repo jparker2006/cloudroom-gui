@@ -96,7 +96,7 @@ async function readContext(harness: TestAppHarness, threadId: string) {
 }
 
 describe("recorded compactions through persistence", () => {
-  it("keeps marker item ids through the daemon event route so two compactions in one turn stay distinct", async () => {
+  it("keeps marker item ids through the daemon event route and does not over-count repeated notices in one turn", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedFixture(harness);
       await postEvents(
@@ -114,10 +114,12 @@ describe("recorded compactions through persistence", () => {
       ]);
 
       const { compactions } = await readContext(harness, thread.id);
-      expect(compactions.completedCount).toBe(2);
-      expect(compactions.entries.map((entry) => entry.id)).toEqual([
-        "cmp-b",
-        "cmp-a",
+      expect(compactions.completedCount).toBe(1);
+      expect(
+        compactions.entries.map((entry) => [entry.id, entry.status]),
+      ).toEqual([
+        ["cmp-b", "unconfirmed"],
+        ["cmp-a", "completed"],
       ]);
 
       const timeline = await harness.app.request(
@@ -128,7 +130,8 @@ describe("recorded compactions through persistence", () => {
       };
       expect(body.recordedCompactions).toMatchObject({
         revision: compactions.revision,
-        completedCount: 2,
+        completedCount: 1,
+        gaps: ["provider-unverified", "repeated-notices"],
       });
     });
   });

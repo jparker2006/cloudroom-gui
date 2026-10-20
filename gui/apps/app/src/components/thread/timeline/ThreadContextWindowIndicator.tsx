@@ -389,7 +389,7 @@ export function ThreadContextWindowIndicator({
         <div
           ref={contentRef}
           tabIndex={-1}
-          className="outline-none"
+          className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onKeyDown={(event) => {
             if (event.key !== "Tab") return;
             const elements = tabbables();

@@ -298,11 +298,15 @@ it("does not show a list whose revision disagrees with the summary", async () =>
   ).toMatchObject({ completedCount: 3 });
 });
 
-it("labels whole-thread scope only when coverage is complete", () => {
+it("labels whole-thread scope only when no real history gap applies", () => {
   const view = mount(
     <ThreadContextWindowCard
       usage={usage}
-      compactions={summary}
+      compactions={{
+        ...summary,
+        coverage: "partial",
+        gaps: ["provider-unverified"],
+      }}
       threadId="thread-a"
       open={false}
     />,
@@ -310,19 +314,31 @@ it("labels whole-thread scope only when coverage is complete", () => {
   expect(screen.getByRole("heading").textContent).toBe(
     "Recorded compactions · whole thread",
   );
+  expect(screen.getByText("2 recorded")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Only compactions the agent reported to Cloudroom are counted.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByRole("note")).toBeNull();
   view.rerender(
     <QueryClientProvider client={clients[0]!}>
       <ThreadContextWindowCard
         usage={usage}
-        compactions={{ ...summary, coverage: "partial", gaps: [] }}
+        compactions={{
+          ...summary,
+          coverage: "partial",
+          gaps: ["provider-unverified", "repeated-notices"],
+        }}
         threadId="thread-a"
         open={false}
       />
     </QueryClientProvider>,
   );
   expect(screen.getByRole("heading").textContent).toBe("Recorded compactions");
+  expect(screen.getByText("2 recorded · partial")).toBeTruthy();
   expect(screen.getByRole("note").textContent).toBe(
-    "Partial history. Some history may be missing.",
+    "Partial history. A turn had more than one compaction notice. Repeats can't be told apart, so only the first is counted.",
   );
 });
 
@@ -405,4 +421,26 @@ it("moves keyboard focus into the popover even while the list is still loading",
   );
   expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
   vi.unstubAllGlobals();
+});
+
+it("shows a neutral note instead of a partial-history warning before the agent reports any compaction", () => {
+  mount(
+    <ThreadContextWindowCard
+      usage={usage}
+      compactions={{
+        ...summary,
+        coverage: "partial",
+        gaps: ["provider-unverified"],
+        completedCount: 0,
+      }}
+      threadId="thread-a"
+      open={false}
+    />,
+  );
+  expect(screen.getByText("None recorded")).toBeTruthy();
+  expect(
+    screen.getByText("Compactions appear here once the agent reports one."),
+  ).toBeTruthy();
+  expect(screen.queryByRole("note")).toBeNull();
+  expect(screen.queryByText(/0 recorded/)).toBeNull();
 });

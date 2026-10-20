@@ -29,11 +29,15 @@ function Time({ value }: { value: number | null }) {
   );
 }
 
+function realGaps(summary: RecordedCompactionsSummary) {
+  return summary.gaps.filter((gap) => gap !== "provider-unverified");
+}
+
 export function recordedCompactionsCountLabel(
   summary: RecordedCompactionsSummary | null,
 ): string {
   if (summary === null) return "Not available";
-  const partial = summary.coverage === "partial";
+  const partial = realGaps(summary).length > 0;
   if (summary.completedCount === 0) {
     return partial ? "None in recorded history" : "None recorded";
   }
@@ -162,10 +166,10 @@ export function RecordedCompactionsSection({
         (entry) =>
           entry.kind === "compaction" && entry.status === "in_progress",
       );
-  const gapText =
-    summary === null || summary.gaps.length === 0
-      ? "Some history may be missing."
-      : summary.gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ");
+  const gaps = summary === null ? [] : realGaps(summary);
+  const gapText = gaps
+    .map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap])
+    .join(" ");
 
   return (
     <section
@@ -176,7 +180,7 @@ export function RecordedCompactionsSection({
       <div className="flex items-baseline justify-between gap-2 text-xs max-md:text-sm">
         <h3 id={titleId} className="font-medium text-muted-foreground">
           Recorded compactions
-          {summary?.coverage === "complete" ? (
+          {summary !== null && gaps.length === 0 ? (
             <span className="font-normal"> · whole thread</span>
           ) : null}
         </h3>
@@ -196,9 +200,15 @@ export function RecordedCompactionsSection({
         <Note title="Not available.">
           Update Cloudroom to see compactions for this thread.
         </Note>
-      ) : summary.coverage === "partial" ? (
+      ) : gaps.length > 0 ? (
         <Note title="Partial history.">{gapText}</Note>
-      ) : null}
+      ) : (
+        <p className="text-xs text-muted-foreground max-md:text-sm">
+          {summary.completedCount === 0 && !summary.inProgress
+            ? "Compactions appear here once the agent reports one."
+            : "Only compactions the agent reported to Cloudroom are counted."}
+        </p>
+      )}
       <div role="status" aria-live="polite">
         {summary?.inProgress ? (
           <div className="flex items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs max-md:text-sm">

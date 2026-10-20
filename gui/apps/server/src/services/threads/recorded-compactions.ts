@@ -20,6 +20,7 @@ import type {
 } from "@cloudroom/server-contract";
 
 export const RECORDED_COMPACTIONS_LIST_LIMIT = 50;
+const SAME_CLEAR_WINDOW_MS = 5_000;
 
 interface CompactionState {
   id: string;
@@ -65,6 +66,7 @@ function pairLateItemsWithMarkers(
       gaps.add("ambiguous-legacy");
       continue;
     }
+    gaps.add("ambiguous-legacy");
     const [marker] = markers;
     const [item] = items;
     item.confirmed = true;
@@ -130,17 +132,20 @@ export function buildRecordedCompactions(
 ): RecordedCompactionsList {
   const rows = listRecordedCompactionRowsCached(db, thread.id, sequenceEnd);
   const gaps = new Set<RecordedCompactionGap>(threadGaps(thread));
-  let lifecycleReported = false;
   const compactions: CompactionState[] = [];
   const byItemId = new Map<string, CompactionState>();
   const clears: Array<{ id: string; at: number; sequence: number }> = [];
-  let lastClearSource: "operation" | "provider" | null = null;
+  let lastClear: { source: "operation" | "provider"; at: number } | null = null;
   const pushClear = (row: StoredEventRow, source: "operation" | "provider") => {
-    if (lastClearSource !== null && lastClearSource !== source) {
-      lastClearSource = null;
+    if (
+      lastClear !== null &&
+      lastClear.source !== source &&
+      row.createdAt - lastClear.at <= SAME_CLEAR_WINDOW_MS
+    ) {
+      lastClear = null;
       return;
     }
-    lastClearSource = source;
+    lastClear = { source, at: row.createdAt };
     clears.push({
       id: `clear:${row.sequence}`,
       at: row.createdAt,
@@ -168,15 +173,13 @@ export function buildRecordedCompactions(
   for (const row of rows) {
     const data = parseData(row);
     if (row.type === "item/started" && row.itemId) {
-      lastClearSource = null;
-      lifecycleReported = true;
+      lastClear = null;
       const compaction = compactionForItem(row, row.itemId);
       compaction.startedAt ??= row.createdAt;
       continue;
     }
     if (row.type === "item/completed" && row.itemId) {
-      lastClearSource = null;
-      lifecycleReported = true;
+      lastClear = null;
       compactionForItem(row, row.itemId).ended = true;
       continue;
     }
@@ -193,7 +196,7 @@ export function buildRecordedCompactions(
       continue;
     }
     if (row.type === "thread/compacted") {
-      lastClearSource = null;
+      lastClear = null;
       const itemId = typeof data.itemId === "string" ? data.itemId : null;
       let target: CompactionState | undefined;
       if (itemId !== null) {
@@ -204,6 +207,7 @@ export function buildRecordedCompactions(
         );
         const unconfirmed = sameTurn.filter((c) => !c.confirmed);
         if (unconfirmed.length === 1) {
+          gaps.add("ambiguous-legacy");
           target = unconfirmed[0];
         } else if (unconfirmed.length > 1) {
           gaps.add("ambiguous-legacy");
@@ -252,10 +256,23 @@ export function buildRecordedCompactions(
   }
 
   pairLateItemsWithMarkers(compactions, gaps);
+  const firstConfirmedByTurn = new Map<string | null, CompactionState>();
+  for (const compaction of [...compactions].sort(
+    (left, right) => left.sequence - right.sequence,
+  )) {
+    if (!compaction.confirmed) continue;
+    if (firstConfirmedByTurn.has(compaction.turnId)) {
+      compaction.confirmed = false;
+      compaction.ended = true;
+      gaps.add("repeated-notices");
+    } else {
+      firstConfirmedByTurn.set(compaction.turnId, compaction);
+    }
+  }
 
   const activeTurnId =
     thread.status === "active" ? getActiveStoredTurnId(db, thread.id) : null;
-  if (!lifecycleReported) gaps.add("provider-unverified");
+  gaps.add("provider-unverified");
   const statusOf = (compaction: CompactionState) =>
     compaction.confirmed
       ? ("completed" as const)

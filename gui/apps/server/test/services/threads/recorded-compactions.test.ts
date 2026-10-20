@@ -164,11 +164,11 @@ describe("recorded compactions", () => {
         summary: null,
       }),
     ]);
-    expect(list.coverage).toBe("complete");
-    expect(list.gaps).toEqual([]);
+    expect(list.coverage).toBe("partial");
+    expect(list.gaps).toEqual(["provider-unverified"]);
   });
 
-  it("keeps two compactions in one turn distinct when markers carry item ids", () => {
+  it("counts only the first of several compaction notices in one turn because repeats can't be told apart", () => {
     sequenceByThread = new Map();
     const { db, thread } = setup();
     append(db, thread, "turn/started", "t1");
@@ -180,11 +180,15 @@ describe("recorded compactions", () => {
     compactionItem(db, thread, "item/completed", "t1", "c2");
 
     const list = build(db, thread);
-    expect(list.completedCount).toBe(2);
-    expect(list.gaps).toEqual([]);
+    expect(list.completedCount).toBe(1);
+    expect(list.gaps).toEqual(["provider-unverified", "repeated-notices"]);
+    expect(compactions(list)).toEqual([
+      expect.objectContaining({ id: "c2", status: "unconfirmed" }),
+      expect.objectContaining({ id: "c1", status: "completed" }),
+    ]);
   });
 
-  it("pairs legacy markers without item ids and flags ambiguity honestly", () => {
+  it("pairs legacy markers without item ids by turn and flags that the match is not by id", () => {
     sequenceByThread = new Map();
     const { db, thread } = setup();
     compactionItem(db, thread, "item/started", "t1", "c1");
@@ -192,7 +196,8 @@ describe("recorded compactions", () => {
     compactionItem(db, thread, "item/completed", "t1", "c1");
     expect(build(db, thread)).toMatchObject({
       completedCount: 1,
-      coverage: "complete",
+      coverage: "partial",
+      gaps: ["ambiguous-legacy", "provider-unverified"],
     });
 
     compactionItem(db, thread, "item/started", "t2", "c2");
@@ -201,9 +206,13 @@ describe("recorded compactions", () => {
     marker(db, thread, "t2");
     marker(db, thread, "t2");
     const ambiguous = build(db, thread);
-    expect(ambiguous.completedCount).toBe(3);
+    expect(ambiguous.completedCount).toBe(2);
     expect(ambiguous.coverage).toBe("partial");
-    expect(ambiguous.gaps).toContain("ambiguous-legacy");
+    expect(ambiguous.gaps).toEqual([
+      "ambiguous-legacy",
+      "provider-unverified",
+      "repeated-notices",
+    ]);
   });
 
   it("pairs a forked marker that precedes its copied item instead of double counting", () => {
@@ -221,7 +230,11 @@ describe("recorded compactions", () => {
         startedAt: null,
       }),
     ]);
-    expect(list.gaps).toEqual(["forked"]);
+    expect(list.gaps).toEqual([
+      "ambiguous-legacy",
+      "forked",
+      "provider-unverified",
+    ]);
   });
 
   it("does not count items without a confirming marker and does not invent a failure", () => {
@@ -319,7 +332,9 @@ describe("recorded compactions", () => {
 
     const reported = setup();
     compactionItem(reported.db, reported.thread, "item/started", "t1", "c1");
-    expect(build(reported.db, reported.thread).gaps).toEqual([]);
+    expect(build(reported.db, reported.thread).gaps).toEqual([
+      "provider-unverified",
+    ]);
   });
 
   it("never infers a compaction from a token drop", () => {
@@ -395,8 +410,8 @@ describe("recorded compactions", () => {
     }).response.recordedCompactions;
     expect(summary).toEqual({
       revision: first.revision,
-      coverage: "complete",
-      gaps: [],
+      coverage: "partial",
+      gaps: ["provider-unverified"],
       completedCount: 1,
       inProgress: false,
     });
@@ -433,7 +448,7 @@ describe("recorded compactions", () => {
     });
   });
 
-  it("does not claim complete coverage until the agent has reported a compaction lifecycle in this thread", () => {
+  it("never claims complete coverage because unreported compactions cannot be ruled out", () => {
     sequenceByThread = new Map();
     const { db, thread } = setup();
     expect(build(db, thread)).toMatchObject({
@@ -449,8 +464,35 @@ describe("recorded compactions", () => {
     compactionItem(db, thread, "item/started", "t2", "c2");
     marker(db, thread, "t2", "c2");
     expect(build(db, thread)).toMatchObject({
-      coverage: "complete",
+      coverage: "partial",
+      gaps: ["provider-unverified"],
       completedCount: 2,
     });
+  });
+
+  it("ends an open compaction on any provider error in its turn, as the timeline does", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup({ status: "active" });
+    append(db, thread, "turn/started", "t1");
+    compactionItem(db, thread, "item/started", "t1", "c1");
+    append(db, thread, "provider/error", "t1", { message: "Rate limited" });
+    expect(build(db, thread)).toMatchObject({
+      inProgress: false,
+      completedCount: 0,
+    });
+  });
+
+  it("keeps distant clears from different sources as separate dividers", () => {
+    sequenceByThread = new Map();
+    const { db, thread } = setup();
+    operation(db, thread, THREAD_CONTEXT_CLEAR_OPERATION);
+    for (let index = 0; index < 10; index += 1) {
+      append(db, thread, "turn/started", `t${index}`);
+    }
+    append(db, thread, "thread/context/cleared", "t9");
+    expect(build(db, thread).entries.map((entry) => entry.kind)).toEqual([
+      "clear",
+      "clear",
+    ]);
   });
 });

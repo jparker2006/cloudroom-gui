@@ -52,6 +52,9 @@ export function registerContextCommand(
             }
           }
           const compactions = result.compactions;
+          const gaps =
+            compactions?.gaps.filter((gap) => gap !== "provider-unverified") ??
+            [];
           if (!compactions) {
             console.log(
               "Recorded compactions: not available from this server.",
@@ -59,7 +62,7 @@ export function registerContextCommand(
             return;
           }
           console.log(
-            `Recorded compactions${compactions.coverage === "complete" ? " (whole thread)" : ""}: ${compactions.completedCount}${compactions.coverage === "partial" ? ` (partial history: ${compactions.gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
+            `Recorded compactions${gaps.length === 0 ? " (whole thread)" : ""}: ${compactions.completedCount}${gaps.length > 0 ? ` (partial history: ${gaps.map((gap) => RECORDED_COMPACTION_GAP_TEXT[gap]).join(" ")})` : ""}`,
           );
           for (const entry of compactions.entries) {
             if (entry.kind === "clear") {

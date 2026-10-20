@@ -46,6 +46,7 @@ export const recordedCompactionGapSchema = z.enum([
   "forked",
   "imported-history",
   "provider-unverified",
+  "repeated-notices",
   "rewound",
   "teleported",
   "unhandled-compaction-event",
@@ -56,12 +57,15 @@ export const RECORDED_COMPACTION_GAP_TEXT: Record<
   RecordedCompactionGap,
   string
 > = {
-  "ambiguous-legacy": "Some compaction notices couldn't be told apart.",
+  "ambiguous-legacy":
+    "Some compactions were matched to their notices by turn, not by ID, so they may be off.",
   "cloud-auto-not-reported": "Cloud may not report automatic compactions.",
   forked: "Records copied from the source thread may be incomplete.",
   "imported-history": "Imported history may be missing compaction records.",
   "provider-unverified":
-    "This agent hasn't reported a compaction in this thread yet, so some may be missing.",
+    "Only compactions the agent reported to Cloudroom are counted.",
+  "repeated-notices":
+    "A turn had more than one compaction notice. Repeats can't be told apart, so only the first is counted.",
   rewound: "Edited or rewound messages may have removed some history.",
   teleported: "Part of this thread ran on another machine.",
   "unhandled-compaction-event": "Some compaction events couldn't be placed.",
