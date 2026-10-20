@@ -87,6 +87,8 @@ import {
   arrangePluginNavPanelPreferences,
   DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
+  seedFleetNavigationPreference,
   seedSkillsNavigationPreference,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
@@ -230,10 +232,19 @@ function PluginNavSidebarItemList({
     },
     [compactCustomizeMode, isCompactViewport, onCompactCustomizeModeChange],
   );
-  const seededPreferences = useMemo(
-    () => seedSkillsNavigationPreference(storedOrder, storedVisibleKeys),
-    [storedOrder, storedVisibleKeys],
-  );
+  const seededPreferences = useMemo(() => {
+    const skills = seedSkillsNavigationPreference(
+      storedOrder,
+      storedVisibleKeys,
+    );
+    const hasFleet = rows.some(
+      (row) =>
+        getPluginNavPanelKey(row) === BUILT_IN_SIDEBAR_NAVIGATION_KEYS.fleet,
+    );
+    return hasFleet
+      ? seedFleetNavigationPreference(skills.order, skills.visibleKeys)
+      : skills;
+  }, [rows, storedOrder, storedVisibleKeys]);
   const [disablePending, setDisablePending] = useState(false);
   const handleDisable = useCallback(
     async (row: PluginSidebarNavRow) => {

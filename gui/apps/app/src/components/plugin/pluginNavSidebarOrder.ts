@@ -51,6 +51,38 @@ export function seedSkillsNavigationPreference(
   return { order: nextOrder, visibleKeys: nextVisibleKeys };
 }
 
+export function seedFleetNavigationPreference(
+  order: readonly string[],
+  visibleKeys: readonly string[] | null,
+): { order: string[]; visibleKeys: string[] | null } {
+  const { newThread, searchThreads, fleet, extensions } =
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS;
+  if (order.length === 0 || order.includes(fleet)) {
+    return {
+      order: [...order],
+      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
+    };
+  }
+  const insertAfter = (list: string[]) => {
+    for (const anchor of [searchThreads, newThread]) {
+      const index = list.indexOf(anchor);
+      if (index !== -1) return index + 1;
+    }
+    const before = list.indexOf(extensions);
+    return before === -1 ? 0 : before;
+  };
+  const nextOrder = [...order];
+  nextOrder.splice(insertAfter(nextOrder), 0, fleet);
+  let nextVisibleKeys: string[] | null = null;
+  if (visibleKeys !== null) {
+    nextVisibleKeys = [...visibleKeys];
+    if (!nextVisibleKeys.includes(fleet)) {
+      nextVisibleKeys.splice(insertAfter(nextVisibleKeys), 0, fleet);
+    }
+  }
+  return { order: nextOrder, visibleKeys: nextVisibleKeys };
+}
+
 export function getPluginNavPanelKey(panel: PluginNavPanelIdentity): string {
   return `${panel.pluginId}/${panel.id}`;
 }

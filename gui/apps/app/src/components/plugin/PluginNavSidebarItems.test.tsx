@@ -329,6 +329,30 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("places Fleet after New thread for a stored order saved before Fleet existed", () => {
+    renderSidebarItems({
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+        builtInEntry("fleet", "Fleet"),
+        builtInEntry("extensions", "Plugins"),
+        builtInEntry("skills", "Skills"),
+      ],
+      storedOrder: ["__bb__/new-thread", "__bb__/extensions", "__bb__/skills"],
+      storedVisibleKeys: [
+        "__bb__/new-thread",
+        "__bb__/extensions",
+        "__bb__/skills",
+      ],
+    });
+    expect(visibleRowKeys()).toEqual([
+      "__bb__/new-thread",
+      "__bb__/fleet",
+      "__bb__/extensions",
+      "__bb__/skills",
+    ]);
+  });
+
   it("keeps built-in actions visible without placeholders during startup", () => {
     resetPluginFrontendBootStateForTest();
     renderSidebarItems({
