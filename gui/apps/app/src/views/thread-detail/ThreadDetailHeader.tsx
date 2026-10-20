@@ -53,6 +53,7 @@ interface ThreadDetailHeaderProps {
   onToggleSecondaryPanel: () => void;
   pluginActions?: ReactNode;
   shareButton?: ReactNode;
+  subagentChip?: ReactNode;
   threadId: string;
   threadPurpose?: ThreadPurpose | null;
   threadTitle: string;
@@ -106,6 +107,7 @@ export function ThreadDetailHeader({
   onToggleSecondaryPanel,
   pluginActions,
   shareButton,
+  subagentChip,
   threadId,
   threadPurpose = null,
   threadTitle,
@@ -199,6 +201,7 @@ export function ThreadDetailHeader({
           {childPillLabel}
         </Pill>
       ) : null}
+      {subagentChip}
       {actionsMenu == null ? null : (
         <span
           data-testid="thread-detail-header-actions-menu"

@@ -463,4 +463,26 @@ describe("ThreadDetailHeader", () => {
 
     expect(beginPaneDrag).not.toHaveBeenCalled();
   });
+
+  it("shows the subagent chip beside the child pill, outside the hidden-on-shelf actions", () => {
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={<button type="button">More</button>}
+          childPillLabel="child"
+          isSecondaryPanelOpen={false}
+          onToggleSecondaryPanel={vi.fn()}
+          subagentChip={<button type="button">Subagents chip</button>}
+          threadId={THREAD_ID}
+          threadTitle="Status slot"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const chip = screen.getByRole("button", { name: "Subagents chip" });
+    expect(chip.previousElementSibling?.textContent).toBe("child");
+    expect(
+      chip.closest("[data-testid='thread-detail-header-actions-menu']"),
+    ).toBeNull();
+  });
 });

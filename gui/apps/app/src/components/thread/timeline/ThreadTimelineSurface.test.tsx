@@ -84,3 +84,57 @@ describe("ThreadTimelineSurface load-older control", () => {
     expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("ThreadTimelineSurface empty content", () => {
+  const renderSurface = (
+    overrides: Partial<Parameters<typeof ThreadTimelineSurface>[0]> = {},
+  ) =>
+    render(
+      <ThreadTimelineSurface
+        activeThinking={null}
+        contextBoundarySeq={null}
+        isThreadTimelinePending={false}
+        showOngoingIndicator={false}
+        threadId="thread-1"
+        threadRuntimeDisplayStatus="idle"
+        timelineError={false}
+        timelineRows={[]}
+        workspaceRootPath={undefined}
+        emptyContent={<p>No messages yet</p>}
+        {...overrides}
+      />,
+    );
+
+  it("shows only for a loaded, idle thread with no rows", () => {
+    renderSurface();
+    expect(screen.getByText("No messages yet")).not.toBeNull();
+  });
+
+  it.each<[string, Partial<Parameters<typeof ThreadTimelineSurface>[0]>]>([
+    ["loading", { isThreadTimelinePending: true }],
+    ["a load error", { timelineError: true }],
+    ["active work", { showOngoingIndicator: true }],
+    ["unloaded older history", { hasOlderTimelineRows: true }],
+    [
+      "a host notice",
+      { hostConnectionNotice: { label: "Waiting", tone: "pending" as const } },
+    ],
+    ["a pending thread", { threadRuntimeDisplayStatus: "pending" as const }],
+    ["an active thread", { threadRuntimeDisplayStatus: "active" as const }],
+    ["a stopping thread", { threadRuntimeDisplayStatus: "stopping" as const }],
+    [
+      "a reconnecting host",
+      { threadRuntimeDisplayStatus: "host-reconnecting" as const },
+    ],
+  ])("stays hidden during %s", (_, overrides) => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    renderSurface(overrides);
+    expect(screen.queryByText("No messages yet")).toBeNull();
+  });
+});

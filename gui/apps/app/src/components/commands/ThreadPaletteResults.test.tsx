@@ -28,10 +28,14 @@ import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
 } from "@/test/fixtures/projects";
+import roomLogoUrl from "../../../../../assets/room-logo.png";
 
 const navigation = vi.hoisted(() => ({
   data: undefined as SidebarBootstrapResponse | undefined,
   isLoading: false,
+  isFetching: false,
+  isPlaceholderData: false,
+  isSuccess: false,
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -110,12 +114,78 @@ function renderResults({
 afterEach(() => {
   cleanup();
   navigation.data = undefined;
+  navigation.isFetching = false;
+  navigation.isPlaceholderData = false;
+  navigation.isSuccess = false;
   window.localStorage.clear();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
 describe("ThreadPaletteResults", () => {
+  const noHits = {
+    data: {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    },
+    debouncedQuery: "kubernetes",
+    hasSearchableQuery: true,
+    isDebouncing: false,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+  };
+
+  it("illustrates no matches once projects are loaded", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    mockThreadSearch(noHits);
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(
+      document
+        .querySelector('[data-empty-state-scene="search"] image')
+        ?.getAttribute("href"),
+    ).toBe(roomLogoUrl);
+  });
+
+  it("keeps plain no-match copy while projects are unsettled", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    navigation.isPlaceholderData = true;
+    mockThreadSearch(noHits);
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
+  it("keeps plain no-match copy while search results refetch", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    mockThreadSearch({ ...noHits, isFetching: true });
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
+  it("keeps plain no-match copy while projects refetch", () => {
+    navigation.data = makeSidebarBootstrapResponse();
+    navigation.isSuccess = true;
+    navigation.isFetching = true;
+    mockThreadSearch(noHits);
+
+    renderResults({ query: "kubernetes" });
+
+    expect(screen.getByText("No matching results")).not.toBeNull();
+    expect(document.querySelector("[data-empty-state-scene]")).toBeNull();
+  });
+
   it("clears stale rows while the visible query is debouncing", () => {
     mockThreadSearch({
       data: createSearchResponse(

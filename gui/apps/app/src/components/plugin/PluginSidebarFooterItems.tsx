@@ -136,10 +136,13 @@ export function usePluginSidebarFooterDisclosure() {
 export function PluginSidebarFooterDisclosure({
   item,
   onDismiss,
+  onNavigate,
 }: {
   item: PluginSidebarFooterItemSlot | null;
   onDismiss: () => void;
+  onNavigate?: () => void;
 }) {
+  const navigate = useNavigate();
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [contentHeight, setContentHeight] = useState<number | null>(null);
 
@@ -172,7 +175,16 @@ export function PluginSidebarFooterDisclosure({
           slotKind="experimental_sidebarFooter"
           slotId={item.id}
         >
-          <Component dismiss={onDismiss} />
+          <Component
+            dismiss={onDismiss}
+            openPluginDetails={() => {
+              onDismiss();
+              onNavigate?.();
+              void navigate(
+                getPluginConfigurationRoutePath({ pluginId: item.pluginId }),
+              );
+            }}
+          />
         </PluginSlotMount>
       </div>
     </section>

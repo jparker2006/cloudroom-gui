@@ -1,6 +1,9 @@
 import { cloudroom, isCloudThread } from "../../services/cloudroom/commands.js";
 import { cloudFile } from "../../services/cloudroom/teleport-local.js";
-import { extractThreadContextWindowUsage } from "@cloudroom/thread-view";
+import {
+  extractThreadContextWindowUsage,
+  getThreadContextWindowUsageState,
+} from "@cloudroom/thread-view";
 import mimeTypes from "mime-types";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
@@ -55,6 +58,7 @@ import {
   serveDaemonFileContent,
 } from "../../services/hosts/daemon-file-response.js";
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
+import { buildRecordedCompactions } from "../../services/threads/recorded-compactions.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   toThreadEventWithMeta,
@@ -399,8 +403,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       threadId: thread.id,
       sequenceStart,
     });
+    const usageEvents = rows.map(toThreadEventWithMeta);
+    const usageState = getThreadContextWindowUsageState(usageEvents);
     return context.json({
-      usage: extractThreadContextWindowUsage(rows.map(toThreadEventWithMeta)),
+      usage: extractThreadContextWindowUsage(usageEvents),
+      ...(usageState === null ? {} : { usageState }),
+      compactions: buildRecordedCompactions(
+        deps.db,
+        thread,
+        getLatestThreadSequence(deps.db, { threadId: thread.id }),
+      ),
     });
   });
 

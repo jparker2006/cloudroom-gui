@@ -4,7 +4,11 @@ import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@cloudroom/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@cloudroom/shared-ui/skeleton";
-import { EmptyStatePanel } from "@cloudroom/shared-ui/empty-state";
+import {
+  EmptyStatePanel,
+  EmptyStateScene,
+} from "@cloudroom/shared-ui/empty-state";
+import { roomLogoUrl } from "@/components/ui/bb-logo";
 import {
   useEnvironmentDiffFiles,
   useEnvironment,
@@ -187,6 +191,7 @@ export function GitDiffTabContent({
     dataUpdatedAt: diffFilesUpdatedAt,
     isLoading: isDiffFilesLoading,
     isPlaceholderData: isDiffFilesPlaceholder,
+    isFetching: isDiffFilesFetching,
     error: diffFilesError,
   } = useEnvironmentDiffFiles(environmentId ?? "", {
     enabled: isQueryEnabled,
@@ -270,16 +275,37 @@ export function GitDiffTabContent({
     );
   }
 
-  if (
-    diffFilesResponse.files.length === 0 ||
-    !environmentId ||
-    target === undefined
-  ) {
+  if (!environmentId || target === undefined) {
     return (
       <GitDiffMessageSlot>
         <EmptyStatePanel className="rounded-lg">
           No diff to display.
         </EmptyStatePanel>
+      </GitDiffMessageSlot>
+    );
+  }
+
+  if (
+    diffFilesResponse.files.length === 0 &&
+    (isDiffFilesPlaceholder || isDiffFilesFetching)
+  ) {
+    return (
+      <GitDiffMessageSlot>
+        <ThreadDiffSkeleton />
+      </GitDiffMessageSlot>
+    );
+  }
+
+  if (diffFilesResponse.files.length === 0) {
+    return (
+      <GitDiffMessageSlot>
+        <EmptyStateScene
+          scene="panel"
+          logoSrc={roomLogoUrl}
+          role="status"
+          title="No changes"
+          description="Nothing differs in this comparison."
+        />
       </GitDiffMessageSlot>
     );
   }

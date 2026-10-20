@@ -350,6 +350,38 @@ describe("room-cli settings commands", () => {
     });
   });
 
+  it("prints raw reported usage next to the capped value in JSON", async () => {
+    stubServerApi({
+      "v1.system.usage-limits.$get": vi.fn(async () => ({
+        codex: {
+          status: "ok",
+          accountEmail: null,
+          planLabel: null,
+          windows: [
+            {
+              label: "Weekly limit",
+              usedPercent: 100,
+              reportedUsedPercent: 130,
+              resetsAt: null,
+            },
+            { label: "Current session", usedPercent: 40, resetsAt: null },
+          ],
+        },
+      })),
+    });
+
+    await runCommand(["settings", "usage", "--json"], register);
+
+    const output = JSON.parse(
+      collectLogPayloads(vi.mocked(console.log)).join("\n"),
+    ) as { codex: { windows: Record<string, unknown>[] } };
+    expect(output.codex.windows[0]).toMatchObject({
+      usedPercent: 100,
+      reportedUsedPercent: 130,
+    });
+    expect(output.codex.windows[1]).not.toHaveProperty("reportedUsedPercent");
+  });
+
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },
